@@ -11,8 +11,6 @@ nastavují z webového rozhraní bez úpravy zdrojového kódu.
   <img src="screenshots/dashboard-night.png" alt="Hlavní obrazovka Waveshare Hodiny v červeném nočním režimu" width="46%">
 </p>
 
-[▶ Přehrát krátkou ukázku animovaných ikon a přechodu minuty](media/waveshare-hodiny-minute-transition.mp4)
-
 V denním režimu mají místnosti a hodnoty vlastní barvy. Volitelný červený
 noční vzhled sjednotí celý dashboard do odstínů červené a sníží jas, aby
 displej v noci nerušil.
