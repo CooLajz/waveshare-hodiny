@@ -37,7 +37,12 @@ Firmware je určený výhradně pro **Waveshare ESP32-S3-Touch-LCD-2.1** s
 480 × 480 px displejem a 16MiB flash. Konfigurace pinů, displeje ST7701,
 dotyku CST820, PSRAM a partition table odpovídá této konkrétní desce.
 
-Nepoužívej tento binární obraz na jiném modelu jen proto, že také obsahuje
+Desku můžete zakoupit u českých prodejců:
+
+- [Pájeníčko.cz – Waveshare ESP32-S3-Touch-LCD-2.1](https://pajenicko.cz/waveshare-esp32-s3-touch-lcd-2.1-s-kulatym-ips-lcd-dotykovym-displejem)
+- [LaskaKit – Waveshare ESP32-S3 Round 2.1](https://www.laskakit.cz/waveshare-esp32-s3-round-2-1--480--480-ips-touch-wifi-modul/)
+
+Nepoužívejte tento binární obraz na jiném modelu jen proto, že také obsahuje
 ESP32-S3. Odlišný pinout nebo flash layout může zabránit startu zařízení.
 
 ## Instalace pro běžného uživatele

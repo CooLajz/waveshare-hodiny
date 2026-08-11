@@ -57,6 +57,17 @@ h2 { margin-bottom: 18px; font-size: clamp(2rem, 4vw, 3.6rem); line-height: 1.04
 .feature-grid h3 { margin: 19px 0 7px; font-size: 1.05rem; }
 .feature-grid p { margin: 0; color: var(--muted); font-size: .9rem; }
 .feature-icon { color: var(--cyan); font-size: 1.7rem; line-height: 1; }
+.hardware-section { padding-bottom: 108px; }
+.hardware-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, .82fr); gap: 54px; align-items: center; padding: 38px 40px; background: linear-gradient(145deg, rgba(17,29,38,.9), rgba(8,15,20,.9)); border: 1px solid var(--line); border-radius: var(--radius); }
+.hardware-panel h2 { margin-bottom: 14px; font-size: clamp(1.8rem, 3vw, 2.8rem); }
+.hardware-panel > div:first-child > p:last-child { margin-bottom: 0; color: var(--muted); }
+.hardware-links { display: grid; gap: 12px; }
+.hardware-links a { position: relative; display: grid; gap: 2px; padding: 17px 48px 17px 18px; background: rgba(5,10,14,.58); border: 1px solid var(--line); border-radius: 14px; transition: transform 160ms ease, border-color 160ms ease, background 160ms ease; }
+.hardware-links a::after { content: "↗"; position: absolute; right: 18px; top: 50%; color: var(--cyan); font-size: 1.15rem; transform: translateY(-50%); }
+.hardware-links a:hover, .hardware-links a:focus-visible { transform: translateY(-2px); border-color: rgba(48,215,232,.45); background: var(--cyan-soft); }
+.hardware-links a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+.hardware-links span { color: var(--cyan); font-size: .78rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.hardware-links strong { font-size: .94rem; }
 .installer-section { background: linear-gradient(110deg, #081117, #0c171e); border-block: 1px solid var(--line); }
 .installer-layout { display: grid; grid-template-columns: 1fr .86fr; gap: 90px; align-items: center; padding-block: 110px; }
 .installer-layout > div:first-child > p:not(.eyebrow) { color: var(--muted); }
@@ -103,6 +114,7 @@ footer { border-top: 1px solid var(--line); color: #768792; font-size: .83rem; }
   .hero { padding-top: 56px; }
   .device-stage { min-height: 480px; max-width: 620px; width: 100%; margin: auto; }
   .feature-grid { grid-template-columns: repeat(2, 1fr); }
+  .hardware-panel { grid-template-columns: 1fr; gap: 30px; }
   .installer-layout { gap: 55px; }
 }
 
@@ -118,6 +130,9 @@ footer { border-top: 1px solid var(--line); color: #768792; font-size: .83rem; }
   .device img { width: min(68vw, 305px); }
   .device-night img { width: min(48vw, 215px); }
   .feature-grid, .showcase-grid { grid-template-columns: 1fr; }
+  .hardware-section { padding-bottom: 76px; }
+  .hardware-panel { padding: 28px 22px; }
+  .hardware-links a { padding-right: 42px; }
   .showcase-grid figure:last-child { grid-column: auto; }
   .image-zoom { min-height: 230px; padding: 14px; }
   .image-zoom img, .device-preview img { height: 220px; }
