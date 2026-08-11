@@ -1,15 +1,21 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="${0:A:h}"
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_PATH="$ROOT_DIR/.arduino/build-waveshare-hodiny-develop"
 OUTPUT_DIR="$ROOT_DIR/build/waveshare-hodiny-develop"
+ARDUINO_CLI_BIN="${ARDUINO_CLI_BIN:-$(command -v arduino-cli || true)}"
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || true)}"
+if [[ -z "$ARDUINO_CLI_BIN" || -z "$PYTHON_BIN" ]]; then
+  echo "Chybí arduino-cli nebo python3 v PATH." >&2
+  exit 1
+fi
 ARDUINO_CONFIG_FILE="${ARDUINO_CONFIG_FILE:-$ROOT_DIR/WaveshareHodiny/local/arduino-cli.yaml}"
 if [[ ! -f "$ARDUINO_CONFIG_FILE" ]]; then
   ARDUINO_CONFIG_FILE="$ROOT_DIR/arduino-cli.yaml"
 fi
-/usr/bin/python3 "$ROOT_DIR/tools/generate_secrets.py"
-/opt/homebrew/bin/arduino-cli \
+"$PYTHON_BIN" "$ROOT_DIR/tools/generate_secrets.py"
+"$ARDUINO_CLI_BIN" \
   --config-file "$ARDUINO_CONFIG_FILE" \
   compile \
   --fqbn esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=custom,PSRAM=opi,USBMode=hwcdc,CDCOnBoot=default \

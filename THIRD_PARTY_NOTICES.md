@@ -11,10 +11,15 @@ notices.
 | Arduino core for ESP32 | 3.0.2 | LGPL-2.1 | https://github.com/espressif/arduino-esp32 |
 | LVGL | 8.3.10 | MIT | https://github.com/lvgl/lvgl |
 | Improv Wi-Fi C++ SDK | commit `17898613a1c17062ca5af295ceb639b16b4930bf` | Apache-2.0 | https://github.com/improv-wifi/sdk-cpp |
+| ESP Web Tools | 10.4.0 | Apache-2.0 | https://github.com/esphome/esp-web-tools |
 
 The Improv Wi-Fi sources embedded in `WaveshareHodiny/improv.cpp` and
 `WaveshareHodiny/improv.h` are derived from the upstream C++ SDK identified
 above.
+
+The minified ESP Web Tools browser bundle used by the GitHub Pages installer is
+self-hosted in `docs/vendor/esp-web-tools/`. Its upstream Apache-2.0 license is
+preserved as `docs/vendor/esp-web-tools/LICENSE`.
 
 ## Fonts and icons
 

@@ -46,9 +46,10 @@ ESP32-S3. Odlišný pinout nebo flash layout může zabránit startu zařízení
 
 ### Instalace z prohlížeče
 
-Připravovaná veřejná instalační stránka na GitHub Pages umožní nahrát stabilní
-release přímo z Chromu nebo Edge přes USB. Jakmile bude stránka publikovaná,
-bude její odkaz uvedený zde a v popisu repozitáře.
+Veřejná [instalační stránka na GitHub Pages](https://coolajz.github.io/waveshare-hodiny/)
+umožňuje nahrát stabilní release přímo z desktopového Chromu nebo Edge přes
+USB. Instalační tlačítko se zpřístupní, jakmile je na GitHubu dostupný veřejný
+stabilní release se zkontrolovaným čtyřdílným factory balíčkem.
 
 Do té doby lze použít release balíček s manifestem v
 [ESP Web Tools](https://web.esphome.io/) nebo firmware sestavit ze zdrojů
@@ -293,8 +294,10 @@ Výsledek je v `build/waveshare-hodiny-release/1.0.0/`. Adresář `package/`
 obsahuje instalační části pro ESP Web Tools a právě jeden samostatný
 `.ota.bin`. Release build neobsahuje lokální Wi-Fi ani Home Assistant údaje.
 
-Release sestavení samo nic nepublikuje. Publikování na GitHub Releases a
-GitHub Pages bude řešit samostatný veřejný release workflow.
+Release sestavení samo nic nepublikuje. GitHub Pages se nasazuje samostatným
+workflow a z nejnovějšího veřejného GitHub Release přebírá pouze čtyři factory
+části a jejich `manifest.json`. Samostatný `.ota.bin` se do webového instalátoru
+nekopíruje.
 
 ## Screenshot displeje přes USB
 

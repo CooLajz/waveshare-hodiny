@@ -1,0 +1,68 @@
+name: GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      - screenshots/**
+      - media/**
+      - .github/workflows/pages.yml
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p _site/screenshots _site/media _site/firmware
+          cp -R docs/. _site/
+          cp screenshots/*.png _site/screenshots/
+          cp media/waveshare-hodiny-minute-transition.mp4 _site/media/
+
+          latest_tag="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null || true)"
+          if [[ -n "$latest_tag" ]]; then
+            gh release download "$latest_tag" --repo "$GITHUB_REPOSITORY" --dir _site/firmware \
+              --pattern manifest.json \
+              --pattern waveshare-hodiny.bootloader.bin \
+              --pattern waveshare-hodiny.partitions.bin \
+              --pattern waveshare-hodiny.boot-app0.bin \
+              --pattern waveshare-hodiny.app.bin
+          else
+            echo "No public firmware release exists yet; installer stays disabled."
+          fi
+
+      - name: Validate installer bundle
+        run: python3 tools/validate_pages_bundle.py _site
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

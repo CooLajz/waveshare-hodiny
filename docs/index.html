@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#05090d">
+    <meta name="description" content="Waveshare Hodiny – český Home Assistant dashboard pro kulatý dotykový displej Waveshare ESP32-S3-Touch-LCD-2.1.">
+    <title>Waveshare Hodiny</title>
+    <link rel="stylesheet" href="styles.css">
+    <script type="module" src="vendor/esp-web-tools/install-button.js"></script>
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Waveshare Hodiny – úvod">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Waveshare Hodiny</span>
+      </a>
+      <nav aria-label="Hlavní navigace">
+        <a href="#funkce">Funkce</a>
+        <a href="#instalace">Instalace</a>
+        <a href="#nastaveni">Nastavení</a>
+        <a href="https://github.com/CooLajz/waveshare-hodiny">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero section-shell">
+        <div class="hero-copy">
+          <p class="eyebrow">Open-source firmware pro ESP32-S3</p>
+          <h1>Chytré hodiny pro <span>Home Assistant</span></h1>
+          <p class="hero-lead">Čas, počasí a domácí senzory na jednom krásném kulatém displeji. Všechno nastavíš z prohlížeče, bez úpravy zdrojového kódu.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#instalace">Nainstalovat firmware</a>
+            <a class="button button-secondary" href="https://github.com/CooLajz/waveshare-hodiny">Prohlédnout zdrojový kód</a>
+          </div>
+          <p class="hardware-note">Určeno výhradně pro Waveshare ESP32-S3-Touch-LCD-2.1</p>
+        </div>
+        <div class="device-stage" aria-label="Denní a noční vzhled hodin">
+          <figure class="device device-day">
+            <img src="screenshots/dashboard.png" alt="Denní dashboard Waveshare Hodiny">
+            <figcaption>Denní režim</figcaption>
+          </figure>
+          <figure class="device device-night">
+            <img src="screenshots/dashboard-night.png" alt="Červený noční dashboard Waveshare Hodiny">
+            <figcaption>Noční režim</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="funkce" class="section-shell section-block">
+        <div class="section-heading">
+          <p class="eyebrow">Na první pohled</p>
+          <h2>Všechno důležité, bez zbytečností</h2>
+        </div>
+        <div class="feature-grid">
+          <article><span class="feature-icon">◷</span><h3>Čas a vteřiny</h3><p>Tři efekty vteřinového prstence včetně plynulé komety.</p></article>
+          <article><span class="feature-icon">⌂</span><h3>Home Assistant</h3><p>Počasí, teploty a další entity přímo přes REST API.</p></article>
+          <article><span class="feature-icon">☼</span><h3>Den a noc</h3><p>Samostatný jas a automatický červený noční režim.</p></article>
+          <article><span class="feature-icon">↻</span><h3>Aktualizace</h3><p>Bezpečný A/B layout připravený pro budoucí veřejné OTA.</p></article>
+        </div>
+      </section>
+
+      <section id="instalace" class="installer-section">
+        <div class="section-shell installer-layout">
+          <div>
+            <p class="eyebrow">Instalace přes USB</p>
+            <h2>Firmware nahraješ přímo z prohlížeče</h2>
+            <p>Potřebuješ datový USB kabel a Chrome nebo Edge na počítači. Vyber sériový port zařízení a instalátor nahraje všechny části na správné adresy.</p>
+            <ol class="steps">
+              <li><span>1</span><div><strong>Připoj hodiny</strong><small>Použij jeden z USB-C konektorů a datový kabel.</small></div></li>
+              <li><span>2</span><div><strong>Spusť instalaci</strong><small>Prohlížeč si vyžádá výběr sériového portu.</small></div></li>
+              <li><span>3</span><div><strong>Nastav Wi-Fi</strong><small>Po instalaci zadej síť přes Improv Serial.</small></div></li>
+            </ol>
+          </div>
+          <div class="installer-card">
+            <div class="installer-orbit" aria-hidden="true"><span></span></div>
+            <p class="installer-label">Veřejný stabilní firmware</p>
+            <p class="installer-version" id="firmware-version">Zjišťuji dostupnost…</p>
+            <esp-web-install-button id="install-button">
+              <button class="button button-primary install-action" slot="activate" type="button">Připojit zařízení</button>
+              <p slot="unsupported">Tento prohlížeč nepodporuje Web Serial. Otevři stránku v desktopovém Chromu nebo Edge.</p>
+              <p slot="not-allowed">Přístup k sériovému portu není povolený. Otevři stránku přes zabezpečené HTTPS.</p>
+            </esp-web-install-button>
+            <p class="installer-status" id="installer-status" role="status">Instalátor se připravuje.</p>
+            <p class="installer-warning"><strong>Pozor:</strong> první čistá instalace může vymazat uložená data zařízení. Aktualizace stejného layoutu je nabídnuta bez mazání.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="nastaveni" class="section-shell section-block">
+        <div class="section-heading narrow">
+          <p class="eyebrow">Displej podle tebe</p>
+          <h2>Barvy, jas i chování nastavíš ve webu</h2>
+          <p>Každá veličina může mít vlastní plynulou barevnou škálu. Denní a noční jas, animace i entity změníš bez nového sestavení firmware.</p>
+        </div>
+        <div class="showcase-grid">
+          <figure class="showcase-wide"><img src="screenshots/web-color-scales.png" alt="Plynulé barevné prahy měřené hodnoty"><figcaption>Plynulé barevné škály podle vlastních prahů</figcaption></figure>
+          <figure><img src="screenshots/web-display-settings.png" alt="Nastavení jasu a vzhledu"><figcaption>Samostatný denní a noční jas</figcaption></figure>
+          <figure><img src="screenshots/device-settings-2.png" alt="Nastavení animací přímo na zařízení"><figcaption>Rychlé volby přímo na displeji</figcaption></figure>
+        </div>
+      </section>
+
+      <section class="video-section section-shell section-block">
+        <div class="section-heading narrow">
+          <p class="eyebrow">V pohybu</p>
+          <h2>Animované ikony a přechod minuty</h2>
+        </div>
+        <video controls muted playsinline preload="metadata" poster="screenshots/dashboard.png">
+          <source src="media/waveshare-hodiny-minute-transition.mp4" type="video/mp4">
+        </video>
+      </section>
+    </main>
+
+    <footer>
+      <div class="section-shell footer-inner">
+        <span>Waveshare Hodiny · MIT licence</span>
+        <div><a href="https://github.com/CooLajz/waveshare-hodiny">Zdrojový kód</a><a href="https://github.com/CooLajz/waveshare-hodiny/blob/main/README.md">Návod</a><a href="https://github.com/CooLajz/waveshare-hodiny/issues">Nahlásit problém</a></div>
+      </div>
+    </footer>
+  </body>
+</html>
