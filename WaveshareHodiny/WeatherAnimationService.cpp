@@ -129,12 +129,18 @@ void performDownload() {
   uint8_t *data = nullptr;
   int result = 0;
   networkDiagnosticsBegin(NetworkDiagnosticKind::WeatherAnimation);
-  const String url = String(FIRMWARE_SERVER_URL) + "/api/v1/projects/" +
-                     FIRMWARE_PROJECT_SLUG + "/assets/weather-icons/" +
-                     assetVersionForKey(asset->key) + "/" + asset->key + ".gif";
+  String url = String(FIRMWARE_SERVER_URL);
+  if (FIRMWARE_WEATHER_ASSET_PATH[0] != '\0') {
+    url += FIRMWARE_WEATHER_ASSET_PATH;
+  } else {
+    url += String("/api/v1/projects/") + FIRMWARE_PROJECT_SLUG +
+           "/assets/weather-icons";
+  }
+  url += String("/") + assetVersionForKey(asset->key) + "/" + asset->key +
+         ".gif";
 
   WiFiClientSecure client;
-  client.setCACert(FIRMWARE_HUB_ROOT_CA);
+  client.setCACert(FIRMWARE_RELEASE_ROOT_CA);
   client.setTimeout(NETWORK_TIMEOUT_MS);
   HTTPClient http;
   http.setConnectTimeout(NETWORK_TIMEOUT_MS);

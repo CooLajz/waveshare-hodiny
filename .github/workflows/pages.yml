@@ -47,7 +47,9 @@ jobs:
               --pattern waveshare-hodiny.bootloader.bin \
               --pattern waveshare-hodiny.partitions.bin \
               --pattern waveshare-hodiny.boot-app0.bin \
-              --pattern waveshare-hodiny.app.bin
+              --pattern waveshare-hodiny.app.bin \
+              --pattern waveshare-hodiny.ota.bin \
+              --pattern ota.json
           else
             echo "No public firmware release exists yet; installer stays disabled."
           fi

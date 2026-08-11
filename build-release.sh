@@ -4,7 +4,20 @@ set -euo pipefail
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_PATH="$ROOT_DIR/.arduino/build-waveshare-hodiny-release"
 VERSION="${1:?Pouziti: ./build-release.sh SEMVER}"
-OUTPUT_DIR="$ROOT_DIR/build/waveshare-hodiny-release/$VERSION"
+RELEASE_CHANNEL="${RELEASE_CHANNEL:-internal}"
+if [[ "$RELEASE_CHANNEL" != "internal" && "$RELEASE_CHANNEL" != "public" ]]; then
+  echo "RELEASE_CHANNEL musí být internal nebo public." >&2
+  exit 1
+fi
+OUTPUT_SUFFIX="$VERSION"
+GENERATE_SECRETS_ARGS=(--release)
+PACKAGE_ARGS=()
+if [[ "$RELEASE_CHANNEL" == "public" ]]; then
+  OUTPUT_SUFFIX="$VERSION-public"
+  GENERATE_SECRETS_ARGS=(--release --public-release)
+  PACKAGE_ARGS=(/waveshare-hodiny/firmware)
+fi
+OUTPUT_DIR="$ROOT_DIR/build/waveshare-hodiny-release/$OUTPUT_SUFFIX"
 ARDUINO_CLI_BIN="${ARDUINO_CLI_BIN:-$(command -v arduino-cli || true)}"
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || true)}"
 if [[ -z "$ARDUINO_CLI_BIN" || -z "$PYTHON_BIN" ]]; then
@@ -21,7 +34,7 @@ ESP32_CORE_VERSION="3.0.2"
 
 mkdir -p "$OUTPUT_DIR"
 
-"$PYTHON_BIN" "$ROOT_DIR/tools/generate_secrets.py" --release
+"$PYTHON_BIN" "$ROOT_DIR/tools/generate_secrets.py" "${GENERATE_SECRETS_ARGS[@]}"
 "$PYTHON_BIN" "$ROOT_DIR/tools/generate_release_version.py" "$VERSION"
 
 "$ARDUINO_CLI_BIN" \
@@ -44,8 +57,10 @@ mkdir -p "$OUTPUT_DIR"
   "$ARDUINO_DATA_DIR/packages/esp32/hardware/esp32/$ESP32_CORE_VERSION/tools/partitions/boot_app0.bin" \
   "$BUILD_PATH/WaveshareHodiny.ino.bin" \
   "$OUTPUT_DIR/WaveshareHodiny.ino.bin" \
-  "$OUTPUT_DIR/package"
+  "$OUTPUT_DIR/package" \
+  "${PACKAGE_ARGS[@]}"
 
 printf 'RELEASE_VERSION=%s\n' "$VERSION"
+printf 'RELEASE_CHANNEL=%s\n' "$RELEASE_CHANNEL"
 printf 'RELEASE_BUILD_DIR=%s\n' "$OUTPUT_DIR"
 printf 'RELEASE_PACKAGE_DIR=%s\n' "$OUTPUT_DIR/package"

@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "assetSet": "weather-icons",
+  "version": "3.0.0-next.10-lvgl.2-flat",
+  "format": "gif",
+  "width": 84,
+  "height": 84,
+  "license": {
+    "name": "MIT",
+    "file": "../LICENSE.txt"
+  },
+  "icons": {
+    "flat-clear-day": {
+      "file": "flat-clear-day.gif",
+      "size": 45430,
+      "sha256": "aab1ce756c0495a7f09e7bca6e63be22e9bb0e409db191ddaa82475dd8251fe5"
+    },
+    "flat-clear-night": {
+      "file": "flat-clear-night.gif",
+      "size": 28383,
+      "sha256": "dc2339e724b42f84dc1a6ecc189c3775422e3e247257583996fe58a0add3b9e1"
+    },
+    "flat-drizzle": {
+      "file": "flat-drizzle.gif",
+      "size": 36725,
+      "sha256": "2c425268dc12a0921f0f1a7ad002c7bc19c4820771bccf213cf9c9c78fc83d06"
+    },
+    "flat-mist": {
+      "file": "flat-mist.gif",
+      "size": 23263,
+      "sha256": "bcea5d72103dba7680a3f6497126168916aab2ab9b08c9ec0f5f4ee0790b22e8"
+    },
+    "flat-mostly-clear-day": {
+      "file": "flat-mostly-clear-day.gif",
+      "size": 44014,
+      "sha256": "1d7a7991fedef717fab7b8325606d59700fedb5b138cb3b1267308260bb5caff"
+    },
+    "flat-mostly-clear-night": {
+      "file": "flat-mostly-clear-night.gif",
+      "size": 30127,
+      "sha256": "a44e76a8ab1139f298a842a3bc977f61a2070cf5a5a5fefa171745f51f5bb8c9"
+    },
+    "flat-overcast-day": {
+      "file": "flat-overcast-day.gif",
+      "size": 44056,
+      "sha256": "ca9acf777769dc0cf27acdfcddd57a6f3633e2a767fd990501a2a87da13c622e"
+    },
+    "flat-overcast-night": {
+      "file": "flat-overcast-night.gif",
+      "size": 40533,
+      "sha256": "7024198049d5110a52112eed95a2b3a1722837873f682faf488a0103e8fc0c02"
+    },
+    "flat-partly-cloudy-day": {
+      "file": "flat-partly-cloudy-day.gif",
+      "size": 38323,
+      "sha256": "ab85c45cc8597516502af1d373a2751d71cfa6e14c3d7f26742d9090bba035c2"
+    },
+    "flat-partly-cloudy-night": {
+      "file": "flat-partly-cloudy-night.gif",
+      "size": 33425,
+      "sha256": "e6599067d986c97edb350cd2b820a9aca75dee98c7157f9dae08b6b50220bab9"
+    },
+    "flat-rain": {
+      "file": "flat-rain.gif",
+      "size": 41033,
+      "sha256": "8541020851ed041c49a2f4495baef1fbd4bfe8d039c0bbd0175ae0f32b1afb2a"
+    },
+    "flat-sleet": {
+      "file": "flat-sleet.gif",
+      "size": 45323,
+      "sha256": "6278aff0c183796a6a240e8b315f16f4cf778ca0eb14dadcbe4998ac60137819"
+    },
+    "flat-snow": {
+      "file": "flat-snow.gif",
+      "size": 36329,
+      "sha256": "3133262e1adb455a379541ffe1e4c5d37923884bc7aa394243ba067c9917dcef"
+    },
+    "flat-thunderstorms": {
+      "file": "flat-thunderstorms.gif",
+      "size": 39755,
+      "sha256": "5c7ebb1c5b62ee61f70d7a75140faa6b0cd5a688efda1c896114546184948efe"
+    }
+  }
+}

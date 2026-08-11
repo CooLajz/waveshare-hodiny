@@ -102,6 +102,14 @@ String normalizedDownloadUrl(String url) {
   return url;
 }
 
+String metadataUrl() {
+  if (FIRMWARE_OTA_METADATA_PATH[0] != '\0') {
+    return String(FIRMWARE_SERVER_URL) + FIRMWARE_OTA_METADATA_PATH;
+  }
+  return String(FIRMWARE_SERVER_URL) + "/api/v1/projects/" +
+         FIRMWARE_PROJECT_SLUG + "/ota";
+}
+
 String sha256Hex(const uint8_t digest[32]) {
   static constexpr char HEX_DIGITS[] = "0123456789abcdef";
   char result[65];
@@ -124,7 +132,7 @@ bool installFirmware(const String &url, uint32_t expectedSize,
   if (lifecycleCallback != nullptr) lifecycleCallback(true);
 
   WiFiClientSecure client;
-  client.setCACert(FIRMWARE_HUB_ROOT_CA);
+  client.setCACert(FIRMWARE_RELEASE_ROOT_CA);
   client.setTimeout(NETWORK_TIMEOUT_MS);
   HTTPClient http;
   http.setConnectTimeout(NETWORK_TIMEOUT_MS);
@@ -234,7 +242,7 @@ void checkFirmware(bool installWhenAvailable) {
   }
   if (FIRMWARE_SERVER_URL[0] == '\0' || FIRMWARE_PROJECT_SLUG[0] == '\0') {
     setMessage(FirmwareUpdateState::Failed,
-               "Firmware Hub není v buildu nakonfigurovaný.", false);
+               "Server aktualizací není v buildu nakonfigurovaný.", false);
     return;
   }
   if (time(nullptr) < VALID_TIME_THRESHOLD) {
@@ -243,17 +251,16 @@ void checkFirmware(bool installWhenAvailable) {
     return;
   }
 
-  String metadataUrl = String(FIRMWARE_SERVER_URL) + "/api/v1/projects/" +
-                       FIRMWARE_PROJECT_SLUG + "/ota";
+  const String metadataEndpoint = metadataUrl();
   WiFiClientSecure client;
-  client.setCACert(FIRMWARE_HUB_ROOT_CA);
+  client.setCACert(FIRMWARE_RELEASE_ROOT_CA);
   client.setTimeout(NETWORK_TIMEOUT_MS);
   HTTPClient http;
   http.setConnectTimeout(NETWORK_TIMEOUT_MS);
   http.setTimeout(NETWORK_TIMEOUT_MS);
-  if (!http.begin(client, metadataUrl)) {
+  if (!http.begin(client, metadataEndpoint)) {
     setMessage(FirmwareUpdateState::Failed,
-               "Nepodařilo se otevřít Firmware Hub.", false);
+               "Nepodařilo se otevřít server aktualizací.", false);
     return;
   }
   http.addHeader("Accept", "application/json");
@@ -261,7 +268,7 @@ void checkFirmware(bool installWhenAvailable) {
   if (responseCode == HTTP_CODE_NOT_FOUND) {
     http.end();
     setMessage(FirmwareUpdateState::Failed,
-               "Firmware Hub zatím nemá OTA rozhraní pro tento projekt.",
+               "Server zatím nemá OTA metadata pro tento projekt.",
                false);
     return;
   }
@@ -277,7 +284,7 @@ void checkFirmware(bool installWhenAvailable) {
     }
     http.end();
     const String message =
-        String("Kontrola verze na Firmware Hubu selhala: ") + detail + ".";
+        String("Kontrola verze na serveru selhala: ") + detail + ".";
     setMessage(FirmwareUpdateState::Failed, message.c_str(), false);
     return;
   }
@@ -303,7 +310,7 @@ void checkFirmware(bool installWhenAvailable) {
   url = normalizedDownloadUrl(url);
   if (url.isEmpty()) {
     setMessage(FirmwareUpdateState::Failed,
-               "OTA obraz neleží na povoleném Firmware Hubu.", false);
+               "OTA obraz neleží na povoleném serveru.", false);
     return;
   }
 
@@ -367,7 +374,7 @@ bool firmwareUpdateServiceRequestCheck(bool installWhenAvailable) {
   }
   status.busy = true;
   status.state = FirmwareUpdateState::Checking;
-  strlcpy(status.message, "Kontroluji verzi na Firmware Hubu…",
+  strlcpy(status.message, "Kontroluji novou verzi…",
           sizeof(status.message));
   unlockStatus();
   const BaseType_t created = xTaskCreatePinnedToCore(

@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import re
 import sys
 from pathlib import Path
 
@@ -14,6 +16,60 @@ EXPECTED_PARTS = {
     "waveshare-hodiny.boot-app0.bin": 0xE000,
     "waveshare-hodiny.app.bin": 0x10000,
 }
+ROOT = Path(__file__).resolve().parent.parent
+ASSET_ENTRY_PATTERN = re.compile(
+    r'\{"([^"]+)", (\d+), "([0-9a-f]{64})"\}'
+)
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def validate_weather_assets(site: Path) -> None:
+    source = (ROOT / "WaveshareHodiny" / "WeatherAnimationService.cpp").read_text(
+        encoding="utf-8"
+    )
+    expected = {
+        key: {"size": int(size), "sha256": digest}
+        for key, size, digest in ASSET_ENTRY_PATTERN.findall(source)
+    }
+    root = site / "assets" / "weather-icons"
+    catalog = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    actual: dict[str, dict[str, object]] = {}
+    referenced_files: set[Path] = set()
+    for style in ("monochrome", "flat", "line"):
+        version_info = catalog.get("versions", {}).get(style)
+        if not isinstance(version_info, dict):
+            raise SystemExit(f"V asset katalogu chybí styl {style}.")
+        relative_manifest = version_info.get("manifest")
+        if not isinstance(relative_manifest, str) or ".." in Path(relative_manifest).parts:
+            raise SystemExit(f"Styl {style} má neplatnou cestu manifestu.")
+        manifest_path = root / relative_manifest
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("version") != version_info.get("version"):
+            raise SystemExit(f"Verze asset manifestu {style} nesouhlasí s katalogem.")
+        icons = manifest.get("icons")
+        if not isinstance(icons, dict) or len(icons) != version_info.get("icons"):
+            raise SystemExit(f"Asset manifest {style} má neplatný počet ikon.")
+        for key, metadata in icons.items():
+            if key in actual or not isinstance(metadata, dict):
+                raise SystemExit(f"Duplicitní nebo neplatný asset: {key}")
+            filename = metadata.get("file")
+            if not isinstance(filename, str) or Path(filename).name != filename:
+                raise SystemExit(f"Asset {key} má nebezpečnou cestu.")
+            path = manifest_path.parent / filename
+            if not path.is_file():
+                raise SystemExit(f"Asset {key} chybí.")
+            actual[key] = {"size": path.stat().st_size, "sha256": sha256(path)}
+            referenced_files.add(path.resolve())
+    published_files = {path.resolve() for path in root.glob("*/*.gif")}
+    if actual != expected or published_files != referenced_files:
+        raise SystemExit("Veřejné Meteocons neodpovídají firmwarovému allowlistu.")
 
 
 def main() -> None:
@@ -25,6 +81,7 @@ def main() -> None:
         path = site / relative
         if not path.is_file() or path.stat().st_size == 0:
             raise SystemExit(f"Povinný soubor webu chybí nebo je prázdný: {path}")
+    validate_weather_assets(site)
 
     firmware = site / "firmware"
     manifest_path = firmware / "manifest.json"
@@ -66,6 +123,22 @@ def main() -> None:
         path = firmware / name
         if not path.is_file() or path.stat().st_size == 0:
             raise SystemExit(f"Instalační část chybí nebo je prázdná: {path}")
+    ota_path = firmware / "waveshare-hodiny.ota.bin"
+    ota_metadata_path = firmware / "ota.json"
+    if not ota_path.is_file() or not ota_metadata_path.is_file():
+        raise SystemExit("Ve veřejném release chybí OTA obraz nebo metadata.")
+    ota = json.loads(ota_metadata_path.read_text(encoding="utf-8"))
+    expected_ota_keys = {"version", "chipFamily", "size", "sha256", "url"}
+    if set(ota) != expected_ota_keys:
+        raise SystemExit("OTA metadata mají neplatnou strukturu.")
+    if (
+        ota["version"] != manifest.get("version")
+        or ota["chipFamily"] != "ESP32-S3"
+        or ota["size"] != ota_path.stat().st_size
+        or ota["sha256"] != sha256(ota_path)
+        or ota["url"] != "/waveshare-hodiny/firmware/waveshare-hodiny.ota.bin"
+    ):
+        raise SystemExit("OTA metadata neodpovídají veřejnému OTA obrazu.")
     print(f"Web i instalační balíček verze {manifest.get('version')} jsou platné.")
 
 

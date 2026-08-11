@@ -27,10 +27,10 @@ def write_json(path: Path, value: object) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) != 8 or not VERSION_PATTERN.fullmatch(sys.argv[1]):
+    if len(sys.argv) not in (8, 9) or not VERSION_PATTERN.fullmatch(sys.argv[1]):
         raise SystemExit(
             "Použití: prepare_release_package.py VERZE BOOTLOADER PARTITIONS "
-            "BOOT_APP0 APP_BIN OTA_BIN ADRESAR"
+            "BOOT_APP0 APP_BIN OTA_BIN ADRESAR [VEREJNA_ZAKLADNI_CESTA]"
         )
     version = sys.argv[1]
     flash_parts = [
@@ -41,6 +41,9 @@ def main() -> None:
     ]
     ota_source = Path(sys.argv[6]).resolve()
     package_dir = Path(sys.argv[7]).resolve()
+    public_base_path = sys.argv[8].rstrip("/") if len(sys.argv) == 9 else ""
+    if public_base_path and not public_base_path.startswith("/"):
+        raise SystemExit("Veřejná základní cesta musí začínat lomítkem.")
     for source, _, _ in flash_parts:
         if not source.is_file() or source.stat().st_size == 0:
             raise SystemExit(f"Flash část neexistuje nebo je prázdná: {source}")
@@ -86,6 +89,17 @@ def main() -> None:
         },
     )
     ota_sha256 = hashlib.sha256((package_dir / ota_name).read_bytes()).hexdigest()
+    if public_base_path:
+        write_json(
+            package_dir / "ota.json",
+            {
+                "version": version,
+                "chipFamily": "ESP32-S3",
+                "size": ota_source.stat().st_size,
+                "sha256": ota_sha256,
+                "url": f"{public_base_path}/{ota_name}",
+            },
+        )
     print(f"OTA_SIZE={ota_source.stat().st_size}")
     print(f"OTA_SHA256={ota_sha256}")
 

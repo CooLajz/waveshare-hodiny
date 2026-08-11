@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "assetSet": "weather-icons",
+  "version": "3.0.0-next.10-lvgl.2-monochrome",
+  "format": "gif",
+  "width": 84,
+  "height": 84,
+  "license": {
+    "name": "MIT",
+    "file": "../LICENSE.txt"
+  },
+  "icons": {
+    "monochrome-clear-day": {
+      "file": "monochrome-clear-day.gif",
+      "size": 48370,
+      "sha256": "79cefa1df9c3527dd71fb83514e64d91760dc84c3cbb72bb3177473bb0cf038b"
+    },
+    "monochrome-clear-night": {
+      "file": "monochrome-clear-night.gif",
+      "size": 32337,
+      "sha256": "41bb72ae190d35ddff3f06151d97d2e918f4ae0656129357beb0c7d79c70fbae"
+    },
+    "monochrome-drizzle": {
+      "file": "monochrome-drizzle.gif",
+      "size": 36077,
+      "sha256": "6a9814875c12a41f4dbb0b26302f8446bd4fb1537c48b5dc7d250b159ccb6901"
+    },
+    "monochrome-mist": {
+      "file": "monochrome-mist.gif",
+      "size": 23167,
+      "sha256": "5aeb305a2342b9be29fe14222989d01d5bd7b54bd54711bbcb5dca23f10152d8"
+    },
+    "monochrome-mostly-clear-day": {
+      "file": "monochrome-mostly-clear-day.gif",
+      "size": 43703,
+      "sha256": "da84b73666bbb1392ee5267340a5eb375ea72c70cc3a4358cc3fcdffecdc7c2c"
+    },
+    "monochrome-mostly-clear-night": {
+      "file": "monochrome-mostly-clear-night.gif",
+      "size": 30527,
+      "sha256": "968f216b6e0ddcd2eff10b8d818062c6c556e0d992b6ac14740fa2f6908590e9"
+    },
+    "monochrome-overcast-day": {
+      "file": "monochrome-overcast-day.gif",
+      "size": 42410,
+      "sha256": "abd0241784dad71c381ef86aa60d4568a6bf08bc33099a69fd91ca02e5c25219"
+    },
+    "monochrome-overcast-night": {
+      "file": "monochrome-overcast-night.gif",
+      "size": 37335,
+      "sha256": "92136b6d20e3798c0e4be20db7582af534c71d300d16eee507be1edb776002eb"
+    },
+    "monochrome-partly-cloudy-day": {
+      "file": "monochrome-partly-cloudy-day.gif",
+      "size": 38651,
+      "sha256": "bc20cce5625f46df0fcf842d4ca92fd724c4454329602f454711e9a4ceb105af"
+    },
+    "monochrome-partly-cloudy-night": {
+      "file": "monochrome-partly-cloudy-night.gif",
+      "size": 33951,
+      "sha256": "1344f689dbad49ecf09b9988d7b74dad592e432768c1c2b9804a47022b0b5e1f"
+    },
+    "monochrome-rain": {
+      "file": "monochrome-rain.gif",
+      "size": 38835,
+      "sha256": "ee27536c0ded223e1ae5c5185c9a75d0dccf39fa326442266bd1ab4eaae8e05b"
+    },
+    "monochrome-sleet": {
+      "file": "monochrome-sleet.gif",
+      "size": 41493,
+      "sha256": "a87046aaa09774882e4e49d85241d07a8169868035a32de64f7b3ee018663491"
+    },
+    "monochrome-snow": {
+      "file": "monochrome-snow.gif",
+      "size": 34895,
+      "sha256": "0fcea6e85419a9adb75f3c31d65ce77652fa72f60477c91bd2d97b85b8d08a5b"
+    },
+    "monochrome-thunderstorms": {
+      "file": "monochrome-thunderstorms.gif",
+      "size": 36698,
+      "sha256": "a143658776cc52ed46106845cc2e6e1efcaa3b132a6e7a7bce1add80cd1bb05d"
+    }
+  }
+}

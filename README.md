@@ -182,18 +182,22 @@ dotyk dashboardu při vypnuté automatice přepíná denní a noční režim.
 ## Animované Meteocons
 
 Statické monochromatické ikony jsou uložené přímo ve firmware. Volitelné
-animované ikony se stahují z nakonfigurovaného veřejného asset originu a
-ukládají do lokální cache. V nočním režimu se vždy použije monochromatický
-styl, aby ikony respektovaly červené noční zobrazení.
+animované ikony veřejného buildu se stahují z GitHub Pages a ukládají do
+lokální cache. V nočním režimu se vždy použije monochromatický styl, aby ikony
+respektovaly červené noční zobrazení.
 
-Ve veřejném asset balíčku mají být pouze ikony používané aktuálním manifestem,
-nikoli kompletní mirror zdrojové kolekce. Postup jejich reprodukovatelného
-vytvoření je v [`METEOCONS_ASSET_PIPELINE.md`](METEOCONS_ASSET_PIPELINE.md).
+V `docs/assets/weather-icons/` je pouze 42 GIFů používaných firmwarovým
+allowlistem: 14 stavů pro každý ze stylů Monochrome, Flat a Line. Každý veřejný
+manifest obsahuje skutečnou velikost a SHA-256 souboru; kompletní pracovní
+mirror 1557 ikon v repozitáři není. Postup reprodukovatelného vytvoření je v
+[`METEOCONS_ASSET_PIPELINE.md`](METEOCONS_ASSET_PIPELINE.md).
 
 ## OTA aktualizace
 
 Release firmware používá A/B layout se dvěma stejně velkými 6MiB aplikačními
-oddíly. Nová aplikace se zapisuje do neaktivního slotu. Před aktivací se ověří:
+oddíly. Veřejný build čte statická metadata a OTA obraz pouze z GitHub Pages;
+interní vývojový profil může dál používat Firmware Hub. Nová aplikace se
+zapisuje do neaktivního slotu. Před aktivací se ověří:
 
 - HTTPS spojení a povolený release origin,
 - HTTP status a deklarovaná velikost,
@@ -294,10 +298,22 @@ Výsledek je v `build/waveshare-hodiny-release/1.0.0/`. Adresář `package/`
 obsahuje instalační části pro ESP Web Tools a právě jeden samostatný
 `.ota.bin`. Release build neobsahuje lokální Wi-Fi ani Home Assistant údaje.
 
-Release sestavení samo nic nepublikuje. GitHub Pages se nasazuje samostatným
-workflow a z nejnovějšího veřejného GitHub Release přebírá pouze čtyři factory
-části a jejich `manifest.json`. Samostatný `.ota.bin` se do webového instalátoru
-nekopíruje.
+Tento výchozí příkaz zachovává interní profil z lokální `.env`. Veřejný profil
+pro GitHub Pages lze lokálně pouze sestavit takto:
+
+```sh
+RELEASE_CHANNEL=public ./build-release.sh 1.0.0
+```
+
+Jeho výsledek je v `build/waveshare-hodiny-release/1.0.0-public/` a kromě
+factory částí obsahuje také statická `ota.json` metadata. Nepoužívá `.env`,
+lokální Wi-Fi, Home Assistant údaje ani klíč Firmware Hubu.
+
+Žádný lokální build nic nepublikuje. Ruční GitHub Actions workflow **Public
+firmware release** vyžaduje konkrétní stabilní SemVer a má samostatný přepínač
+pro vytvoření neměnného GitHub Release. Bez něj pouze sestaví a zkontroluje
+dočasný artifact. Pages z nejnovějšího stabilního GitHub Release přebírá čtyři
+factory části, instalační manifest, samostatný OTA obraz a jeho metadata.
 
 ## Screenshot displeje přes USB
 
@@ -319,6 +335,7 @@ Pokud je připojeno více zařízení, předej `--port`. Nástroj používá pys
 ```text
 WaveshareHodiny/        Arduino sketch a firmware
 assets/                 Zdrojové assety použité generátory
+docs/assets/            Jen veřejně používané animované GIFy a manifesty
 screenshots/            Veřejné obrázky dokumentace
 tools/                  Build, test a asset utility
 WaveshareHodiny/partitions.csv
@@ -353,6 +370,8 @@ existuje a její stav je číselný nebo podporovaný stav počasí.
 
 Vývojový build OTA neinstaluje. U release buildu ověř připojení k internetu,
 synchronizovaný čas a dostupnost nakonfigurovaného HTTPS release serveru.
+Veřejný build používá `https://coolajz.github.io/waveshare-hodiny/firmware/`;
+interní profil může používat jiný server z lokální `.env`.
 
 ### Zařízení se neobjeví na USB
 

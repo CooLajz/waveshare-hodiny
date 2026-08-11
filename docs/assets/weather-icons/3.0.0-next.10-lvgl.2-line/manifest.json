@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "assetSet": "weather-icons",
+  "version": "3.0.0-next.10-lvgl.2-line",
+  "format": "gif",
+  "width": 84,
+  "height": 84,
+  "license": {
+    "name": "MIT",
+    "file": "../LICENSE.txt"
+  },
+  "icons": {
+    "line-clear-day": {
+      "file": "line-clear-day.gif",
+      "size": 48032,
+      "sha256": "2f8f7337ea642298543535d227b3c2bffa7bf3c5d1707c215af3f44a31da67bb"
+    },
+    "line-clear-night": {
+      "file": "line-clear-night.gif",
+      "size": 32337,
+      "sha256": "ebc47d863f093cfbfbbb00d54de3985a12185d8bbffdea967581f15025b158a2"
+    },
+    "line-drizzle": {
+      "file": "line-drizzle.gif",
+      "size": 37057,
+      "sha256": "21ea5715d1a691ee04e95b23a6d288fd448c5e046619237d1e7fa098c9940ce8"
+    },
+    "line-mist": {
+      "file": "line-mist.gif",
+      "size": 23263,
+      "sha256": "bcea5d72103dba7680a3f6497126168916aab2ab9b08c9ec0f5f4ee0790b22e8"
+    },
+    "line-mostly-clear-day": {
+      "file": "line-mostly-clear-day.gif",
+      "size": 45148,
+      "sha256": "c687377d3d26027957068da86ea8604fd55d9c94ad6bc555b5b461d44d9c6efe"
+    },
+    "line-mostly-clear-night": {
+      "file": "line-mostly-clear-night.gif",
+      "size": 32401,
+      "sha256": "0f48ffb37360e93f53c2ebc8d1b168c9960df4d396e1475c41176f2c0c506eeb"
+    },
+    "line-overcast-day": {
+      "file": "line-overcast-day.gif",
+      "size": 47442,
+      "sha256": "db32e1e52a1448ec25cea643a0f05ecce59fa9524afa953863c5507b05093905"
+    },
+    "line-overcast-night": {
+      "file": "line-overcast-night.gif",
+      "size": 43699,
+      "sha256": "833cfbb072ad9747bf90571c0b7187bd8f77e9e12f83595dd003df2ef4534b16"
+    },
+    "line-partly-cloudy-day": {
+      "file": "line-partly-cloudy-day.gif",
+      "size": 41442,
+      "sha256": "97c1c7f30a6bb5309dca9a959684e7e66af830cfb0e2f02188d45cf99ecb56a4"
+    },
+    "line-partly-cloudy-night": {
+      "file": "line-partly-cloudy-night.gif",
+      "size": 36369,
+      "sha256": "a79c5a2fc3f09af74eb1c21535a305484220070d192388f2072f90853a4af911"
+    },
+    "line-rain": {
+      "file": "line-rain.gif",
+      "size": 39327,
+      "sha256": "0c8bf5a2f1096bcb29509d4bab0798f12673beaea371e71fa1e32e5a991a62f0"
+    },
+    "line-sleet": {
+      "file": "line-sleet.gif",
+      "size": 45763,
+      "sha256": "2d91f59db3e138f0557e547f3c7d3d4d7ccdd812cdcd2e7bb88d1edf3e3cec15"
+    },
+    "line-snow": {
+      "file": "line-snow.gif",
+      "size": 37087,
+      "sha256": "f1c51cefcef475be4d001f6f9d14991f4eeb65c1b31b53cc8da534b1f3be23dc"
+    },
+    "line-thunderstorms": {
+      "file": "line-thunderstorms.gif",
+      "size": 38543,
+      "sha256": "f421ef30d8f27b0bc07b410e4165f005c1f6bbbc70a29aee5e89413bc2ab67e0"
+    }
+  }
+}

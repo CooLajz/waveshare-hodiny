@@ -1,7 +1,7 @@
 #pragma once
 
-// ISRG Root X1, důvěryhodný kořen aktuálního TLS řetězce Firmware Hubu.
-constexpr char FIRMWARE_HUB_ROOT_CA[] = R"PEM(-----BEGIN CERTIFICATE-----
+// ISRG Root X1, důvěryhodný kořen TLS řetězce Firmware Hubu i GitHub Pages.
+constexpr char FIRMWARE_RELEASE_ROOT_CA[] = R"PEM(-----BEGIN CERTIFICATE-----
 MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
 TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
 cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4

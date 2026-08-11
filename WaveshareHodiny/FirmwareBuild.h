@@ -24,6 +24,16 @@
 #define FIRMWARE_PROJECT_SLUG ""
 #endif
 
+// Prázdná hodnota zachovává interní Firmware Hub API. Veřejný build používá
+// statické cesty na stejném důvěryhodném originu jako GitHub Pages.
+#ifndef FIRMWARE_OTA_METADATA_PATH
+#define FIRMWARE_OTA_METADATA_PATH ""
+#endif
+
+#ifndef FIRMWARE_WEATHER_ASSET_PATH
+#define FIRMWARE_WEATHER_ASSET_PATH ""
+#endif
+
 constexpr bool IS_RELEASE_FIRMWARE = FIRMWARE_RELEASE != 0;
 constexpr char FIRMWARE_NAME[] = "Waveshare Hodiny";
 constexpr char FIRMWARE_DEVICE_NAME[] = "Waveshare Hodiny";

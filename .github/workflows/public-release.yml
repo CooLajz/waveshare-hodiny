@@ -1,0 +1,96 @@
+name: Public firmware release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable SemVer to build, for example 1.4.0
+        required: true
+        type: string
+      publish_stable_release:
+        description: Create the immutable public GitHub Release after validation
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: public-firmware-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+
+      - name: Validate stable version and release target
+        env:
+          VERSION: ${{ inputs.version }}
+          PUBLISH: ${{ inputs.publish_stable_release }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Public stable release requires MAJOR.MINOR.PATCH without prerelease or build metadata." >&2
+            exit 1
+          fi
+          if [[ "$PUBLISH" == "true" ]] && gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v$VERSION already exists and is immutable." >&2
+            exit 1
+          fi
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install pinned toolchain
+        run: |
+          arduino-cli core update-index --config-file arduino-cli.yaml
+          arduino-cli core install esp32:esp32@3.0.2 --config-file arduino-cli.yaml
+          arduino-cli lib install lvgl@8.3.10 --config-file arduino-cli.yaml
+
+      - name: Build public release without local secrets
+        env:
+          RELEASE_CHANNEL: public
+        run: ./build-release.sh "${{ inputs.version }}"
+
+      - name: Validate complete Pages and OTA bundle
+        run: |
+          mkdir -p _site/screenshots _site/media _site/firmware
+          cp -R docs/. _site/
+          cp screenshots/*.png _site/screenshots/
+          cp media/waveshare-hodiny-minute-transition.mp4 _site/media/
+          cp build/waveshare-hodiny-release/${{ inputs.version }}-public/package/manifest.json _site/firmware/
+          cp build/waveshare-hodiny-release/${{ inputs.version }}-public/package/ota.json _site/firmware/
+          cp build/waveshare-hodiny-release/${{ inputs.version }}-public/package/waveshare-hodiny.*.bin _site/firmware/
+          python3 tools/validate_pages_bundle.py _site
+
+      - name: Upload validated package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: waveshare-hodiny-${{ inputs.version }}-public
+          path: build/waveshare-hodiny-release/${{ inputs.version }}-public/package/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish immutable stable GitHub Release
+        if: ${{ inputs.publish_stable_release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "v$VERSION" \
+            build/waveshare-hodiny-release/$VERSION-public/package/manifest.json \
+            build/waveshare-hodiny-release/$VERSION-public/package/ota.json \
+            build/waveshare-hodiny-release/$VERSION-public/package/waveshare-hodiny.bootloader.bin \
+            build/waveshare-hodiny-release/$VERSION-public/package/waveshare-hodiny.partitions.bin \
+            build/waveshare-hodiny-release/$VERSION-public/package/waveshare-hodiny.boot-app0.bin \
+            build/waveshare-hodiny-release/$VERSION-public/package/waveshare-hodiny.app.bin \
+            build/waveshare-hodiny-release/$VERSION-public/package/waveshare-hodiny.ota.bin \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Waveshare Hodiny $VERSION" \
+            --generate-notes \
+            --latest \
+            --target "$GITHUB_SHA"

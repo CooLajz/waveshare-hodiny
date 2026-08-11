@@ -36,7 +36,9 @@ Používané projektové nástroje:
 - `tools/build_meteocons_assets.py` — vytvoření GIFů a úplného manifestu,
 - `tools/split_meteocons_asset_package.py` — rozdělení podle stylu,
 - `tools/generate_weather_animation_metadata.py` — metadata používaných ikon
-  pro firmware.
+  pro firmware,
+- `tools/prepare_public_weather_assets.py` — výběr pouze firmwarového
+  allowlistu, úplná kontrola velikostí a SHA-256 a příprava GitHub Pages.
 
 ## 1. Ověření a stažení zdroje
 
@@ -98,6 +100,16 @@ používané GIFy byly přímo v kořeni ZIPu. Z kompletní pracovní knihovny v
 jen klíče uvedené ve `WeatherAnimationService.cpp`. Před zveřejněním proveď
 `unzip -t` a u všech souborů porovnej velikost a SHA-256 s allowlistem. Nestačí
 ověřit pouze počet položek nebo několik vzorků.
+
+Veřejný Pages adresář připrav přímo z ověřeného kompletního balíčku:
+
+```sh
+python3 tools/prepare_public_weather_assets.py \
+  --package /tmp/meteocons-3.0.0-next.10-lvgl.2/package
+```
+
+Skript odmítne chybějící nebo pozměněný GIF a publikuje právě 42 používaných
+souborů včetně per-style manifestů a upstream MIT licence.
 
 ## 5. Přepojení firmwaru
 

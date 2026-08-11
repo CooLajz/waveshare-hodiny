@@ -40,6 +40,10 @@ The exact source font and its license are included in
 The weather icons embedded in the firmware are derived from Meteocons
 version `3.0.0-next.10` by Bas Milius.
 
+The 42 animated GIFs published in `docs/assets/weather-icons/` are generated
+from the same upstream package. Their MIT license is also preserved next to
+the published assets as `docs/assets/weather-icons/LICENSE.txt`.
+
 Source: https://github.com/basmilius/weather-icons
 
 MIT License
