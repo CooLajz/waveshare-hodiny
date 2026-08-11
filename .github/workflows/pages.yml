@@ -40,7 +40,7 @@ jobs:
           cp screenshots/*.png _site/screenshots/
           cp media/waveshare-hodiny-minute-transition.mp4 _site/media/
 
-          latest_tag="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null || true)"
+          latest_tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)"
           if [[ -n "$latest_tag" ]]; then
             gh release download "$latest_tag" --repo "$GITHUB_REPOSITORY" --dir _site/firmware \
               --pattern manifest.json \
