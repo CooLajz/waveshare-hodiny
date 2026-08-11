@@ -52,6 +52,7 @@ const char CONFIGURATION_PAGE[] PROGMEM = R"HTML(
     .firmware-value{font-size:18px;font-weight:750;font-variant-numeric:tabular-nums}.firmware-actions{display:flex;align-items:end;gap:10px;flex-wrap:wrap}.firmware-progress{margin-top:14px}
     .location-results{grid-column:span 12;display:grid;gap:10px}.location-result{display:flex;align-items:flex-start;gap:11px;margin:0;padding:13px;border:1px solid #505a61;border-radius:var(--radius);background:var(--field);cursor:pointer}.location-result input{width:18px;height:18px;flex:0 0 auto;margin:2px 0 0;padding:0}.location-result:has(input:checked){border-color:var(--cyan);box-shadow:0 0 0 2px rgba(76,203,236,.15)}.location-result-main{display:block;font-weight:700}.location-result-detail{display:block;color:var(--muted);font-size:13px;margin-top:3px}
     .footer{display:flex;align-items:center;gap:20px}.feedback{font-size:14px;color:var(--muted)}.feedback.success{color:var(--green)}.feedback.error{color:var(--error)}
+    .loading-state{min-height:240px;display:grid;place-items:center;text-align:center}.loading-state h2{margin:0 0 8px}.loading-state p{margin:0;color:var(--muted)}.loading-state button{margin-top:22px}
     .hidden{display:none!important}
     @media(max-width:760px){main{width:min(100% - 32px,620px);padding:28px 0 44px}h1{font-size:29px}header{margin-bottom:28px}section{padding-bottom:25px;margin-bottom:25px}.grid{grid-template-columns:1fr;gap:17px}.grid>*{grid-column:1}.actions-inline button{width:100%}.footer{align-items:stretch;flex-direction:column}.primary{width:100%}.feedback{text-align:center}.metric-grid{grid-template-columns:1fr 1fr}.metric-grid>*{grid-column:span 1}.metric-grid .wide{grid-column:span 2}}
     @media(max-width:760px){.device-tools{align-items:stretch;flex-direction:column}.device-actions{display:grid;grid-template-columns:1fr 1fr}.device-actions button{padding:0 12px}.device-actions .danger{grid-column:span 2}.icon-choices{grid-template-columns:repeat(3,minmax(0,1fr))}}
@@ -61,7 +62,8 @@ const char CONFIGURATION_PAGE[] PROGMEM = R"HTML(
 <body>
 <main>
   <header><h1>Waveshare Hodiny</h1><div class="device-status" id="deviceStatus">Zařízení je připojeno</div></header>
-  <form id="configForm">
+  <div class="loading-state" id="loadingState" role="status" aria-live="polite"><div><h2 id="loadingTitle">Načítám konfiguraci…</h2><p id="loadingMessage">Čekám na aktuální nastavení zařízení.</p><button class="hidden" id="retryLoading" type="button">Zkusit znovu</button></div></div>
+  <form class="hidden" id="configForm">
     <section>
       <h2>Zdroj dat</h2>
       <div class="grid"><div class="span-6"><label for="dataSource">Zdroj hodnot na dashboardu</label><select id="dataSource" name="dataSource"><option value="open-meteo">Open-Meteo</option><option value="home-assistant">Home Assistant</option></select><span class="hint">Open-Meteo je jednoduchá výchozí volba bez účtu a tokenu.</span></div></div>
@@ -259,7 +261,8 @@ $("displayOff").addEventListener("click",()=>setDisplayPower("off"));$("displayO
 $("checkFirmware").addEventListener("click",async()=>{try{await request("/api/check-update",{});await loadFirmwareStatus()}catch(error){$("firmwareFeedback").className="hint firmware-progress feedback error";$("firmwareFeedback").textContent=error.message}});
 $("installFirmware").addEventListener("click",async()=>{if(!confirm("Nainstalovat novou verzi firmware a restartovat zařízení?"))return;try{await request("/api/install-update",{});await loadFirmwareStatus()}catch(error){$("firmwareFeedback").className="hint firmware-progress feedback error";$("firmwareFeedback").textContent=error.message}});
 $("restartDevice").addEventListener("click",async()=>{if(!confirm("Opravdu restartovat zařízení? Uložené nastavení zůstane zachováno."))return;const button=$("restartDevice");button.disabled=true;$("restartFeedback").className="hint token-state";$("restartFeedback").textContent="Zařízení se restartuje…";try{await request("/api/restart",{});$("deviceStatus").textContent="Zařízení se restartuje";setTimeout(()=>location.reload(),5000)}catch(error){$("restartFeedback").className="hint feedback error";$("restartFeedback").textContent=error.message;button.disabled=false}});
-async function loadInitialData(){try{await loadConfig()}catch(error){$("saveFeedback").className="feedback error";$("saveFeedback").textContent="Nastavení se nepodařilo načíst: "+error.message}await new Promise(resolve=>setTimeout(resolve,300));try{await loadFirmwareStatus()}catch(error){$("firmwareFeedback").className="hint firmware-progress feedback error";$("firmwareFeedback").textContent=error.message}}
+async function loadInitialData(){$("loadingTitle").textContent="Načítám konfiguraci…";$("loadingMessage").textContent="Čekám na aktuální nastavení zařízení.";$("retryLoading").classList.add("hidden");try{await loadConfig()}catch(error){$("loadingTitle").textContent="Konfiguraci se nepodařilo načíst";$("loadingMessage").textContent=error.message;$("retryLoading").classList.remove("hidden");return}try{await loadFirmwareStatus()}catch(error){$("firmwareFeedback").className="hint firmware-progress feedback error";$("firmwareFeedback").textContent=error.message}$("loadingState").classList.add("hidden");$("configForm").classList.remove("hidden")}
+$("retryLoading").addEventListener("click",loadInitialData);
 populatePresetSelects();renderOpenMeteoSlots();loadInitialData();
 </script>
 </body>
