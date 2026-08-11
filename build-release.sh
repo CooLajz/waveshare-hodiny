@@ -10,8 +10,7 @@ if [[ ! -f "$ARDUINO_CONFIG_FILE" ]]; then
   ARDUINO_CONFIG_FILE="$ROOT_DIR/arduino-cli.yaml"
 fi
 ARDUINO_DATA_DIR=$(/opt/homebrew/bin/arduino-cli \
-  --config-file "$ARDUINO_CONFIG_FILE" config dump --format json \
-  | /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["config"]["directories"]["data"])')
+  --config-file "$ARDUINO_CONFIG_FILE" config get directories.data)
 ESP32_CORE_VERSION="3.0.2"
 
 mkdir -p "$OUTPUT_DIR"

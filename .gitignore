@@ -1,5 +1,5 @@
 .arduino/
-.env
+.env*
 .firmware-hub-key
 .firmware-hub-key.pending-rotation
 build/

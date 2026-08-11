@@ -1,154 +1,378 @@
 # Waveshare Hodiny
 
-Konfigurovatelný dashboard pro kulatý displej Waveshare ESP32-S3-Touch-LCD-2.1
-s rozlišením 480 × 480 px.
+Český informační dashboard pro kulatý dotykový displej
+[Waveshare ESP32-S3-Touch-LCD-2.1](https://www.waveshare.com/esp32-s3-touch-lcd-2.1.htm)
+s rozlišením 480 × 480 px. Zobrazuje čas, datum, počasí, teploty a další
+hodnoty z Home Assistantu. Vzhled, entity, jas, animace i aktualizace se
+nastavují z webového rozhraní bez úpravy zdrojového kódu.
 
-Arduino sketch a všechny projektové zdrojové soubory jsou v adresáři
-`WaveshareHodiny/`. Hlavním vstupem je `WaveshareHodiny.ino`.
+<p align="center">
+  <img src="screenshots/dashboard.png" alt="Hlavní obrazovka Waveshare Hodiny v denním režimu" width="46%">
+  <img src="screenshots/dashboard-night.png" alt="Hlavní obrazovka Waveshare Hodiny v červeném nočním režimu" width="46%">
+</p>
 
-Zobrazuje čas, datum, venkovní a pokojovou teplotu, stav počasí, dvě volitelné
-veličiny a stav připojení k Home Assistantu. Nedostupné hodnoty se zobrazují
-jako `--`.
+[▶ Přehrát krátkou ukázku animovaných ikon a přechodu minuty](media/waveshare-hodiny-minute-transition.mp4)
 
-Čas a datum se po připojení k Wi-Fi synchronizují přes NTP. Firmware používá
-české časové pásmo včetně automatického přechodu mezi zimním a letním časem.
-Veřejný release neobsahuje žádné Wi-Fi ani Home Assistant přihlašovací údaje.
-Wi-Fi se po instalaci nastavuje přes Improv Serial a Home Assistant přes webovou
-konfiguraci. Lokální vývojový profil může volitelně načíst hodnoty ze souboru
-`.env`, který je celý ignorovaný Gitem.
+V denním režimu mají místnosti a hodnoty vlastní barvy. Volitelný červený
+noční vzhled sjednotí celý dashboard do odstínů červené a sníží jas, aby
+displej v noci nerušil.
+
+## Co firmware umí
+
+- velké digitální hodiny, české datum a vteřinový prstenec,
+- synchronizaci času přes NTP a české časové pásmo včetně letního času,
+- dvě místnosti s vlastním názvem, teplotou, ikonou a barvou,
+- animované i statické ikony počasí založené na Meteocons,
+- dvě další měřené veličiny, například CO₂, VOC, vlhkost, tlak nebo baterii,
+- vlastní jednotky, počet desetinných míst a plynulé barevné škály,
+- denní a noční jas s automatickým přepínáním podle entity slunce,
+- tři efekty vteřin: klasické tečky, plynulou čáru a kometu,
+- webovou konfiguraci, export a import zálohy a bezpečný restart,
+- prvotní nastavení Wi-Fi přes Improv Serial,
+- A/B OTA aktualizace se zachováním Wi-Fi a konfigurace,
+- ovládací API pro Home Assistant chráněné náhodným secretem,
+- základní nastavení také přímo na dotykovém displeji.
+
+## Potřebný hardware
+
+Firmware je určený výhradně pro **Waveshare ESP32-S3-Touch-LCD-2.1** s
+480 × 480 px displejem a 16MiB flash. Konfigurace pinů, displeje ST7701,
+dotyku CST820, PSRAM a partition table odpovídá této konkrétní desce.
+
+Nepoužívej tento binární obraz na jiném modelu jen proto, že také obsahuje
+ESP32-S3. Odlišný pinout nebo flash layout může zabránit startu zařízení.
+
+## Instalace pro běžného uživatele
+
+### Instalace z prohlížeče
+
+Připravovaná veřejná instalační stránka na GitHub Pages umožní nahrát stabilní
+release přímo z Chromu nebo Edge přes USB. Jakmile bude stránka publikovaná,
+bude její odkaz uvedený zde a v popisu repozitáře.
+
+Do té doby lze použít release balíček s manifestem v
+[ESP Web Tools](https://web.esphome.io/) nebo firmware sestavit ze zdrojů
+podle kapitoly [Sestavení ze zdrojů](#sestavení-ze-zdrojů). Factory instalace
+vyžaduje všechny části a přesné offsety uvedené v release `manifest.json`;
+samostatný aplikační `.ota.bin` není factory obraz.
+
+### Nastavení Wi-Fi
+
+Veřejný release neobsahuje přednastavené Wi-Fi údaje. Po instalaci připoj
+zařízení jedním z jeho USB-C konektorů a použij Improv Serial v instalační
+stránce. Zadané SSID a heslo se uloží do NVS a po restartu zůstanou zachované.
+
+Deska má USB–UART konektor přes CH343P a nativní USB konektor ESP32-S3.
+Produkční firmware obsluhuje Improv Serial na obou konektorech.
+
+## První spuštění
+
+1. Nainstaluj firmware a nastav Wi-Fi přes Improv Serial.
+2. Počkej na připojení; na displeji se zobrazí IP adresa a stavové ikony.
+3. Otevři `http://waveshare-hodiny.local/`. Pokud mDNS v síti nefunguje,
+   použij IP adresu z nastavení na displeji.
+4. Zadej adresu Home Assistantu a long-lived access token.
+5. Tlačítkem **Otestovat připojení** ověř spojení.
+6. Vyplň entity, vzhled a jas a zvol **Uložit nastavení**.
+
+## Home Assistant
+
+Firmware čte jednotlivé entity přes REST API Home Assistantu. Nepotřebuje
+MQTT, vlastní integraci ani administrátorský účet.
+
+### Vytvoření tokenu
+
+V Home Assistantu otevři svůj uživatelský profil, sekci **Long-lived access
+tokens**, vytvoř nový token pro hodiny a vlož jej do webové konfigurace.
+Použij účet pouze s oprávněními, která zařízení skutečně potřebuje.
+
+Token se po uložení už do webové stránky neposílá a nelze jej z ní přečíst;
+lze jej pouze nahradit. Při testu se uložený token znovu použije jen pro přesně
+stejnou uloženou adresu Home Assistantu. Pokud adresu změníš, musíš zadat také
+nový token.
+
+Firmware podporuje lokální HTTP i HTTPS servery s vlastním nebo neplatným
+certifikátem. U HTTPS spojení s Home Assistantem proto v současnosti neověřuje
+certifikát serveru. Tato volba usnadňuje domácí instalace, ale nechrání token
+před aktivním útočníkem v síti. Používej firmware pouze v důvěryhodné LAN.
+
+### Doporučené entity
+
+| Údaj | Příklad entity | Poznámka |
+| --- | --- | --- |
+| Počasí | `weather.domov` | Textový stav HA nebo podporovaný číselný kód |
+| Slunce | `sun.sun` | Řídí automatický denní/noční režim |
+| Venkovní teplota | `sensor.venkovni_teplota` | Libovolný číselný senzor |
+| Pokojová teplota | `sensor.obyvak_teplota` | Libovolný číselný senzor |
+| Hodnota A/B | `sensor.obyvak_co2` | CO₂, VOC, PM, vlhkost, tlak a další |
+
+ID entit se zadávají ručně. Nedostupná nebo neplatná hodnota se na displeji
+zobrazí jako `--`.
 
 ## Webová konfigurace
 
-Po připojení k Wi-Fi je konfigurace dostupná na
-`http://waveshare-hodiny.local/` nebo na IP adrese zařízení. Web zatím není
-chráněný heslem. Umožňuje nastavit:
+<p align="center">
+  <img src="screenshots/web-configuration.png" alt="Webová konfigurace Home Assistantu a entit" width="920">
+</p>
 
-- adresu Home Assistantu a long-lived access token,
-- nezávislý název, teplotní entitu, ikonu a barvu levé i pravé místnosti;
-  dynamickou ikonu počasí lze zvolit na jedné nebo na obou stranách,
-- globální entity počasí a slunce a vlastní barvu hodin i data,
-- dynamickou barevnou škálu až s deseti body pro měřenou hodnotu A i B;
-  mezi body se barvy plynule prolínají,
-- dvě konfigurovatelná pole s předvolbou veličiny nebo vlastním názvem,
-  jednotkou a vždy volitelným počtem desetinných míst,
-- denní a noční jas a automatické přepínání podle entity slunce.
+Web umožňuje nastavit:
 
-Z webu lze zařízení také bezpečně restartovat bez vymazání uloženého nastavení.
-Sekce Firmware zobrazuje aktuální a serverovou verzi, umožňuje ruční kontrolu
-a potvrzenou instalaci nové verze. Automatickou aktualizaci lze vypnout; ve
-výchozím stavu release firmware jednou denně po 4:10 zkontroluje nakonfigurovaný
-release server a dostupnou novější verzi nainstaluje.
+- Home Assistant URL, token, entitu počasí a entitu slunce,
+- levou a pravou místnost včetně názvu, teploty, ikony a barev,
+- styl animovaných ikon `Monochrome`, `Flat` nebo `Line`,
+- měřené hodnoty A a B, jednotky, přesnost a barevné škály,
+- barvu hodin, data a obou částí vteřinového efektu,
+- denní/noční jas a automatický režim,
+- automatické OTA aktualizace a režim webového serveru,
+- export/import zálohy, restart a ovládání podsvícení.
 
-Webový server běží deset minut po startu zařízení. Úspěšné uložení na webu nebo
-v nastavení přímo na hodinách obnoví celý desetiminutový interval. Pokud už web
-neběží, otevření nastavení na hodinách jej znovu spustí. Aktivní web signalizuje
-ikonu webu ve vycentrované skupině stavových ikon na dashboardu.
+### Barevné prahy měřených hodnot
 
-Token se po uložení už do webové stránky neposílá. Lze jej pouze nahradit novou
-hodnotou. Nastavení je uložené v samostatném NVS oddílu `clockcfg`, takže přežije
-běžné nahrání nové aplikace. Vymazání celé flash nebo nahrání úplného 16MB
-factory obrazu smaže i konfiguraci.
+Každá měřená hodnota může mít až deset dvojic **hodnota → barva**. Firmware
+mezi sousedními body plynule interpoluje, takže změna barvy na displeji není
+omezena jen na několik tvrdých stavů. Škály jsou nezávislé: například VOC může
+používat jiné hranice než CO₂.
 
-Test připojení znovu použije uložený token pouze pro stejnou uloženou adresu
-Home Assistantu. Při změně adresy je nutné zadat také nový token; uložený token
-se na jiný server nikdy neodešle.
+<p align="center">
+  <img src="screenshots/web-color-scales.png" alt="Nastavení barevných prahů VOC" width="49%">
+  <img src="screenshots/web-color-scales-b.png" alt="Nastavení barevných prahů CO2" width="49%">
+</p>
 
-Vývojový build nadále používá hodnoty z lokálního `.env` jako výchozí hodnoty,
-pokud odpovídající položka ještě není uložená. Hodnota tokenu z `.env` se při
-uložení jiné konfigurace automaticky nezapíše do NVS.
+### Jas, denní/noční režim a vteřiny
 
-Dlouhý stisk dashboardu otevře nastavení denního a nočního jasu. Posuvníky
-podsvícení průběžně náhledově mění a tlačítko `ULOŽIT` nastavení trvale uloží
-do interní paměti ESP32. Přepínač `AUTOMATICKY DEN/NOC` řídí režim podle
-`sun.sun`; při vypnuté automatice se režim přepíná krátkým dotykem dashboardu.
-Pod IP adresou se zobrazuje aktuální verze firmware. Otevření nastavení spustí
-kontrolu release serveru; pokud je dostupná novější verze, údaj o firmware se
-zbarví červeně, jinak zůstává ve stejné tlumené barvě jako IP adresa.
+Denní i noční jas se nastavují samostatně. Automatika používá východ a západ
+slunce s volitelným ranním a večerním offsetem. Volitelná entita světla může v
+nočním čase dočasně aktivovat denní vzhled. Samostatně lze nastavit také barvu
+hodin, data, typ vteřinového efektu, velikost a jas jeho aktivní i neaktivní
+části.
 
-## Sestavení a nahrání vývojové verze
+<p align="center">
+  <img src="screenshots/web-display-settings.png" alt="Nastavení jasu, denního a nočního režimu a vteřin" width="920">
+</p>
 
-Ověřený lokální toolchain používá Arduino ESP32 core `3.0.2` a LVGL `8.3.10`.
-Závislosti lze přes Arduino CLI nainstalovat například takto:
+Konfigurační web zatím nemá vlastní heslo. Ve výchozím režimu běží deset minut
+po startu a aktivita interval obnovuje. Otevření nastavení na hodinách jej znovu
+aktivuje. Lze jej přepnout na **Vždy zapnutý** nebo **Vypnutý**. Provozuj jej
+jen v důvěryhodné síti; aktivní web signalizuje ikona ozubeného kola na
+dashboardu.
+
+### Záloha konfigurace
+
+Exportovaná JSON záloha obsahuje vzhled a ID entit, ale neobsahuje Home
+Assistant token ani secret ovládacího API. Po importu proto může být nutné
+citlivé hodnoty zadat znovu. Restart zařízení uložené nastavení nemaže.
+
+## Nastavení na displeji
+
+Dlouhým stiskem dashboardu otevřeš tři stránky nastavení. Velká tlačítka se
+šipkami přepínají stránky; gesto swipe se nepoužívá.
+
+<p align="center">
+  <img src="screenshots/device-settings.png" alt="První stránka nastavení denního a nočního jasu" width="31%">
+  <img src="screenshots/device-settings-2.png" alt="Druhá stránka nastavení vteřin a animovaných ikon" width="31%">
+  <img src="screenshots/device-settings-3.png" alt="Třetí stránka nastavení webu a OTA" width="31%">
+</p>
+
+První stránka ovládá denní a noční jas a automatický režim. Druhá přepíná
+vteřiny, jejich efekt a animované ikony. Třetí řídí režim webového serveru a
+ruční kontrolu OTA. IP adresa je na veřejném snímku záměrně skrytá. Krátký
+dotyk dashboardu při vypnuté automatice přepíná denní a noční režim.
+
+## Animované Meteocons
+
+Statické monochromatické ikony jsou uložené přímo ve firmware. Volitelné
+animované ikony se stahují z nakonfigurovaného veřejného asset originu a
+ukládají do lokální cache. V nočním režimu se vždy použije monochromatický
+styl, aby ikony respektovaly červené noční zobrazení.
+
+Ve veřejném asset balíčku mají být pouze ikony používané aktuálním manifestem,
+nikoli kompletní mirror zdrojové kolekce. Postup jejich reprodukovatelného
+vytvoření je v [`METEOCONS_ASSET_PIPELINE.md`](METEOCONS_ASSET_PIPELINE.md).
+
+## OTA aktualizace
+
+Release firmware používá A/B layout se dvěma stejně velkými 6MiB aplikačními
+oddíly. Nová aplikace se zapisuje do neaktivního slotu. Před aktivací se ověří:
+
+- HTTPS spojení a povolený release origin,
+- HTTP status a deklarovaná velikost,
+- skutečný počet přijatých bajtů,
+- SHA-256 obrazu,
+- rodina čipu ESP32-S3,
+- kapacita neaktivního aplikačního oddílu.
+
+Při chybě zůstane aktivní stávající firmware. Wi-Fi a konfigurace v NVS a
+`clockcfg` se při běžné OTA aktualizaci zachovají. Factory instalace nebo
+vymazání celé flash je jiná operace a může uživatelská data odstranit.
+
+Automatické OTA aktualizace jsou po čisté instalaci vypnuté. Po zapnutí ve
+webu firmware nejvýše jednou denně po 4:10 lokálního času zkontroluje novou
+SemVer a případně ji nainstaluje. Stejnou cestu používá ruční aktualizace.
+
+## Ovládací API pro Home Assistant
+
+Web zobrazuje URL ovládacího endpointu obsahující náhodný 128bitový secret.
+Pomocí REST příkazů lze aktualizovat data, zapnout či vypnout podsvícení nebo
+vyvolat další podporované akce. URL považuj za přihlašovací údaj: nevkládej ji
+do screenshotů, veřejných logů ani Git repozitáře.
+
+Secret je uložený v zařízení, ověřuje se konstantním časem a není součástí
+exportované zálohy. Přesný tvar endpointů a příklady požadavků jsou zobrazené
+přímo v aktuálním webovém rozhraní firmware.
+
+## Sestavení ze zdrojů
+
+### Závislosti
+
+Ověřený toolchain používá:
+
+- Arduino CLI,
+- Arduino ESP32 core `3.0.2`,
+- LVGL `8.3.10`,
+- Python 3 pro generátory a release balíček.
+
+Na macOS lze závislosti nainstalovat například takto:
 
 ```sh
 arduino-cli core install esp32:esp32@3.0.2 --config-file arduino-cli.yaml
 arduino-cli lib install lvgl@8.3.10 --config-file arduino-cli.yaml
 ```
 
-Bez lokálního `.env` se projekt stále sestaví; výsledný development build pouze
-nemá přednastavenou Wi-Fi. Pro běžnou instalaci s nastavením Wi-Fi přes Improv
-Serial použij release build.
+Přenositelná konfigurace Arduino CLI je v `arduino-cli.yaml`. Lokální
+ignorovaný soubor `WaveshareHodiny/local/arduino-cli.yaml` ji může přepsat.
+
+### Vývojový build
 
 ```sh
 ./build.sh
 ./upload.sh
 ```
 
-Vývojové artefakty se exportují odděleně do
-`build/waveshare-hodiny-develop/`. Upload používá odpovídající interní build
-adresář a neprohledává společný kořen `build/`, takže jej neovlivní staré nebo
-jinak pojmenované binární soubory.
-
-Vývojový profil se nadále nahrává pouze přes USB, používá lokální `.env`, běží
-na 921600 baud a zachovává příkazy pro screenshot i přepínání obrazovek. OTA
-instalace je v něm úmyslně zakázaná, aby serverový release nenahradil pracovní
-vývojovou verzi.
-
-## OTA a release build
-
-Flash je rozdělená na dva 6MiB aplikační sloty `app0` a `app1`. Aktualizace se
-stahuje přes HTTPS do neaktivního slotu, kontroluje deklarovanou velikost a
-SHA-256 a teprve potom aktivuje nový obraz. Samostatné oddíly `clockcfg` a NVS
-s Wi-Fi údaji zůstávají při běžné OTA aktualizaci zachované.
-
-Automatické OTA aktualizace jsou po čisté instalaci vypnuté. Uživatel je může
-zapnout ve webovém nastavení; uložená volba je součástí konfigurace v oddílu
-`clockcfg` a přežije běžné nahrání aplikace i OTA aktualizaci.
-
-Lokální release build bez publikování lze vytvořit s explicitní SemVer:
-
-```sh
-./build-release.sh 1.2.0
-```
-
-Výstupní balíček obsahuje instalační části s přesnými offsety pro ESP Web Tools
-a samostatný aplikační `.ota.bin` pro aktualizaci běžícího zařízení. Release
-neobsahuje lokální Wi-Fi ani Home Assistant údaje; první Wi-Fi se nastaví přes
-Improv Serial a uloží do NVS.
-
-OTA zdroj se do release buildu předává pouze lokální ignorovanou konfigurací.
-Bez nakonfigurovaného zdroje firmware žádný obraz nestáhne ani nezapíše.
-
-Volitelně lze předat jiný sériový port:
+Volitelný port lze předat explicitně:
 
 ```sh
 ./upload.sh /dev/cu.usbmodemXXXXXXXX
 ```
 
-Na macOS lze sestavení i nahrání provést dvojklikem na soubor
-`flash-latest.command`. Skript vždy sestaví aktuální zdrojový kód, automaticky
-vybere jediný připojený displej a nahraje do něj výsledný firmware.
+Vývojový build se ukládá do `build/waveshare-hodiny-develop/`, podporuje USB
+diagnostiku a screenshoty a úmyslně neinstaluje OTA release. Bez `.env` se
+stále sestaví, pouze nemá vývojové výchozí Wi-Fi a HA hodnoty.
 
-## Screenshot přes USB
+### Volitelná lokální `.env`
 
-Firmware přijímá přes sériový port příkaz `SCREENSHOT` a odešle aktuální
-RGB565 framebuffer. Pomocný skript data převede na kruhové PNG 480 × 480 px:
+`.env` je celý ignorovaný Gitem a není pro sestavení povinný. Generátor
+podporuje tyto lokální proměnné:
 
-```sh
-./capture-screenshot.sh
+```dotenv
+WIFI_SSID=
+WIFI_PASSWORD=
+HOME_ASSISTANT_URL=
+HOME_ASSISTANT_TOKEN=
+HA_ENTITY_WEATHER_CODE=
+HA_ENTITY_OUTSIDE_TEMPERATURE=
+HA_ENTITY_ROOM_TEMPERATURE=
+HA_ENTITY_ROOM_CO2=
+HA_ENTITY_ROOM_HUMIDITY=
+HA_ENTITY_SUN=
+FIRMWARE_SERVER_URL=
+FIRMWARE_PROJECT_SLUG=
 ```
 
-Výsledek se uloží jako `screenshots/latest.png`. Skript potřebuje pyserial 3.5.
-Lokální Arduino CLI může použít ignorovanou konfiguraci
-`WaveshareHodiny/local/arduino-cli.yaml`. Bez ní build používá přenositelnou
-projektovou konfiguraci `arduino-cli.yaml` a standardní adresáře Arduino CLI.
+Skutečné hodnoty nikdy necommituj. Generované headery se ukládají pouze do
+ignorovaného adresáře `WaveshareHodiny/local/`.
 
-Přesný a fyzicky ověřený postup převodu kompletní knihovny animovaných
-Meteocons pro LVGL je v dokumentu
-[`METEOCONS_ASSET_PIPELINE.md`](METEOCONS_ASSET_PIPELINE.md).
+### Release build
 
-Obrazovku nastavení lze pro kontrolu vyfotit bez ručního dlouhého stisku:
+Verzi zvol jako platný SemVer 2.0.0:
 
 ```sh
+./build-release.sh 1.0.0
+```
+
+Výsledek je v `build/waveshare-hodiny-release/1.0.0/`. Adresář `package/`
+obsahuje instalační části pro ESP Web Tools a právě jeden samostatný
+`.ota.bin`. Release build neobsahuje lokální Wi-Fi ani Home Assistant údaje.
+
+Release sestavení samo nic nepublikuje. Publikování na GitHub Releases a
+GitHub Pages bude řešit samostatný veřejný release workflow.
+
+## Screenshot displeje přes USB
+
+Vývojový firmware umí odeslat RGB565 framebuffer příkazem `SCREENSHOT`.
+Pomocný nástroj jej převede na transparentní kruhové PNG 480 × 480 px:
+
+```sh
+./capture-screenshot.sh --output screenshots/latest.png
 ./capture-screenshot.sh --settings --output screenshots/settings.png
+./capture-screenshot.sh --settings-page 2 --output screenshots/settings-2.png
+./capture-screenshot.sh --night --output screenshots/night.png
 ```
+
+Pokud je připojeno více zařízení, předej `--port`. Nástroj používá pyserial
+3.5 z lokálního ignorovaného adresáře `.arduino/python`.
+
+## Struktura repozitáře
+
+```text
+WaveshareHodiny/        Arduino sketch a firmware
+assets/                 Zdrojové assety použité generátory
+screenshots/            Veřejné obrázky dokumentace
+tools/                  Build, test a asset utility
+WaveshareHodiny/partitions.csv
+                        Vlastní 16MiB A/B partition table
+build.sh                Vývojový build
+build-release.sh        Oddělený release build
+upload.sh               USB upload vývojového buildu
+```
+
+## Řešení problémů
+
+### `waveshare-hodiny.local` se neotevře
+
+- ověř ikonu Wi-Fi na displeji,
+- použij IP adresu z nastavení zařízení,
+- otevřením nastavení znovu aktivuj desetiminutové webové okno,
+- zkontroluj, že klient i zařízení jsou ve stejné dosažitelné síti.
+
+### Home Assistant test selže
+
+- URL musí obsahovat `http://` nebo `https://`,
+- ověř token a přesná ID entit,
+- při změně URL zadej také nový token,
+- zkontroluj firewall mezi IoT sítí a Home Assistantem.
+
+### Hodnota zůstává `--`
+
+Otevři v Home Assistantu **Vývojářské nástroje → Stavy** a ověř, že entita
+existuje a její stav je číselný nebo podporovaný stav počasí.
+
+### OTA aktualizace není dostupná
+
+Vývojový build OTA neinstaluje. U release buildu ověř připojení k internetu,
+synchronizovaný čas a dostupnost nakonfigurovaného HTTPS release serveru.
+
+### Zařízení se neobjeví na USB
+
+Vyzkoušej oba USB-C konektory a datový kabel. Pro první factory instalaci může
+být nutné uvést ESP32-S3 do bootloaderu podle dokumentace Waveshare.
+
+## Bezpečnost a soukromí
+
+- žádné Wi-Fi heslo ani HA token není součástí veřejného release,
+- secrets, lokální buildy a generované headery jsou ignorované Gitem,
+- HA token se po uložení neposílá zpět do prohlížeče,
+- konfigurační web není autentizovaný a patří pouze do důvěryhodné LAN,
+- HA HTTPS aktuálně toleruje neověřený/self-signed certifikát,
+- OTA používá samostatná přísnější ověření TLS, originu, velikosti a SHA-256,
+- ovládací API URL obsahuje secret a nesmí se zveřejňovat.
+
+Před nahlášením bezpečnostního problému nezveřejňuj funkční token, Wi-Fi heslo
+ani ovládací URL v issue.
+
+## Licence
+
+Původní kód projektu je dostupný pod [MIT licencí](LICENSE). Firmware používá
+knihovny, fonty a grafické assety s vlastními licencemi; jejich autoři,
+licence a zdrojové odkazy jsou uvedené v
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). MIT licence projektu jejich
+původní licenční podmínky nenahrazuje.

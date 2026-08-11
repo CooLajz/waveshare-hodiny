@@ -1,5 +1,35 @@
 # Third-party notices
 
+The MIT license in the repository root applies to the original project code.
+The following components and assets retain their own licenses and copyright
+notices.
+
+## Runtime and build dependencies
+
+| Component | Version used by the project | License | Source |
+| --- | --- | --- | --- |
+| Arduino core for ESP32 | 3.0.2 | LGPL-2.1 | https://github.com/espressif/arduino-esp32 |
+| LVGL | 8.3.10 | MIT | https://github.com/lvgl/lvgl |
+| Improv Wi-Fi C++ SDK | commit `17898613a1c17062ca5af295ceb639b16b4930bf` | Apache-2.0 | https://github.com/improv-wifi/sdk-cpp |
+
+The Improv Wi-Fi sources embedded in `WaveshareHodiny/improv.cpp` and
+`WaveshareHodiny/improv.h` are derived from the upstream C++ SDK identified
+above.
+
+## Fonts and icons
+
+| Asset | License | Source |
+| --- | --- | --- |
+| Montserrat | SIL Open Font License 1.1 | https://github.com/JulietaUla/Montserrat |
+| Liberation Sans | SIL Open Font License 1.1 | https://github.com/liberationfonts/liberation-fonts |
+| Font Awesome Free | Icons: CC BY 4.0; fonts: SIL OFL 1.1; code: MIT | https://fontawesome.com/license/free |
+
+Generated LVGL font data in `ClockCzechFont*.c` uses Montserrat glyphs.
+`ClockTimeFont110.c` uses glyphs generated from Liberation Sans Bold 2.1.5.
+The exact source font and its license are included in
+`assets/fonts/liberation-sans/`.
+`ClockIconsFont42.c` uses selected Font Awesome Free glyphs.
+
 ## Meteocons
 
 The weather icons embedded in the firmware are derived from Meteocons
