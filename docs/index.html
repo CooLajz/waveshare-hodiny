@@ -95,9 +95,27 @@
           <p>Každá veličina může mít vlastní plynulou barevnou škálu. Denní a noční jas, animace i entity změníš bez nového sestavení firmware.</p>
         </div>
         <div class="showcase-grid">
-          <figure class="showcase-wide"><img src="screenshots/web-color-scales.png" alt="Plynulé barevné prahy měřené hodnoty"><figcaption>Plynulé barevné škály podle vlastních prahů</figcaption></figure>
-          <figure><img src="screenshots/web-display-settings.png" alt="Nastavení jasu a vzhledu"><figcaption>Samostatný denní a noční jas</figcaption></figure>
-          <figure><img src="screenshots/device-settings-2.png" alt="Nastavení animací přímo na zařízení"><figcaption>Rychlé volby přímo na displeji</figcaption></figure>
+          <figure>
+            <button class="image-zoom" type="button" data-full="screenshots/web-color-scales.png" aria-label="Zobrazit barevné škály v plné velikosti">
+              <img src="screenshots/web-color-scales.png" alt="Plynulé barevné prahy měřené hodnoty">
+              <span>Zvětšit</span>
+            </button>
+            <figcaption>Plynulé barevné škály podle vlastních prahů</figcaption>
+          </figure>
+          <figure>
+            <button class="image-zoom" type="button" data-full="screenshots/web-display-settings.png" aria-label="Zobrazit nastavení jasu v plné velikosti">
+              <img src="screenshots/web-display-settings.png" alt="Nastavení jasu a vzhledu">
+              <span>Zvětšit</span>
+            </button>
+            <figcaption>Samostatný denní a noční jas</figcaption>
+          </figure>
+          <figure>
+            <button class="image-zoom device-preview" type="button" data-full="screenshots/device-settings-2.png" aria-label="Zobrazit nastavení zařízení v plné velikosti">
+              <img src="screenshots/device-settings-2.png" alt="Nastavení animací přímo na zařízení">
+              <span>Zvětšit</span>
+            </button>
+            <figcaption>Rychlé volby přímo na displeji</figcaption>
+          </figure>
         </div>
       </section>
 
@@ -111,6 +129,12 @@
         </video>
       </section>
     </main>
+
+    <dialog class="lightbox" id="image-lightbox" aria-label="Náhled obrázku v plné velikosti">
+      <button class="lightbox-close" type="button" aria-label="Zavřít náhled">×</button>
+      <img src="" alt="">
+      <p></p>
+    </dialog>
 
     <footer>
       <div class="section-shell footer-inner">
