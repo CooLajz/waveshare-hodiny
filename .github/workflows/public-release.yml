@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout exact source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Validate stable version and release target
         env:
@@ -42,8 +42,20 @@ jobs:
             exit 1
           fi
 
-      - name: Install Arduino CLI
-        uses: arduino/setup-arduino-cli@v2
+      - name: Install pinned Arduino CLI
+        env:
+          ARDUINO_CLI_VERSION: 1.5.1
+          ARDUINO_CLI_SHA256: 28a8e119c498a25607821c36cb2dc49e8463941b261a0d99091baa7bc692dd2b
+        run: |
+          archive="$RUNNER_TEMP/arduino-cli.tar.gz"
+          install_dir="$RUNNER_TEMP/arduino-cli"
+          curl --fail --location --silent --show-error \
+            "https://github.com/arduino/arduino-cli/releases/download/v$ARDUINO_CLI_VERSION/arduino-cli_${ARDUINO_CLI_VERSION}_Linux_64bit.tar.gz" \
+            --output "$archive"
+          echo "$ARDUINO_CLI_SHA256  $archive" | sha256sum --check --strict
+          mkdir -p "$install_dir"
+          tar -xzf "$archive" -C "$install_dir" arduino-cli
+          echo "$install_dir" >> "$GITHUB_PATH"
 
       - name: Install pinned toolchain
         run: |
@@ -68,7 +80,7 @@ jobs:
           python3 tools/validate_pages_bundle.py _site
 
       - name: Upload validated package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: waveshare-hodiny-${{ inputs.version }}-public
           path: build/waveshare-hodiny-release/${{ inputs.version }}-public/package/
