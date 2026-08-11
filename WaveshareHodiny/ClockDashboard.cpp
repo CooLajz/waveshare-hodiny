@@ -118,6 +118,7 @@ uint32_t outsideColor = 0x4CCBEC;
 uint32_t roomColor = 0xFFB843;
 uint32_t timeColor = 0xF6F6F6;
 uint32_t dateColor = 0xB5B5B5;
+uint8_t timeFont = CLOCK_TIME_FONT_BARLOW;
 bool outsideUsesWeatherIcon = true;
 bool roomUsesWeatherIcon = false;
 bool weatherConfigured = false;
@@ -157,6 +158,14 @@ SettingsActionCallback firmwareInstallCallback = nullptr;
 
 bool redNightVisualEnabled() {
   return nightModeEnabled && nightVisualMode == CLOCK_NIGHT_VISUAL_RED;
+}
+
+const lv_font_t *configuredTimeFont() {
+  if (timeFont == CLOCK_TIME_FONT_LIBERATION_SANS)
+    return &clock_time_liberation_110;
+  if (timeFont == CLOCK_TIME_FONT_LCD) return &clock_time_lcd_80;
+  if (timeFont == CLOCK_TIME_FONT_DOTO) return &clock_time_doto_98;
+  return &clock_time_110;
 }
 
 void showSettingsSubpage(uint8_t page);
@@ -1380,6 +1389,11 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   roomColor = config.rightSide.color & 0xFFFFFF;
   timeColor = config.timeColor & 0xFFFFFF;
   dateColor = config.dateColor & 0xFFFFFF;
+  timeFont = constrain(config.timeFont,
+                       static_cast<uint8_t>(CLOCK_TIME_FONT_BARLOW),
+                       static_cast<uint8_t>(CLOCK_TIME_FONT_DOTO));
+  lv_obj_set_style_text_font(timeLabel, configuredTimeFont(), 0);
+  alignCenter(timeLabel, 0, -105);
   leftWeatherIconColor = config.leftWeatherIconColor & 0xFFFFFF;
   rightWeatherIconColor = config.rightWeatherIconColor & 0xFFFFFF;
   animatedWeatherIconsEnabled = config.animatedWeatherIcons;
@@ -1777,7 +1791,7 @@ void clockDashboardSetSecond(uint8_t second) {
 
 void clockDashboardSetTime(const char *timeText) {
   if (firmwareUpdateActive) return;
-  lv_obj_set_style_text_font(timeLabel, &clock_time_110, 0);
+  lv_obj_set_style_text_font(timeLabel, configuredTimeFont(), 0);
   lv_label_set_text(timeLabel, timeText);
   alignCenter(timeLabel, 0, -105);
 }

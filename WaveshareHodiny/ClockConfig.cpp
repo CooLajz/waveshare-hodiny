@@ -17,8 +17,10 @@ struct ConfigRecord {
 };
 
 constexpr uint32_t LEGACY_SCHEMA_VERSION = 14;
-constexpr uint32_t PREVIOUS_SCHEMA_VERSION = 15;
-constexpr size_t PREVIOUS_CONFIG_SIZE = offsetof(ClockConfig, nightVisualMode);
+constexpr uint32_t SCHEMA_15_VERSION = 15;
+constexpr uint32_t PREVIOUS_SCHEMA_VERSION = 16;
+constexpr size_t SCHEMA_15_CONFIG_SIZE = offsetof(ClockConfig, nightVisualMode);
+constexpr size_t PREVIOUS_CONFIG_SIZE = offsetof(ClockConfig, timeFont);
 constexpr size_t LEGACY_CONFIG_SIZE =
     offsetof(ClockConfig, dayNightLightEntityId);
 
@@ -30,6 +32,13 @@ struct ConfigRecordV14 {
 };
 
 struct ConfigRecordV15 {
+  uint32_t magic;
+  uint32_t schemaVersion;
+  uint8_t config[SCHEMA_15_CONFIG_SIZE];
+  uint32_t checksum;
+};
+
+struct ConfigRecordV16 {
   uint32_t magic;
   uint32_t schemaVersion;
   uint8_t config[PREVIOUS_CONFIG_SIZE];
@@ -78,6 +87,9 @@ void normalizeConfig(ClockConfig &config) {
   config.nightVisualMode = constrain(
       config.nightVisualMode, static_cast<uint8_t>(CLOCK_NIGHT_VISUAL_RED),
       static_cast<uint8_t>(CLOCK_NIGHT_VISUAL_BRIGHTNESS_ONLY));
+  config.timeFont = constrain(
+      config.timeFont, static_cast<uint8_t>(CLOCK_TIME_FONT_BARLOW),
+      static_cast<uint8_t>(CLOCK_TIME_FONT_DOTO));
   config.secondRingBackgroundColor &= 0xFFFFFF;
   config.secondDotColor &= 0xFFFFFF;
   config.leftSide.color &= 0xFFFFFF;
@@ -155,21 +167,32 @@ bool clockConfigLoad(ClockConfig &config) {
   Preferences preferences;
   if (!preferences.begin(CONFIG_NAMESPACE, false, CONFIG_PARTITION)) return false;
 
-  ConfigRecord record{};
+  // Záznamy jsou velké (obsahují celé ClockConfig). Nesmějí být současně na
+  // malém zásobníku Arduino loopTask, zejména během migrace více schémat.
+  static ConfigRecord record;
+  record = ConfigRecord{};
   const size_t storedSize = preferences.getBytesLength(CONFIG_KEY);
   const bool readComplete = storedSize == sizeof(record) &&
                             preferences.getBytes(CONFIG_KEY, &record,
                                                  sizeof(record)) == sizeof(record);
-  ConfigRecordV14 legacyRecord{};
+  static ConfigRecordV14 legacyRecord;
+  legacyRecord = ConfigRecordV14{};
   const bool legacyReadComplete =
       storedSize == sizeof(legacyRecord) &&
       preferences.getBytes(CONFIG_KEY, &legacyRecord, sizeof(legacyRecord)) ==
           sizeof(legacyRecord);
-  ConfigRecordV15 previousRecord{};
-  const bool previousReadComplete =
+  static ConfigRecordV15 previousRecord;
+  previousRecord = ConfigRecordV15{};
+  const bool schema15ReadComplete =
       storedSize == sizeof(previousRecord) &&
       preferences.getBytes(CONFIG_KEY, &previousRecord,
                            sizeof(previousRecord)) == sizeof(previousRecord);
+  static ConfigRecordV16 schema16Record;
+  schema16Record = ConfigRecordV16{};
+  const bool previousReadComplete =
+      storedSize == sizeof(schema16Record) &&
+      preferences.getBytes(CONFIG_KEY, &schema16Record,
+                           sizeof(schema16Record)) == sizeof(schema16Record);
   preferences.end();
 
   const bool currentRecord =
@@ -186,24 +209,56 @@ bool clockConfigLoad(ClockConfig &config) {
     if (validSameSizePreviousRecord) {
       config = record.config;
       config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+      config.timeFont = CLOCK_TIME_FONT_BARLOW;
+      normalizeConfig(config);
+      return clockConfigSave(config);
+    }
+
+    const bool validSameSizeSchema15Record =
+        readComplete && record.magic == CONFIG_MAGIC &&
+        record.schemaVersion == SCHEMA_15_VERSION &&
+        record.config.schemaVersion == SCHEMA_15_VERSION &&
+        record.checksum == configChecksum(record.config);
+    if (validSameSizeSchema15Record) {
+      config = record.config;
+      config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
       config.nightVisualMode = CLOCK_NIGHT_VISUAL_RED;
+      config.timeFont = CLOCK_TIME_FONT_BARLOW;
       normalizeConfig(config);
       return clockConfigSave(config);
     }
 
     uint32_t previousEmbeddedSchemaVersion = 0;
-    memcpy(&previousEmbeddedSchemaVersion, previousRecord.config,
+    memcpy(&previousEmbeddedSchemaVersion, schema16Record.config,
            sizeof(previousEmbeddedSchemaVersion));
     const bool validPreviousRecord =
-        previousReadComplete && previousRecord.magic == CONFIG_MAGIC &&
-        previousRecord.schemaVersion == PREVIOUS_SCHEMA_VERSION &&
+        previousReadComplete && schema16Record.magic == CONFIG_MAGIC &&
+        schema16Record.schemaVersion == PREVIOUS_SCHEMA_VERSION &&
         previousEmbeddedSchemaVersion == PREVIOUS_SCHEMA_VERSION &&
+        schema16Record.checksum == bytesChecksum(schema16Record.config,
+                                                 sizeof(schema16Record.config));
+    if (validPreviousRecord) {
+      memcpy(&config, schema16Record.config, sizeof(schema16Record.config));
+      config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+      config.timeFont = CLOCK_TIME_FONT_BARLOW;
+      normalizeConfig(config);
+      return clockConfigSave(config);
+    }
+
+    uint32_t schema15EmbeddedSchemaVersion = 0;
+    memcpy(&schema15EmbeddedSchemaVersion, previousRecord.config,
+           sizeof(schema15EmbeddedSchemaVersion));
+    const bool validSchema15Record =
+        schema15ReadComplete && previousRecord.magic == CONFIG_MAGIC &&
+        previousRecord.schemaVersion == SCHEMA_15_VERSION &&
+        schema15EmbeddedSchemaVersion == SCHEMA_15_VERSION &&
         previousRecord.checksum == bytesChecksum(previousRecord.config,
                                                  sizeof(previousRecord.config));
-    if (validPreviousRecord) {
+    if (validSchema15Record) {
       memcpy(&config, previousRecord.config, sizeof(previousRecord.config));
       config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
       config.nightVisualMode = CLOCK_NIGHT_VISUAL_RED;
+      config.timeFont = CLOCK_TIME_FONT_BARLOW;
       normalizeConfig(config);
       return clockConfigSave(config);
     }
@@ -223,6 +278,7 @@ bool clockConfigLoad(ClockConfig &config) {
     config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
     config.dayNightLightEntityId[0] = '\0';
     config.nightVisualMode = CLOCK_NIGHT_VISUAL_RED;
+    config.timeFont = CLOCK_TIME_FONT_BARLOW;
     normalizeConfig(config);
     return clockConfigSave(config);
   }

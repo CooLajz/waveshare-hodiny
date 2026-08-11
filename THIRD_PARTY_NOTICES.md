@@ -26,13 +26,16 @@ preserved as `docs/vendor/esp-web-tools/LICENSE`.
 | Asset | License | Source |
 | --- | --- | --- |
 | Montserrat | SIL Open Font License 1.1 | https://github.com/JulietaUla/Montserrat |
+| Barlow | SIL Open Font License 1.1 | https://github.com/jpt/barlow |
 | Liberation Sans | SIL Open Font License 1.1 | https://github.com/liberationfonts/liberation-fonts |
+| DSEG | SIL Open Font License 1.1 | https://github.com/keshikan/DSEG |
+| Doto | SIL Open Font License 1.1 | https://github.com/google/fonts/tree/main/ofl/doto |
 | Font Awesome Free | Icons: CC BY 4.0; fonts: SIL OFL 1.1; code: MIT | https://fontawesome.com/license/free |
 
 Generated LVGL font data in `ClockCzechFont*.c` uses Montserrat glyphs.
-`ClockTimeFont110.c` uses glyphs generated from Liberation Sans Bold 2.1.5.
-The exact source font and its license are included in
-`assets/fonts/liberation-sans/`.
+The selectable clock fonts use glyphs generated from Barlow Bold 1.408,
+Liberation Sans Bold 2.1.5, DSEG7 Modern Bold 0.46 and Doto Bold. The exact
+source fonts and their licenses are included below `assets/fonts/`.
 `ClockIconsFont42.c` uses selected Font Awesome Free glyphs.
 
 ## Meteocons

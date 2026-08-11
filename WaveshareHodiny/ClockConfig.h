@@ -10,7 +10,7 @@ constexpr size_t CLOCK_METRIC_NAME_LENGTH = 24;
 constexpr size_t CLOCK_METRIC_SUFFIX_LENGTH = 16;
 constexpr size_t CLOCK_ROOM_ICON_LENGTH = 16;
 constexpr size_t CLOCK_METRIC_COLOR_POINT_COUNT = 10;
-constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 16;
+constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 17;
 
 enum ClockSecondEffect : uint8_t {
   CLOCK_SECOND_EFFECT_DOTS = 0,
@@ -27,6 +27,13 @@ enum ClockWeatherIconStyle : uint8_t {
 enum ClockNightVisualMode : uint8_t {
   CLOCK_NIGHT_VISUAL_RED = 0,
   CLOCK_NIGHT_VISUAL_BRIGHTNESS_ONLY = 1,
+};
+
+enum ClockTimeFont : uint8_t {
+  CLOCK_TIME_FONT_BARLOW = 0,
+  CLOCK_TIME_FONT_LIBERATION_SANS = 1,
+  CLOCK_TIME_FONT_LCD = 2,
+  CLOCK_TIME_FONT_DOTO = 3,
 };
 
 struct ClockMetricConfig {
@@ -89,6 +96,7 @@ struct ClockConfig {
   uint8_t secondDotBrightness = 175;
   char dayNightLightEntityId[CLOCK_ENTITY_ID_LENGTH] = "";
   uint8_t nightVisualMode = CLOCK_NIGHT_VISUAL_RED;
+  uint8_t timeFont = CLOCK_TIME_FONT_BARLOW;
 };
 
 bool clockConfigBegin();

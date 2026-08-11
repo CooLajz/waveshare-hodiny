@@ -487,6 +487,15 @@ void handleGetConfig() {
   result += '"';
   result += F(",\"timeColor\":\"");
   result += htmlColor(config.timeColor);
+  result += F("\",\"timeFont\":\"");
+  if (config.timeFont == CLOCK_TIME_FONT_LIBERATION_SANS)
+    result += F("liberation");
+  else if (config.timeFont == CLOCK_TIME_FONT_LCD)
+    result += F("lcd");
+  else if (config.timeFont == CLOCK_TIME_FONT_DOTO)
+    result += F("doto");
+  else
+    result += F("barlow");
   result += F("\",\"dateColor\":\"");
   result += htmlColor(config.dateColor);
   result += '"';
@@ -616,6 +625,19 @@ void handleSaveConfig() {
   }
   config.automaticFirmwareUpdate =
       server.arg("automaticFirmwareUpdate") == "1";
+  const String timeFont = server.arg("timeFont");
+  if (timeFont == "barlow")
+    config.timeFont = CLOCK_TIME_FONT_BARLOW;
+  else if (timeFont == "liberation")
+    config.timeFont = CLOCK_TIME_FONT_LIBERATION_SANS;
+  else if (timeFont == "lcd")
+    config.timeFont = CLOCK_TIME_FONT_LCD;
+  else if (timeFont == "doto")
+    config.timeFont = CLOCK_TIME_FONT_DOTO;
+  else {
+    sendError(400, F("Font hodin není platný."));
+    return;
+  }
   if (!parseHtmlColor(server.arg("timeColor"), config.timeColor) ||
       !parseHtmlColor(server.arg("dateColor"), config.dateColor) ||
       !parseHtmlColor(server.arg("leftWeatherIconColor"),
