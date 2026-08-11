@@ -1,0 +1,16 @@
+.arduino/
+.env
+.firmware-hub-key
+.firmware-hub-key.pending-rotation
+build/
+screenshots/latest.png
+*.bin
+*.elf
+*.map
+*.pyc
+__pycache__/
+WaveshareHodiny/local/
+WaveshareHodiny/secrets*.h
+WaveshareHodiny/firmware_config.h
+WaveshareHodiny/release_version.h
+.DS_Store
