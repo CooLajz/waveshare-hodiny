@@ -6,7 +6,9 @@ enum class NetworkDiagnosticKind : uint8_t {
   HomeAssistantRuntime = 0,
   HomeAssistantTest = 1,
   WeatherAnimation = 2,
-  Count = 3,
+  OpenMeteoRuntime = 3,
+  OpenMeteoTest = 4,
+  Count = 5,
 };
 
 struct NetworkMemorySnapshot {

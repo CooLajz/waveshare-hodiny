@@ -13,6 +13,7 @@
 #include "DisplayDriver.h"
 #include "Display_ST7701.h"
 #include "FirmwareBuild.h"
+#include "FirmwareHubCa.h"
 #include "FirmwareUpdateService.h"
 #include "I2C_Driver.h"
 #include "ImprovSerialService.h"
@@ -88,6 +89,7 @@ constexpr uint32_t HOME_ASSISTANT_CONNECT_TIMEOUT_MS = 5000;
 constexpr uint32_t HOME_ASSISTANT_RESPONSE_TIMEOUT_MS = 8000;
 constexpr uint8_t HOME_ASSISTANT_REQUEST_ATTEMPTS = 2;
 constexpr uint32_t HOME_ASSISTANT_REQUEST_RETRY_DELAY_MS = 250;
+constexpr uint32_t OPEN_METEO_REFRESH_MS = 10UL * 60UL * 1000UL;
 constexpr time_t VALID_TIME_THRESHOLD = 1700000000;
 
 const char *CZECH_WEEKDAYS[] = {
@@ -550,8 +552,114 @@ bool extractJsonStringField(const String &payload, const char *key,
   return false;
 }
 
+bool extractJsonNumberField(const String &payload, const char *key,
+                            double &value) {
+  const String quotedKey = String('"') + key + '"';
+  int searchFrom = 0;
+  while (true) {
+    const int keyPosition = payload.indexOf(quotedKey, searchFrom);
+    if (keyPosition < 0) return false;
+    const int colonPosition =
+        payload.indexOf(':', keyPosition + quotedKey.length());
+    if (colonPosition < 0) return false;
+    const char *start = payload.c_str() + colonPosition + 1;
+    while (*start == ' ' || *start == '\t' || *start == '\r' ||
+           *start == '\n' || *start == '[')
+      ++start;
+    char *end = nullptr;
+    value = strtod(start, &end);
+    if (end != start && std::isfinite(value)) return true;
+    searchFrom = keyPosition + quotedKey.length();
+  }
+}
+
 bool stateAsFloat(const String &state, float &value);
 int weatherCodeForState(const String &state);
+
+int openMeteoWeatherCode(int wmoCode) {
+  if (wmoCode == 0) return 800;
+  if (wmoCode == 1 || wmoCode == 2) return 801;
+  if (wmoCode == 3) return 804;
+  if (wmoCode == 45 || wmoCode == 48) return 741;
+  if (wmoCode == 51 || wmoCode == 53 || wmoCode == 55) return 300;
+  if (wmoCode == 56 || wmoCode == 57) return 511;
+  if (wmoCode == 61 || wmoCode == 63 || wmoCode == 80 || wmoCode == 81)
+    return 500;
+  if (wmoCode == 65 || wmoCode == 82) return 502;
+  if (wmoCode == 66 || wmoCode == 67) return 511;
+  if (wmoCode == 71 || wmoCode == 73 || wmoCode == 77 || wmoCode == 85)
+    return 600;
+  if (wmoCode == 75 || wmoCode == 86) return 602;
+  if (wmoCode == 95) return 200;
+  if (wmoCode == 96 || wmoCode == 99) return 202;
+  return -1;
+}
+
+bool fetchOpenMeteo(const ClockConfig &config, ClockValues &values) {
+  networkDiagnosticsBegin(NetworkDiagnosticKind::OpenMeteoRuntime);
+  String url = F("https://api.open-meteo.com/v1/forecast?latitude=");
+  url += String(config.openMeteoLatitude, 5);
+  url += F("&longitude=");
+  url += String(config.openMeteoLongitude, 5);
+  url += F("&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index&daily=sunrise,sunset&timeformat=unixtime&timezone=auto&forecast_days=1");
+  WiFiClientSecure client;
+  client.setCACert(FIRMWARE_RELEASE_ROOT_CA);
+  HTTPClient http;
+  http.setConnectTimeout(HOME_ASSISTANT_CONNECT_TIMEOUT_MS);
+  http.setTimeout(HOME_ASSISTANT_RESPONSE_TIMEOUT_MS);
+  int status = HTTPC_ERROR_CONNECTION_REFUSED;
+  String payload;
+  if (http.begin(client, url)) {
+    status = http.GET();
+    if (status == HTTP_CODE_OK) payload = http.getString();
+    http.end();
+  }
+  if (status != HTTP_CODE_OK) {
+    networkDiagnosticsEnd(NetworkDiagnosticKind::OpenMeteoRuntime, false,
+                          status);
+    return false;
+  }
+  double number = 0;
+  bool ok = extractJsonNumberField(payload, "weather_code", number);
+  if (ok) values.weatherCode = openMeteoWeatherCode(lround(number));
+  if (extractJsonNumberField(payload, "is_day", number)) {
+    values.weatherIsDay = number >= 0.5;
+    values.sunStateAvailable = true;
+  }
+  if (extractJsonNumberField(payload, "sunrise", number))
+    values.nextSunriseTimestamp = static_cast<uint64_t>(number);
+  if (extractJsonNumberField(payload, "sunset", number))
+    values.nextSunsetTimestamp = static_cast<uint64_t>(number);
+  if (values.nextSunriseTimestamp > 0 && values.nextSunsetTimestamp > 0) {
+    const time_t now = time(nullptr);
+    if (now >= VALID_TIME_THRESHOLD) {
+      const time_t dayStarts =
+          static_cast<time_t>(values.nextSunriseTimestamp) +
+          config.sunriseOffsetMinutes * 60;
+      const time_t dayEnds = static_cast<time_t>(values.nextSunsetTimestamp) +
+                             config.sunsetOffsetMinutes * 60;
+      values.weatherIsDay = now >= dayStarts && now < dayEnds;
+      values.sunStateAvailable = true;
+    }
+  }
+  float *destinations[] = {&values.leftTemperatureC, &values.rightTemperatureC,
+                           &values.metricAValue, &values.metricBValue};
+  for (size_t index = 0; index < 4; ++index) {
+    if (extractJsonNumberField(payload, config.openMeteoSlots[index].value,
+                               number)) {
+      *destinations[index] = static_cast<float>(number);
+    } else {
+      *destinations[index] = NAN;
+      ok = false;
+    }
+  }
+  values.homeAssistantOnline = false;
+  networkDiagnosticsSetDetail(NetworkDiagnosticKind::OpenMeteoRuntime,
+                              ok ? F("Aktuální data načtena")
+                                 : F("Odpověď neobsahuje všechny hodnoty"));
+  networkDiagnosticsEnd(NetworkDiagnosticKind::OpenMeteoRuntime, ok, status);
+  return ok;
+}
 
 bool applyHomeAssistantState(const ClockConfig &config, const String &entityId,
                              const String &state, ClockValues &values) {
@@ -829,7 +937,23 @@ void homeAssistantTask(void *) {
   for (;;) {
     const ClockConfig config = runtimeConfigSnapshot();
     ClockValues values = lastAvailableValues;
-    if (WiFi.status() != WL_CONNECTED || config.homeAssistantUrl[0] == '\0' ||
+    if (WiFi.status() != WL_CONNECTED) {
+      publishHomeAssistantValues(ClockValues{});
+      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(HOME_ASSISTANT_RETRY_MS));
+      continue;
+    }
+
+    if (config.dataSource == CLOCK_DATA_SOURCE_OPEN_METEO) {
+      const bool apiResponded = fetchOpenMeteo(config, values);
+      if (apiResponded) lastAvailableValues = values;
+      publishHomeAssistantValues(values);
+      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(
+                                   apiResponded ? OPEN_METEO_REFRESH_MS
+                                                : HOME_ASSISTANT_RETRY_MS));
+      continue;
+    }
+
+    if (config.homeAssistantUrl[0] == '\0' ||
         config.homeAssistantToken[0] == '\0') {
       publishHomeAssistantValues(ClockValues{});
       ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(HOME_ASSISTANT_RETRY_MS));
@@ -965,7 +1089,9 @@ void loop() {
                               sampleValues.weatherIsDay,
                               weatherIconStyle,
                               animationConfig.animatedWeatherIcons &&
-                                  (strcmp(animationConfig.leftSide.icon,
+                                  (animationConfig.dataSource ==
+                                       CLOCK_DATA_SOURCE_OPEN_METEO ||
+                                   strcmp(animationConfig.leftSide.icon,
                                           "weather") == 0 ||
                                    strcmp(animationConfig.rightSide.icon,
                                           "weather") == 0));

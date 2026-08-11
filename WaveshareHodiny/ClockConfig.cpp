@@ -3,6 +3,8 @@
 #include <Preferences.h>
 #include <nvs_flash.h>
 
+#include <cmath>
+
 namespace {
 constexpr uint32_t CONFIG_MAGIC = 0x57484346;
 constexpr char CONFIG_PARTITION[] = "clockcfg";
@@ -16,41 +18,40 @@ struct ConfigRecord {
   uint32_t checksum;
 };
 
-constexpr uint32_t LEGACY_SCHEMA_VERSION = 14;
-constexpr uint32_t SCHEMA_15_VERSION = 15;
-constexpr uint32_t PREVIOUS_SCHEMA_VERSION = 16;
-constexpr size_t SCHEMA_15_CONFIG_SIZE = offsetof(ClockConfig, nightVisualMode);
-constexpr size_t PREVIOUS_CONFIG_SIZE = offsetof(ClockConfig, timeFont);
-constexpr size_t LEGACY_CONFIG_SIZE =
-    offsetof(ClockConfig, dayNightLightEntityId);
-
-struct ConfigRecordV14 {
-  uint32_t magic;
-  uint32_t schemaVersion;
-  uint8_t config[LEGACY_CONFIG_SIZE];
-  uint32_t checksum;
-};
-
-struct ConfigRecordV15 {
-  uint32_t magic;
-  uint32_t schemaVersion;
-  uint8_t config[SCHEMA_15_CONFIG_SIZE];
-  uint32_t checksum;
-};
+constexpr uint32_t PUBLIC_1_4_SCHEMA_VERSION = 16;
+constexpr size_t SCHEMA_16_PAYLOAD_SIZE = offsetof(ClockConfig, timeFont);
+constexpr size_t SCHEMA_16_CONFIG_SIZE =
+    (SCHEMA_16_PAYLOAD_SIZE + alignof(ClockConfig) - 1) &
+    ~(alignof(ClockConfig) - 1);
 
 struct ConfigRecordV16 {
   uint32_t magic;
   uint32_t schemaVersion;
-  uint8_t config[PREVIOUS_CONFIG_SIZE];
+  uint8_t config[SCHEMA_16_CONFIG_SIZE];
   uint32_t checksum;
 };
 
-static_assert(offsetof(ClockConfig, dayNightLightEntityId) <=
-                      LEGACY_CONFIG_SIZE &&
-                  LEGACY_CONFIG_SIZE -
-                          offsetof(ClockConfig, dayNightLightEntityId) <
-                      alignof(ClockConfig),
-              "Nové konfigurační pole musí zůstat za schématem 14.");
+
+void applyOpenMeteoDefaults(ClockConfig &config) {
+  config.dataSource = CLOCK_DATA_SOURCE_OPEN_METEO;
+  clockConfigCopy(config.openMeteoCity, sizeof(config.openMeteoCity), "Brno");
+  config.openMeteoLatitude = 49.1951f;
+  config.openMeteoLongitude = 16.6068f;
+  static const char *values[] = {"temperature_2m", "apparent_temperature",
+                                 "relative_humidity_2m", "pressure_msl"};
+  static const char *names[] = {"TEPLOTA", "POCITOVÁ", "VLHKOST", "TLAK"};
+  static const uint32_t colors[] = {0x4CCBEC, 0xFFB843, 0x65C744, 0xFFB843};
+  for (size_t index = 0; index < 4; ++index) {
+    clockConfigCopy(config.openMeteoSlots[index].value,
+                    sizeof(config.openMeteoSlots[index].value), values[index]);
+    clockConfigCopy(config.openMeteoSlots[index].name,
+                    sizeof(config.openMeteoSlots[index].name), names[index]);
+    config.openMeteoSlots[index].color = colors[index];
+  }
+}
+
+static_assert(SCHEMA_16_CONFIG_SIZE % alignof(ClockConfig) == 0,
+              "Záznam veřejné verze 1.4.0 musí zahrnout koncový padding.");
 
 uint32_t bytesChecksum(const uint8_t *bytes, size_t size) {
   uint32_t hash = 2166136261u;
@@ -90,10 +91,23 @@ void normalizeConfig(ClockConfig &config) {
   config.timeFont = constrain(
       config.timeFont, static_cast<uint8_t>(CLOCK_TIME_FONT_BARLOW),
       static_cast<uint8_t>(CLOCK_TIME_FONT_DOTO));
+  config.dataSource = constrain(
+      config.dataSource, static_cast<uint8_t>(CLOCK_DATA_SOURCE_OPEN_METEO),
+      static_cast<uint8_t>(CLOCK_DATA_SOURCE_HOME_ASSISTANT));
+  if (!std::isfinite(config.openMeteoLatitude) ||
+      config.openMeteoLatitude < -90.0f || config.openMeteoLatitude > 90.0f ||
+      !std::isfinite(config.openMeteoLongitude) ||
+      config.openMeteoLongitude < -180.0f || config.openMeteoLongitude > 180.0f) {
+    config.openMeteoLatitude = 49.1951f;
+    config.openMeteoLongitude = 16.6068f;
+  }
   config.secondRingBackgroundColor &= 0xFFFFFF;
   config.secondDotColor &= 0xFFFFFF;
   config.leftSide.color &= 0xFFFFFF;
   config.rightSide.color &= 0xFFFFFF;
+  for (ClockOpenMeteoSlotConfig &slot : config.openMeteoSlots) {
+    slot.color &= 0xFFFFFF;
+  }
   config.timeColor &= 0xFFFFFF;
   config.dateColor &= 0xFFFFFF;
   config.leftWeatherIconColor &= 0xFFFFFF;
@@ -133,6 +147,7 @@ void clockConfigCopy(char *destination, size_t destinationSize,
 
 void clockConfigApplyDefaults(ClockConfig &config) {
   config = ClockConfig{};
+  applyOpenMeteoDefaults(config);
   clockConfigCopy(config.leftSide.name, sizeof(config.leftSide.name), "VENKU");
   clockConfigCopy(config.leftSide.icon, sizeof(config.leftSide.icon), "weather");
   config.leftSide.color = 0x4CCBEC;
@@ -167,29 +182,17 @@ bool clockConfigLoad(ClockConfig &config) {
   Preferences preferences;
   if (!preferences.begin(CONFIG_NAMESPACE, false, CONFIG_PARTITION)) return false;
 
-  // Záznamy jsou velké (obsahují celé ClockConfig). Nesmějí být současně na
-  // malém zásobníku Arduino loopTask, zejména během migrace více schémat.
+  // Záznamy jsou velké (obsahují celé ClockConfig), proto neleží na malém
+  // zásobníku Arduino loopTask.
   static ConfigRecord record;
   record = ConfigRecord{};
   const size_t storedSize = preferences.getBytesLength(CONFIG_KEY);
   const bool readComplete = storedSize == sizeof(record) &&
                             preferences.getBytes(CONFIG_KEY, &record,
                                                  sizeof(record)) == sizeof(record);
-  static ConfigRecordV14 legacyRecord;
-  legacyRecord = ConfigRecordV14{};
-  const bool legacyReadComplete =
-      storedSize == sizeof(legacyRecord) &&
-      preferences.getBytes(CONFIG_KEY, &legacyRecord, sizeof(legacyRecord)) ==
-          sizeof(legacyRecord);
-  static ConfigRecordV15 previousRecord;
-  previousRecord = ConfigRecordV15{};
-  const bool schema15ReadComplete =
-      storedSize == sizeof(previousRecord) &&
-      preferences.getBytes(CONFIG_KEY, &previousRecord,
-                           sizeof(previousRecord)) == sizeof(previousRecord);
   static ConfigRecordV16 schema16Record;
   schema16Record = ConfigRecordV16{};
-  const bool previousReadComplete =
+  const bool schema16ReadComplete =
       storedSize == sizeof(schema16Record) &&
       preferences.getBytes(CONFIG_KEY, &schema16Record,
                            sizeof(schema16Record)) == sizeof(schema16Record);
@@ -201,84 +204,25 @@ bool clockConfigLoad(ClockConfig &config) {
       record.config.schemaVersion == CLOCK_CONFIG_SCHEMA_VERSION &&
       record.checksum == configChecksum(record.config);
   if (!currentRecord) {
-    const bool validSameSizePreviousRecord =
-        readComplete && record.magic == CONFIG_MAGIC &&
-        record.schemaVersion == PREVIOUS_SCHEMA_VERSION &&
-        record.config.schemaVersion == PREVIOUS_SCHEMA_VERSION &&
-        record.checksum == configChecksum(record.config);
-    if (validSameSizePreviousRecord) {
-      config = record.config;
-      config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
-      config.timeFont = CLOCK_TIME_FONT_BARLOW;
-      normalizeConfig(config);
-      return clockConfigSave(config);
-    }
-
-    const bool validSameSizeSchema15Record =
-        readComplete && record.magic == CONFIG_MAGIC &&
-        record.schemaVersion == SCHEMA_15_VERSION &&
-        record.config.schemaVersion == SCHEMA_15_VERSION &&
-        record.checksum == configChecksum(record.config);
-    if (validSameSizeSchema15Record) {
-      config = record.config;
-      config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
-      config.nightVisualMode = CLOCK_NIGHT_VISUAL_RED;
-      config.timeFont = CLOCK_TIME_FONT_BARLOW;
-      normalizeConfig(config);
-      return clockConfigSave(config);
-    }
-
-    uint32_t previousEmbeddedSchemaVersion = 0;
-    memcpy(&previousEmbeddedSchemaVersion, schema16Record.config,
-           sizeof(previousEmbeddedSchemaVersion));
-    const bool validPreviousRecord =
-        previousReadComplete && schema16Record.magic == CONFIG_MAGIC &&
-        schema16Record.schemaVersion == PREVIOUS_SCHEMA_VERSION &&
-        previousEmbeddedSchemaVersion == PREVIOUS_SCHEMA_VERSION &&
+    uint32_t embeddedSchemaVersion = 0;
+    memcpy(&embeddedSchemaVersion, schema16Record.config,
+           sizeof(embeddedSchemaVersion));
+    const bool validPublic14Record =
+        schema16ReadComplete && schema16Record.magic == CONFIG_MAGIC &&
+        schema16Record.schemaVersion == PUBLIC_1_4_SCHEMA_VERSION &&
+        embeddedSchemaVersion == PUBLIC_1_4_SCHEMA_VERSION &&
         schema16Record.checksum == bytesChecksum(schema16Record.config,
                                                  sizeof(schema16Record.config));
-    if (validPreviousRecord) {
-      memcpy(&config, schema16Record.config, sizeof(schema16Record.config));
-      config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
-      config.timeFont = CLOCK_TIME_FONT_BARLOW;
-      normalizeConfig(config);
-      return clockConfigSave(config);
-    }
+    if (!validPublic14Record) return clockConfigSave(config);
 
-    uint32_t schema15EmbeddedSchemaVersion = 0;
-    memcpy(&schema15EmbeddedSchemaVersion, previousRecord.config,
-           sizeof(schema15EmbeddedSchemaVersion));
-    const bool validSchema15Record =
-        schema15ReadComplete && previousRecord.magic == CONFIG_MAGIC &&
-        previousRecord.schemaVersion == SCHEMA_15_VERSION &&
-        schema15EmbeddedSchemaVersion == SCHEMA_15_VERSION &&
-        previousRecord.checksum == bytesChecksum(previousRecord.config,
-                                                 sizeof(previousRecord.config));
-    if (validSchema15Record) {
-      memcpy(&config, previousRecord.config, sizeof(previousRecord.config));
-      config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
-      config.nightVisualMode = CLOCK_NIGHT_VISUAL_RED;
-      config.timeFont = CLOCK_TIME_FONT_BARLOW;
-      normalizeConfig(config);
-      return clockConfigSave(config);
-    }
-
-    uint32_t embeddedSchemaVersion = 0;
-    memcpy(&embeddedSchemaVersion, legacyRecord.config,
-           sizeof(embeddedSchemaVersion));
-    const bool validLegacyRecord =
-        legacyReadComplete && legacyRecord.magic == CONFIG_MAGIC &&
-        legacyRecord.schemaVersion == LEGACY_SCHEMA_VERSION &&
-        embeddedSchemaVersion == LEGACY_SCHEMA_VERSION &&
-        legacyRecord.checksum ==
-            bytesChecksum(legacyRecord.config, sizeof(legacyRecord.config));
-    if (!validLegacyRecord) return clockConfigSave(config);
-
-    memcpy(&config, legacyRecord.config, sizeof(legacyRecord.config));
+    memcpy(&config, schema16Record.config, SCHEMA_16_PAYLOAD_SIZE);
     config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
-    config.dayNightLightEntityId[0] = '\0';
-    config.nightVisualMode = CLOCK_NIGHT_VISUAL_RED;
     config.timeFont = CLOCK_TIME_FONT_BARLOW;
+    applyOpenMeteoDefaults(config);
+    if (config.homeAssistantUrl[0] != '\0' &&
+        config.homeAssistantToken[0] != '\0') {
+      config.dataSource = CLOCK_DATA_SOURCE_HOME_ASSISTANT;
+    }
     normalizeConfig(config);
     return clockConfigSave(config);
   }

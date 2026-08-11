@@ -121,6 +121,11 @@ uint32_t dateColor = 0xB5B5B5;
 uint8_t timeFont = CLOCK_TIME_FONT_BARLOW;
 bool outsideUsesWeatherIcon = true;
 bool roomUsesWeatherIcon = false;
+bool homeAssistantStatusRelevant = true;
+char outsideUnit[16] = "°C";
+char roomUnit[16] = "°C";
+uint8_t outsideDecimals = 1;
+uint8_t roomDecimals = 1;
 bool weatherConfigured = false;
 bool outsideConfigured = false;
 bool roomConfigured = false;
@@ -269,7 +274,8 @@ void alignConnectionStatusIcons() {
   const bool redNightVisual = redNightVisualEnabled();
   const bool showWifi = !redNightVisual || wifiConnected;
   const bool showHomeAssistant =
-      !redNightVisual || currentValues.homeAssistantOnline;
+      homeAssistantStatusRelevant &&
+      (!redNightVisual || currentValues.homeAssistantOnline);
   const bool showWeb = webActive;
 
   lv_obj_t *icons[] = {wifiStatusLabel, statusLabel, webStatusLabel};
@@ -312,13 +318,15 @@ void makeDivider(lv_obj_t *parent, int width, int height, int x, int y) {
   lv_obj_clear_flag(divider, LV_OBJ_FLAG_SCROLLABLE);
 }
 
-void setTemperature(float value, int centerX, lv_obj_t *integerLabel,
-                    lv_obj_t *decimalLabel, lv_obj_t *unitLabel) {
+void setTopValue(float value, uint8_t decimals, int centerX,
+                 lv_obj_t *integerLabel, lv_obj_t *decimalLabel,
+                 lv_obj_t *unitLabel) {
   char valueText[20];
   if (std::isnan(value)) {
     snprintf(valueText, sizeof(valueText), "--");
   } else {
-    snprintf(valueText, sizeof(valueText), "%.1f", value);
+    snprintf(valueText, sizeof(valueText), decimals == 0 ? "%.0f" : "%.1f",
+             value);
   }
 
   char *decimalPoint = strchr(valueText, '.');
@@ -1373,6 +1381,64 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   metricBConfig = config.metricB;
   metricAColorScale = config.metricAColorScale;
   metricBColorScale = config.metricBColorScale;
+  const bool openMeteo = config.dataSource == CLOCK_DATA_SOURCE_OPEN_METEO;
+  homeAssistantStatusRelevant = !openMeteo;
+  const auto openMeteoUnit = [](const char *value) -> const char * {
+    if (strcmp(value, "temperature_2m") == 0 ||
+        strcmp(value, "apparent_temperature") == 0)
+      return "°C";
+    if (strcmp(value, "relative_humidity_2m") == 0 ||
+        strcmp(value, "cloud_cover") == 0)
+      return "%";
+    if (strcmp(value, "pressure_msl") == 0 ||
+        strcmp(value, "surface_pressure") == 0)
+      return "hPa";
+    if (strcmp(value, "wind_speed_10m") == 0 ||
+        strcmp(value, "wind_gusts_10m") == 0)
+      return "km/h";
+    if (strcmp(value, "wind_direction_10m") == 0) return "°";
+    if (strcmp(value, "snowfall") == 0) return "cm";
+    if (strcmp(value, "precipitation") == 0 || strcmp(value, "rain") == 0 ||
+        strcmp(value, "showers") == 0)
+      return "mm";
+    return "";
+  };
+  const auto openMeteoDecimals = [](const char *value) -> uint8_t {
+    return strcmp(value, "relative_humidity_2m") == 0 ||
+                   strcmp(value, "cloud_cover") == 0 ||
+                   strcmp(value, "pressure_msl") == 0 ||
+                   strcmp(value, "surface_pressure") == 0 ||
+                   strcmp(value, "wind_direction_10m") == 0
+               ? 0
+               : 1;
+  };
+  if (openMeteo) {
+    clockConfigCopy(metricAConfig.name, sizeof(metricAConfig.name),
+                    config.openMeteoSlots[2].name);
+    clockConfigCopy(metricAConfig.suffix, sizeof(metricAConfig.suffix),
+                    openMeteoUnit(config.openMeteoSlots[2].value));
+    metricAConfig.decimals = openMeteoDecimals(config.openMeteoSlots[2].value);
+    clockConfigCopy(metricBConfig.name, sizeof(metricBConfig.name),
+                    config.openMeteoSlots[3].name);
+    clockConfigCopy(metricBConfig.suffix, sizeof(metricBConfig.suffix),
+                    openMeteoUnit(config.openMeteoSlots[3].value));
+    metricBConfig.decimals = openMeteoDecimals(config.openMeteoSlots[3].value);
+    metricAColorScale = ClockMetricColorScale{};
+    metricAColorScale.points[0].color = config.openMeteoSlots[2].color;
+    metricBColorScale = ClockMetricColorScale{};
+    metricBColorScale.points[0].color = config.openMeteoSlots[3].color;
+    strlcpy(outsideUnit, openMeteoUnit(config.openMeteoSlots[0].value),
+            sizeof(outsideUnit));
+    strlcpy(roomUnit, openMeteoUnit(config.openMeteoSlots[1].value),
+            sizeof(roomUnit));
+    outsideDecimals = openMeteoDecimals(config.openMeteoSlots[0].value);
+    roomDecimals = openMeteoDecimals(config.openMeteoSlots[1].value);
+  } else {
+    strlcpy(outsideUnit, "°C", sizeof(outsideUnit));
+    strlcpy(roomUnit, "°C", sizeof(roomUnit));
+    outsideDecimals = 1;
+    roomDecimals = 1;
+  }
   automaticDayNightEnabled = config.automaticDayNight;
   secondRingEnabled = config.secondRingEnabled;
   secondEffect = constrain(
@@ -1385,8 +1451,10 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   secondDotSize = constrain(config.secondDotSize, 1, 10);
   secondDotColor = config.secondDotColor & 0xFFFFFF;
   secondDotBrightness = config.secondDotBrightness;
-  outsideColor = config.leftSide.color & 0xFFFFFF;
-  roomColor = config.rightSide.color & 0xFFFFFF;
+  outsideColor = (openMeteo ? config.openMeteoSlots[0].color
+                            : config.leftSide.color) & 0xFFFFFF;
+  roomColor = (openMeteo ? config.openMeteoSlots[1].color
+                         : config.rightSide.color) & 0xFFFFFF;
   timeColor = config.timeColor & 0xFFFFFF;
   dateColor = config.dateColor & 0xFFFFFF;
   timeFont = constrain(config.timeFont,
@@ -1394,7 +1462,10 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
                        static_cast<uint8_t>(CLOCK_TIME_FONT_DOTO));
   lv_obj_set_style_text_font(timeLabel, configuredTimeFont(), 0);
   alignCenter(timeLabel, 0, -105);
-  leftWeatherIconColor = config.leftWeatherIconColor & 0xFFFFFF;
+  leftWeatherIconColor =
+      (openMeteo ? config.openMeteoSlots[0].color
+                 : config.leftWeatherIconColor) &
+      0xFFFFFF;
   rightWeatherIconColor = config.rightWeatherIconColor & 0xFFFFFF;
   animatedWeatherIconsEnabled = config.animatedWeatherIcons;
   automaticFirmwareUpdateEnabled = config.automaticFirmwareUpdate;
@@ -1402,13 +1473,13 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
       config.weatherIconStyle,
       static_cast<uint8_t>(CLOCK_WEATHER_ICON_STYLE_MONOCHROME),
       static_cast<uint8_t>(CLOCK_WEATHER_ICON_STYLE_LINE));
-  outsideUsesWeatherIcon = strcmp(config.leftSide.icon, "weather") == 0;
-  roomUsesWeatherIcon = strcmp(config.rightSide.icon, "weather") == 0;
-  weatherConfigured = config.weatherEntityId[0] != '\0';
-  outsideConfigured = config.leftSide.temperatureEntityId[0] != '\0';
-  roomConfigured = config.rightSide.temperatureEntityId[0] != '\0';
-  metricAConfigured = config.metricA.entityId[0] != '\0';
-  metricBConfigured = config.metricB.entityId[0] != '\0';
+  outsideUsesWeatherIcon = openMeteo || strcmp(config.leftSide.icon, "weather") == 0;
+  roomUsesWeatherIcon = !openMeteo && strcmp(config.rightSide.icon, "weather") == 0;
+  weatherConfigured = openMeteo || config.weatherEntityId[0] != '\0';
+  outsideConfigured = openMeteo || config.leftSide.temperatureEntityId[0] != '\0';
+  roomConfigured = openMeteo || config.rightSide.temperatureEntityId[0] != '\0';
+  metricAConfigured = openMeteo || config.metricA.entityId[0] != '\0';
+  metricBConfigured = openMeteo || config.metricB.entityId[0] != '\0';
   ensureWeatherAnimationDecoders();
   savedDayBrightness = constrain(config.dayBrightness, 1, 100);
   savedNightBrightness = constrain(config.nightBrightness, 1, 100);
@@ -1418,7 +1489,9 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   }
   renderSecondRing(millis());
   if (nightVisualChanged) applyDashboardColors();
-  lv_label_set_text(outsideTitleLabel, config.leftSide.name[0] == '\0'
+  lv_label_set_text(outsideTitleLabel, openMeteo
+                                           ? config.openMeteoSlots[0].name
+                                           : config.leftSide.name[0] == '\0'
                                            ? "MÍSTNOST"
                                            : config.leftSide.name);
   alignCenter(outsideTitleLabel, -122, 5);
@@ -1426,7 +1499,9 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   setObjectVisible(outsideIntegerLabel, outsideConfigured);
   setObjectVisible(outsideDecimalLabel, outsideConfigured);
   setObjectVisible(outsideUnitLabel, outsideConfigured);
-  lv_label_set_text(roomTitleLabel, config.rightSide.name[0] == '\0'
+  lv_label_set_text(roomTitleLabel, openMeteo
+                                        ? config.openMeteoSlots[1].name
+                                        : config.rightSide.name[0] == '\0'
                                         ? "MÍSTNOST"
                                         : config.rightSide.name);
   alignCenter(roomTitleLabel, 127, 5);
@@ -1434,7 +1509,9 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   setObjectVisible(roomIntegerLabel, roomConfigured);
   setObjectVisible(roomDecimalLabel, roomConfigured);
   setObjectVisible(roomUnitLabel, roomConfigured);
-  const char *outsideIconGlyph = roomIconGlyph(config.leftSide.icon);
+  lv_label_set_text(outsideUnitLabel, outsideUnit);
+  lv_label_set_text(roomUnitLabel, roomUnit);
+  const char *outsideIconGlyph = roomIconGlyph(openMeteo ? "weather" : config.leftSide.icon);
   lv_label_set_text(outsideIconLabel, outsideIconGlyph);
   if (!outsideConfigured || outsideIconGlyph[0] == '\0') {
     lv_obj_add_flag(outsideIconLabel, LV_OBJ_FLAG_HIDDEN);
@@ -1442,7 +1519,7 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
     lv_obj_clear_flag(outsideIconLabel, LV_OBJ_FLAG_HIDDEN);
     alignCenter(outsideIconLabel, -142, 107);
   }
-  const char *roomIconGlyphValue = roomIconGlyph(config.rightSide.icon);
+  const char *roomIconGlyphValue = roomIconGlyph(openMeteo ? "none" : config.rightSide.icon);
   lv_label_set_text(roomIconLabel, roomIconGlyphValue);
   if (!roomConfigured || roomIconGlyphValue[0] == '\0') {
     lv_obj_add_flag(roomIconLabel, LV_OBJ_FLAG_HIDDEN);
@@ -1511,10 +1588,10 @@ void clockDashboardUpdate(const ClockValues &values) {
     lv_obj_add_flag(roomWeatherAnimation, LV_OBJ_FLAG_HIDDEN);
   }
 
-  setTemperature(values.leftTemperatureC, 118, outsideIntegerLabel,
-                 outsideDecimalLabel, outsideUnitLabel);
-  setTemperature(values.rightTemperatureC, 367, roomIntegerLabel,
-                 roomDecimalLabel, roomUnitLabel);
+  setTopValue(values.leftTemperatureC, outsideDecimals, 118,
+              outsideIntegerLabel, outsideDecimalLabel, outsideUnitLabel);
+  setTopValue(values.rightTemperatureC, roomDecimals, 367, roomIntegerLabel,
+              roomDecimalLabel, roomUnitLabel);
 
   formatMetricValue(text, sizeof(text), values.metricAValue,
                     metricAConfig.decimals);

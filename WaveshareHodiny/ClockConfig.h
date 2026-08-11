@@ -9,8 +9,16 @@ constexpr size_t CLOCK_ENTITY_ID_LENGTH = 128;
 constexpr size_t CLOCK_METRIC_NAME_LENGTH = 24;
 constexpr size_t CLOCK_METRIC_SUFFIX_LENGTH = 16;
 constexpr size_t CLOCK_ROOM_ICON_LENGTH = 16;
+constexpr size_t CLOCK_OPEN_METEO_CITY_LENGTH = 64;
+constexpr size_t CLOCK_OPEN_METEO_VALUE_LENGTH = 32;
 constexpr size_t CLOCK_METRIC_COLOR_POINT_COUNT = 10;
+// Schema 16 is the public 1.4.0 baseline. Schema 17 adds Open-Meteo.
 constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 17;
+
+enum ClockDataSource : uint8_t {
+  CLOCK_DATA_SOURCE_OPEN_METEO = 0,
+  CLOCK_DATA_SOURCE_HOME_ASSISTANT = 1,
+};
 
 enum ClockSecondEffect : uint8_t {
   CLOCK_SECOND_EFFECT_DOTS = 0,
@@ -62,6 +70,12 @@ struct ClockMetricColorScale {
   ClockMetricColorPoint points[CLOCK_METRIC_COLOR_POINT_COUNT];
 };
 
+struct ClockOpenMeteoSlotConfig {
+  char value[CLOCK_OPEN_METEO_VALUE_LENGTH] = "temperature_2m";
+  char name[CLOCK_METRIC_NAME_LENGTH] = "TEPLOTA";
+  uint32_t color = 0xFFFFFF;
+};
+
 struct ClockConfig {
   uint32_t schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
   char homeAssistantUrl[CLOCK_HA_URL_LENGTH] = "";
@@ -82,7 +96,7 @@ struct ClockConfig {
   uint8_t weatherIconStyle = CLOCK_WEATHER_ICON_STYLE_MONOCHROME;
   uint8_t dayBrightness = 35;
   uint8_t nightBrightness = 10;
-  bool automaticDayNight = true;
+  bool automaticDayNight = false;
   int8_t sunsetOffsetMinutes = 0;
   bool automaticFirmwareUpdate = false;
   bool secondRingEnabled = true;
@@ -97,6 +111,11 @@ struct ClockConfig {
   char dayNightLightEntityId[CLOCK_ENTITY_ID_LENGTH] = "";
   uint8_t nightVisualMode = CLOCK_NIGHT_VISUAL_RED;
   uint8_t timeFont = CLOCK_TIME_FONT_BARLOW;
+  uint8_t dataSource = CLOCK_DATA_SOURCE_OPEN_METEO;
+  char openMeteoCity[CLOCK_OPEN_METEO_CITY_LENGTH] = "Brno";
+  float openMeteoLatitude = 49.1951f;
+  float openMeteoLongitude = 16.6068f;
+  ClockOpenMeteoSlotConfig openMeteoSlots[4];
 };
 
 bool clockConfigBegin();

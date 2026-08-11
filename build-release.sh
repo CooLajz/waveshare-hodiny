@@ -11,11 +11,9 @@ if [[ "$RELEASE_CHANNEL" != "internal" && "$RELEASE_CHANNEL" != "public" ]]; the
 fi
 OUTPUT_SUFFIX="$VERSION"
 GENERATE_SECRETS_ARGS=(--release)
-PACKAGE_ARGS=()
 if [[ "$RELEASE_CHANNEL" == "public" ]]; then
   OUTPUT_SUFFIX="$VERSION-public"
   GENERATE_SECRETS_ARGS=(--release --public-release)
-  PACKAGE_ARGS=(/waveshare-hodiny/firmware)
 fi
 OUTPUT_DIR="$ROOT_DIR/build/waveshare-hodiny-release/$OUTPUT_SUFFIX"
 ARDUINO_CLI_BIN="${ARDUINO_CLI_BIN:-$(command -v arduino-cli || true)}"
@@ -50,15 +48,20 @@ mkdir -p "$OUTPUT_DIR"
   | tee "$OUTPUT_DIR/build.log" \
   | awk '/^FQBN:|Sketch uses|Global variables|Creating esp32s3 image|Successfully created|merge_bin|error:|Error during build/ { print; fflush() }'
 
-"$PYTHON_BIN" "$ROOT_DIR/tools/prepare_release_package.py" \
-  "$VERSION" \
-  "$BUILD_PATH/WaveshareHodiny.ino.bootloader.bin" \
-  "$BUILD_PATH/WaveshareHodiny.ino.partitions.bin" \
-  "$ARDUINO_DATA_DIR/packages/esp32/hardware/esp32/$ESP32_CORE_VERSION/tools/partitions/boot_app0.bin" \
-  "$BUILD_PATH/WaveshareHodiny.ino.bin" \
-  "$OUTPUT_DIR/WaveshareHodiny.ino.bin" \
-  "$OUTPUT_DIR/package" \
-  "${PACKAGE_ARGS[@]}"
+PACKAGE_COMMAND=(
+  "$PYTHON_BIN" "$ROOT_DIR/tools/prepare_release_package.py"
+  "$VERSION"
+  "$BUILD_PATH/WaveshareHodiny.ino.bootloader.bin"
+  "$BUILD_PATH/WaveshareHodiny.ino.partitions.bin"
+  "$ARDUINO_DATA_DIR/packages/esp32/hardware/esp32/$ESP32_CORE_VERSION/tools/partitions/boot_app0.bin"
+  "$BUILD_PATH/WaveshareHodiny.ino.bin"
+  "$OUTPUT_DIR/WaveshareHodiny.ino.bin"
+  "$OUTPUT_DIR/package"
+)
+if [[ "$RELEASE_CHANNEL" == "public" ]]; then
+  PACKAGE_COMMAND+=(/waveshare-hodiny/firmware)
+fi
+"${PACKAGE_COMMAND[@]}"
 
 printf 'RELEASE_VERSION=%s\n' "$VERSION"
 printf 'RELEASE_CHANNEL=%s\n' "$RELEASE_CHANNEL"

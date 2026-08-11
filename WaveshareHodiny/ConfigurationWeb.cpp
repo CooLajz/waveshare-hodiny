@@ -8,10 +8,12 @@
 #include <esp_system.h>
 
 #include <cmath>
+#include <cctype>
 
 #include "ConfigurationPage.h"
 #include "DiagnosticPage.h"
 #include "FirmwareBuild.h"
+#include "FirmwareHubCa.h"
 #include "FirmwareUpdateService.h"
 #include "HomeAssistantConnectionPolicy.h"
 #include "NetworkDiagnostics.h"
@@ -177,6 +179,53 @@ String sideJson(const ClockSideConfig &side) {
   result += F("\",\"color\":\"");
   result += htmlColor(side.color);
   result += F("\"}");
+  return result;
+}
+
+String openMeteoSlotJson(const ClockOpenMeteoSlotConfig &slot) {
+  String result = F("{\"value\":\"");
+  result += jsonEscape(slot.value);
+  result += F("\",\"name\":\"");
+  result += jsonEscape(slot.name);
+  result += F("\",\"color\":\"");
+  result += htmlColor(slot.color);
+  result += F("\"}");
+  return result;
+}
+
+bool validOpenMeteoValue(const String &value) {
+  static const char *values[] = {
+      "temperature_2m",       "apparent_temperature",
+      "relative_humidity_2m", "pressure_msl",
+      "surface_pressure",     "wind_speed_10m",
+      "wind_gusts_10m",       "wind_direction_10m",
+      "precipitation",        "rain",
+      "showers",              "snowfall",
+      "cloud_cover",          "uv_index",
+  };
+  for (const char *candidate : values) {
+    if (value == candidate) return true;
+  }
+  return false;
+}
+
+String urlEncode(const String &value) {
+  static constexpr char HEX_DIGITS[] = "0123456789ABCDEF";
+  String result;
+  result.reserve(value.length() * 2);
+  for (size_t index = 0; index < value.length(); ++index) {
+    const uint8_t character = static_cast<uint8_t>(value[index]);
+    if ((character >= 'a' && character <= 'z') ||
+        (character >= 'A' && character <= 'Z') ||
+        (character >= '0' && character <= '9') || character == '-' ||
+        character == '_' || character == '.') {
+      result += static_cast<char>(character);
+    } else {
+      result += '%';
+      result += HEX_DIGITS[character >> 4];
+      result += HEX_DIGITS[character & 0x0F];
+    }
+  }
   return result;
 }
 
@@ -419,6 +468,22 @@ void handleGetConfig() {
   result += jsonEscape(config.homeAssistantUrl);
   result += F("\",\"tokenConfigured\":");
   result += config.homeAssistantToken[0] == '\0' ? F("false") : F("true");
+  result += F(",\"dataSource\":\"");
+  result += config.dataSource == CLOCK_DATA_SOURCE_HOME_ASSISTANT
+                ? F("home-assistant")
+                : F("open-meteo");
+  result += F("\",\"openMeteoCity\":\"");
+  result += jsonEscape(config.openMeteoCity);
+  result += F("\",\"openMeteoLatitude\":");
+  result += String(config.openMeteoLatitude, 5);
+  result += F(",\"openMeteoLongitude\":");
+  result += String(config.openMeteoLongitude, 5);
+  result += F(",\"openMeteoSlots\":[");
+  for (size_t index = 0; index < 4; ++index) {
+    if (index > 0) result += ',';
+    result += openMeteoSlotJson(config.openMeteoSlots[index]);
+  }
+  result += ']';
   result += F(",\"controlSecret\":\"");
   result += jsonEscape(controlSecret.c_str());
   result += F("\"");
@@ -534,6 +599,46 @@ void handleGetConfig() {
 
 void handleSaveConfig() {
   ClockConfig &config = currentConfig();
+  const String dataSource = server.arg("dataSource");
+  if (dataSource == "open-meteo")
+    config.dataSource = CLOCK_DATA_SOURCE_OPEN_METEO;
+  else if (dataSource == "home-assistant")
+    config.dataSource = CLOCK_DATA_SOURCE_HOME_ASSISTANT;
+  else {
+    sendError(400, F("Zdroj dat není platný."));
+    return;
+  }
+  String openMeteoCity = server.arg("openMeteoCity");
+  openMeteoCity.trim();
+  float openMeteoLatitude = 0;
+  float openMeteoLongitude = 0;
+  if (openMeteoCity.isEmpty() ||
+      !parseFiniteFloat(server.arg("openMeteoLatitude"), openMeteoLatitude) ||
+      !parseFiniteFloat(server.arg("openMeteoLongitude"), openMeteoLongitude) ||
+      openMeteoLatitude < -90 || openMeteoLatitude > 90 ||
+      openMeteoLongitude < -180 || openMeteoLongitude > 180) {
+    sendError(400, F("Nejprve vyhledej platné město pro Open-Meteo."));
+    return;
+  }
+  clockConfigCopy(config.openMeteoCity, sizeof(config.openMeteoCity),
+                  openMeteoCity);
+  config.openMeteoLatitude = openMeteoLatitude;
+  config.openMeteoLongitude = openMeteoLongitude;
+  for (size_t index = 0; index < 4; ++index) {
+    const String prefix = String(F("openMeteoSlot")) + index;
+    const String value = server.arg(prefix + F("Value"));
+    if (!validOpenMeteoValue(value) ||
+        !parseHtmlColor(server.arg(prefix + F("Color")),
+                        config.openMeteoSlots[index].color)) {
+      sendError(400, F("Nastavení pozice Open-Meteo není platné."));
+      return;
+    }
+    clockConfigCopy(config.openMeteoSlots[index].value,
+                    sizeof(config.openMeteoSlots[index].value), value);
+    clockConfigCopy(config.openMeteoSlots[index].name,
+                    sizeof(config.openMeteoSlots[index].name),
+                    server.arg(prefix + F("Name")));
+  }
   const String webModeValue = server.arg("webMode");
   ConfigurationWebMode requestedWebMode = CONFIGURATION_WEB_TIMED;
   if (webModeValue == "always")
@@ -552,7 +657,8 @@ void handleSaveConfig() {
   const bool automaticDayNight = server.arg("automaticDayNight") == "1";
   String sunEntity = server.arg("sunEntity");
   sunEntity.trim();
-  if (automaticDayNight && sunEntity.isEmpty()) {
+  if (config.dataSource == CLOCK_DATA_SOURCE_HOME_ASSISTANT &&
+      automaticDayNight && sunEntity.isEmpty()) {
     sendError(400,
               F("Pro automatický režim DEN/NOC musí být vyplněna SUN entita."));
     return;
@@ -695,6 +801,39 @@ void handleSaveConfig() {
   extendWebAvailability();
   sendJson(200, F("{\"ok\":true}"));
   applyWebMode(requestedWebMode);
+}
+
+void handleOpenMeteoLocation() {
+  String city = server.arg("city");
+  city.trim();
+  if (city.length() < 2) {
+    sendError(400, F("Zadej název města."));
+    return;
+  }
+  networkDiagnosticsBegin(NetworkDiagnosticKind::OpenMeteoTest);
+  WiFiClientSecure client;
+  client.setCACert(FIRMWARE_RELEASE_ROOT_CA);
+  HTTPClient http;
+  http.setConnectTimeout(5000);
+  http.setTimeout(8000);
+  const String url = String(F("https://geocoding-api.open-meteo.com/v1/search?count=10&language=cs&format=json&name=")) +
+                     urlEncode(city);
+  int status = HTTPC_ERROR_CONNECTION_REFUSED;
+  String payload;
+  if (http.begin(client, url)) {
+    status = http.GET();
+    if (status == HTTP_CODE_OK) payload = http.getString();
+    http.end();
+  }
+  const bool ok = status == HTTP_CODE_OK && payload.indexOf(F("\"results\"")) >= 0;
+  networkDiagnosticsEnd(NetworkDiagnosticKind::OpenMeteoTest, ok, status);
+  if (!ok) {
+    sendError(502, status == HTTP_CODE_OK
+                       ? F("Město nebylo nalezeno.")
+                       : F("Open-Meteo nyní není dostupné."));
+    return;
+  }
+  sendJson(200, payload);
 }
 
 void handleTestConnection() {
@@ -840,6 +979,13 @@ void handleDiagnostics() {
   appendDiagnosticJson(
       result,
       networkDiagnosticsSnapshot(NetworkDiagnosticKind::WeatherAnimation));
+  result += F(",\"openMeteoRuntime\":");
+  appendDiagnosticJson(
+      result,
+      networkDiagnosticsSnapshot(NetworkDiagnosticKind::OpenMeteoRuntime));
+  result += F(",\"openMeteoTest\":");
+  appendDiagnosticJson(
+      result, networkDiagnosticsSnapshot(NetworkDiagnosticKind::OpenMeteoTest));
   result += '}';
   sendJson(200, result);
 }
@@ -982,6 +1128,9 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
   });
   server.on("/api/ha/test", HTTP_POST, []() {
     if (requireConfigurationAccess()) handleTestConnection();
+  });
+  server.on("/api/open-meteo/location", HTTP_POST, []() {
+    if (requireConfigurationAccess()) handleOpenMeteoLocation();
   });
   server.on("/api/restart", HTTP_POST, []() {
     if (requireConfigurationAccess()) handleRestart();
