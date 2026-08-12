@@ -39,9 +39,9 @@ dotyku CST820, PSRAM a partition table odpovídá této konkrétní desce.
 
 Desku můžete zakoupit u českých prodejců:
 
-<p>
-  <a href="https://pajenicko.cz/waveshare-esp32-s3-touch-lcd-2.1-s-kulatym-ips-lcd-dotykovym-displejem"><img src="docs/assets/retailers/pajenicko.png" alt="Koupit podporovanou desku na Pájeníčko.cz" width="240"></a>&nbsp;&nbsp;&nbsp;
-  <a href="https://www.laskakit.cz/waveshare-esp32-s3-round-2-1--480--480-ips-touch-wifi-modul/"><img src="docs/assets/retailers/laskakit.png" alt="Koupit podporovanou desku na LaskaKit" width="240"></a>
+<p align="center">
+  <a href="https://pajenicko.cz/waveshare-esp32-s3-touch-lcd-2.1-s-kulatym-ips-lcd-dotykovym-displejem"><img src="docs/assets/retailers/pajenicko.png" alt="Koupit podporovanou desku na Pájeníčko.cz" height="60"></a>&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://www.laskakit.cz/waveshare-esp32-s3-round-2-1--480--480-ips-touch-wifi-modul/"><img src="docs/assets/retailers/laskakit.png" alt="Koupit podporovanou desku na LaskaKit" height="60"></a>
 </p>
 
 Nepoužívejte tento binární obraz na jiném modelu jen proto, že také obsahuje
