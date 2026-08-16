@@ -5,17 +5,17 @@
     "monochrome": {
       "version": "3.0.0-next.10-lvgl.2-monochrome",
       "manifest": "3.0.0-next.10-lvgl.2-monochrome/manifest.json",
-      "icons": 14
+      "icons": 13
     },
     "flat": {
       "version": "3.0.0-next.10-lvgl.2-flat",
       "manifest": "3.0.0-next.10-lvgl.2-flat/manifest.json",
-      "icons": 14
+      "icons": 13
     },
     "line": {
       "version": "3.0.0-next.10-lvgl.2-line",
       "manifest": "3.0.0-next.10-lvgl.2-line/manifest.json",
-      "icons": 14
+      "icons": 13
     }
   }
 }

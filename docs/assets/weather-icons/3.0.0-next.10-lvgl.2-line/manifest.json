@@ -40,15 +40,10 @@
       "size": 32401,
       "sha256": "0f48ffb37360e93f53c2ebc8d1b168c9960df4d396e1475c41176f2c0c506eeb"
     },
-    "line-overcast-day": {
-      "file": "line-overcast-day.gif",
-      "size": 47442,
-      "sha256": "db32e1e52a1448ec25cea643a0f05ecce59fa9524afa953863c5507b05093905"
-    },
-    "line-overcast-night": {
-      "file": "line-overcast-night.gif",
-      "size": 43699,
-      "sha256": "833cfbb072ad9747bf90571c0b7187bd8f77e9e12f83595dd003df2ef4534b16"
+    "line-overcast": {
+      "file": "line-overcast.gif",
+      "size": 36793,
+      "sha256": "bbd3614382fd4f84bf812a858347f1cd1a1557f934a0b5237a39d2924cff80e6"
     },
     "line-partly-cloudy-day": {
       "file": "line-partly-cloudy-day.gif",
