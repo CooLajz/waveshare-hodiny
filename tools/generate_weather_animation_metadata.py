@@ -16,6 +16,8 @@ CONDITIONS = (
     "mostly-clear-day",
     "mostly-clear-night",
     "overcast",
+    "overcast-day",
+    "overcast-night",
     "partly-cloudy-day",
     "partly-cloudy-night",
     "rain",

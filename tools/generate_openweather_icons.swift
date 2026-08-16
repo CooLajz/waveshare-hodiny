@@ -12,6 +12,8 @@ let iconFiles = [
     ("03n", "partly-cloudy-night"),
     ("04d", "overcast"),
     ("04n", "overcast"),
+    ("05d", "overcast-day"),
+    ("05n", "overcast-night"),
     ("09d", "overcast-day-rain"),
     ("09n", "overcast-night-rain"),
     ("10d", "partly-cloudy-day-rain"),

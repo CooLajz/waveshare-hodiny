@@ -26,8 +26,10 @@ const lv_img_dsc_t *openWeatherIconForCode(int weatherCode, bool isDay) {
     return dayOrNight(isDay, openweather_01d, openweather_01n);
   if (weatherCode == 801)
     return dayOrNight(isDay, openweather_02d, openweather_02n);
-  if (weatherCode == 802 || weatherCode == 803)
+  if (weatherCode == 802)
     return dayOrNight(isDay, openweather_03d, openweather_03n);
+  if (weatherCode == 803)
+    return dayOrNight(isDay, openweather_05d, openweather_05n);
   if (weatherCode == 804)
     return dayOrNight(isDay, openweather_04d, openweather_04n);
   return nullptr;

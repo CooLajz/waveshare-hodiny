@@ -10,6 +10,8 @@ extern const lv_img_dsc_t openweather_03d;
 extern const lv_img_dsc_t openweather_03n;
 extern const lv_img_dsc_t openweather_04d;
 extern const lv_img_dsc_t openweather_04n;
+extern const lv_img_dsc_t openweather_05d;
+extern const lv_img_dsc_t openweather_05n;
 extern const lv_img_dsc_t openweather_09d;
 extern const lv_img_dsc_t openweather_09n;
 extern const lv_img_dsc_t openweather_10d;

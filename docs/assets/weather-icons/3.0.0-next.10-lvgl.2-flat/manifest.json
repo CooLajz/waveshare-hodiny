@@ -45,6 +45,16 @@
       "size": 33617,
       "sha256": "e56a327d0c8b89b57e9c4aa6ec1159ffe9ec1b3ca113ff8ce5a2ae51ab8f4c78"
     },
+    "flat-overcast-day": {
+      "file": "flat-overcast-day.gif",
+      "size": 44056,
+      "sha256": "ca9acf777769dc0cf27acdfcddd57a6f3633e2a767fd990501a2a87da13c622e"
+    },
+    "flat-overcast-night": {
+      "file": "flat-overcast-night.gif",
+      "size": 40533,
+      "sha256": "7024198049d5110a52112eed95a2b3a1722837873f682faf488a0103e8fc0c02"
+    },
     "flat-partly-cloudy-day": {
       "file": "flat-partly-cloudy-day.gif",
       "size": 38323,

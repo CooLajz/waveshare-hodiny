@@ -191,8 +191,8 @@ animované ikony veřejného buildu se stahují z GitHub Pages a ukládají do
 lokální cache. V nočním režimu se vždy použije monochromatický styl, aby ikony
 respektovaly červené noční zobrazení.
 
-V `docs/assets/weather-icons/` je pouze 42 GIFů používaných firmwarovým
-allowlistem: 14 stavů pro každý ze stylů Monochrome, Flat a Line. Každý veřejný
+V `docs/assets/weather-icons/` je pouze 45 GIFů používaných firmwarovým
+allowlistem: 15 stavů pro každý ze stylů Monochrome, Flat a Line. Každý veřejný
 manifest obsahuje skutečnou velikost a SHA-256 souboru; kompletní pracovní
 mirror 1557 ikon v repozitáři není. Postup reprodukovatelného vytvoření je v
 [`METEOCONS_ASSET_PIPELINE.md`](METEOCONS_ASSET_PIPELINE.md).

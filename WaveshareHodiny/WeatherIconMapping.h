@@ -22,8 +22,10 @@ inline const char *weatherAnimationKeyForCode(int weatherCode, bool isDay) {
   if (weatherCode == 800) return isDay ? "clear-day" : "clear-night";
   if (weatherCode == 801)
     return isDay ? "mostly-clear-day" : "mostly-clear-night";
-  if (weatherCode == 802 || weatherCode == 803)
+  if (weatherCode == 802)
     return isDay ? "partly-cloudy-day" : "partly-cloudy-night";
+  if (weatherCode == 803)
+    return isDay ? "overcast-day" : "overcast-night";
   if (weatherCode == 804) return "overcast";
   return nullptr;
 }

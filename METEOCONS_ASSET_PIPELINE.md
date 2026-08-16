@@ -108,8 +108,8 @@ python3 tools/prepare_public_weather_assets.py \
   --package /tmp/meteocons-3.0.0-next.10-lvgl.2/package
 ```
 
-Skript odmítne chybějící nebo pozměněný GIF a publikuje právě 42 používaných
-souborů včetně per-style manifestů a upstream MIT licence.
+Skript odmítne chybějící nebo pozměněný GIF a publikuje právě 45 používaných
+GIFů spolu s per-style manifesty a upstream MIT licencí.
 
 ## 5. Přepojení firmwaru
 
