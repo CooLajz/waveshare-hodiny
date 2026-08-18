@@ -10,6 +10,7 @@
 #include "ClockDashboard.h"
 #include "ClockConfig.h"
 #include "ConfigurationWeb.h"
+#include "DayNightLogic.h"
 #include "DisplayDriver.h"
 #include "Display_ST7701.h"
 #include "FirmwareBuild.h"
@@ -417,6 +418,9 @@ void maintainNetworkTime() {
   if (now < VALID_TIME_THRESHOLD) return;
   if (!timeWasSynchronized) {
     timeWasSynchronized = true;
+    if (homeAssistantTaskHandle != nullptr) {
+      xTaskNotifyGive(homeAssistantTaskHandle);
+    }
 #if !FIRMWARE_RELEASE
     Serial.println("NTP synchronizovano");
 #endif
@@ -767,9 +771,10 @@ bool parseIso8601Timestamp(const String &value, time_t &timestamp) {
   return timestamp > 0;
 }
 
-void applySunState(const ClockConfig &config, const String &payload,
+bool applySunState(const ClockConfig &config, const String &payload,
                    const String &state, ClockValues &values) {
-  if (state != "above_horizon" && state != "below_horizon") return;
+  values.sunStateAvailable = false;
+  if (state != "above_horizon" && state != "below_horizon") return false;
   String sunriseText;
   String sunsetText;
   time_t sunrise = 0;
@@ -782,31 +787,29 @@ void applySunState(const ClockConfig &config, const String &payload,
       parseIso8601Timestamp(sunsetText, sunset)) {
     values.nextSunsetTimestamp = static_cast<uint64_t>(sunset);
   }
-  bool isDay = state == "above_horizon";
+  const bool horizonIsDay = state == "above_horizon";
   String lastChangedText;
   String nextTransitionText;
   time_t lastChanged = 0;
   time_t nextTransition = 0;
-  const int8_t completedOffset =
-      isDay ? config.sunriseOffsetMinutes : config.sunsetOffsetMinutes;
-  const int8_t upcomingOffset =
-      isDay ? config.sunsetOffsetMinutes : config.sunriseOffsetMinutes;
-  const char *nextTransitionKey = isDay ? "next_setting" : "next_rising";
+  const char *nextTransitionKey =
+      horizonIsDay ? "next_setting" : "next_rising";
   const time_t now = time(nullptr);
-  if (completedOffset > 0 &&
+  const bool lastChangedAvailable =
       extractJsonStringField(payload, "last_changed", lastChangedText) &&
-      parseIso8601Timestamp(lastChangedText, lastChanged) &&
-      now < lastChanged + completedOffset * 60) {
-    isDay = !isDay;
-  } else if (upcomingOffset < 0 &&
-             extractJsonStringField(payload, nextTransitionKey,
-                                    nextTransitionText) &&
-             parseIso8601Timestamp(nextTransitionText, nextTransition) &&
-             now >= nextTransition + upcomingOffset * 60) {
-    isDay = !isDay;
-  }
-  values.weatherIsDay = isDay;
+      parseIso8601Timestamp(lastChangedText, lastChanged);
+  const bool nextTransitionAvailable =
+      extractJsonStringField(payload, nextTransitionKey, nextTransitionText) &&
+      parseIso8601Timestamp(nextTransitionText, nextTransition);
+  const ClockSunDecision decision = clockEvaluateSunDecision(
+      horizonIsDay, config.sunriseOffsetMinutes, config.sunsetOffsetMinutes,
+      static_cast<int64_t>(now), lastChangedAvailable,
+      static_cast<int64_t>(lastChanged), nextTransitionAvailable,
+      static_cast<int64_t>(nextTransition));
+  if (decision == ClockSunDecision::Unavailable) return false;
+  values.weatherIsDay = decision == ClockSunDecision::Day;
   values.sunStateAvailable = true;
+  return true;
 }
 
 bool fetchHomeAssistantStates(NetworkClient &client, const ClockConfig &config,
@@ -821,6 +824,7 @@ bool fetchHomeAssistantStates(NetworkClient &client, const ClockConfig &config,
       config.sunEntityId,
       config.dayNightLightEntityId,
   };
+  values.sunStateAvailable = false;
   values.dayNightLightStateAvailable = false;
   uint8_t configuredCount = 0;
   uint8_t successfulCount = 0;
@@ -835,12 +839,13 @@ bool fetchHomeAssistantStates(NetworkClient &client, const ClockConfig &config,
     }
     String state;
     if (!extractJsonStringField(payload, "state", state)) continue;
-    ++successfulCount;
+    bool applied = false;
     if (index == 5) {
-      applySunState(config, payload, state, values);
+      applied = applySunState(config, payload, state, values);
     } else {
-      applyHomeAssistantState(config, entityIds[index], state, values);
+      applied = applyHomeAssistantState(config, entityIds[index], state, values);
     }
+    if (applied) ++successfulCount;
   }
   const bool apiResponded = successfulCount > 0;
   String detail = String(successfulCount) + '/' + configuredCount +
@@ -871,31 +876,46 @@ bool fetchHomeAssistantStates(const ClockConfig &config, ClockValues &values) {
   return fetchHomeAssistantStates(client, config, values);
 }
 
-bool fetchDayNightLightState(NetworkClient &client, const ClockConfig &config,
-                             ClockValues &values) {
+bool fetchDayNightStates(NetworkClient &client, const ClockConfig &config,
+                         ClockValues &values) {
+  values.sunStateAvailable = false;
   values.dayNightLightStateAvailable = false;
-  if (config.dayNightLightEntityId[0] == '\0') return false;
+  bool sunUpdated = false;
+  bool lightUpdated = false;
   String payload;
   int status = 0;
-  if (!requestHomeAssistantState(client, config,
-                                 config.dayNightLightEntityId, payload,
-                                 status)) {
-    return false;
+  if (requestHomeAssistantState(client, config, config.sunEntityId, payload,
+                                status)) {
+    String state;
+    if (extractJsonStringField(payload, "state", state)) {
+      sunUpdated = applySunState(config, payload, state, values);
+    }
   }
-  String state;
-  return extractJsonStringField(payload, "state", state) &&
-         applyHomeAssistantState(config, config.dayNightLightEntityId, state,
-                                 values);
+  payload = "";
+  if (requestHomeAssistantState(client, config,
+                                config.dayNightLightEntityId, payload,
+                                status)) {
+    String state;
+    if (extractJsonStringField(payload, "state", state)) {
+      lightUpdated = applyHomeAssistantState(
+          config, config.dayNightLightEntityId, state, values);
+    }
+  }
+  return sunUpdated || lightUpdated;
 }
 
-bool fetchDayNightLightState(const ClockConfig &config, ClockValues &values) {
+bool fetchDayNightStates(const ClockConfig &config, ClockValues &values) {
+  if (config.homeAssistantUrl[0] == '\0' ||
+      config.homeAssistantToken[0] == '\0') {
+    return false;
+  }
   if (String(config.homeAssistantUrl).startsWith("https://")) {
     WiFiClientSecure client;
     client.setInsecure();
-    return fetchDayNightLightState(client, config, values);
+    return fetchDayNightStates(client, config, values);
   }
   WiFiClient client;
-  return fetchDayNightLightState(client, config, values);
+  return fetchDayNightStates(client, config, values);
 }
 
 
@@ -981,7 +1001,9 @@ void homeAssistantTask(void *) {
       static ClockValues lightValues;
       lightConfig = runtimeConfigSnapshot();
       lightValues = lastAvailableValues;
-      fetchDayNightLightState(lightConfig, lightValues);
+      fetchDayNightStates(lightConfig, lightValues);
+      lastAvailableValues.weatherIsDay = lightValues.weatherIsDay;
+      lastAvailableValues.sunStateAvailable = lightValues.sunStateAvailable;
       lastAvailableValues.dayNightLightStateAvailable =
           lightValues.dayNightLightStateAvailable;
       lastAvailableValues.dayNightLightOn = lightValues.dayNightLightOn;

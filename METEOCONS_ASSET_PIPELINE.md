@@ -5,6 +5,11 @@ Tento projekt používá animované Meteocons jako GIFy o rozměru přesně
 používá. Veřejný release proto publikuje jen uzavřenou sadu uvedenou ve
 firmwarovém allowlistu, nikoli kompletní pracovní mirror knihovny.
 
+Statický fallback je samostatná vestavěná sada 15 ikon ve stylu Monochrome.
+Používá stejné podmínky a stejné mapování jako animace, ale vzniká výhradně
+z `svg-static/monochrome`. Animované SVG se nesmí použít jako zdroj statického
+snímku.
+
 ## Zásadní pravidla
 
 - Zdroj musí být oficiální balíček `@meteocons/svg` ve stejné verzi, jakou
@@ -14,6 +19,9 @@ firmwarovém allowlistu, nikoli kompletní pracovní mirror knihovny.
   mezisnímky 128 × 128 px a následně je nezmenšovat; druhé převzorkování
   poškozuje hrany animovaných SVG masek a na displeji vznikají průniky paprsků
   přes mrak.
+- Statické SVG se rovněž rasterizuje přímo do **84 × 84 px** v Chromiu.
+  Výsledné PNG se již nezmenšuje a generátor vestavěných LVGL dat odmítne
+  vstup s jinými rozměry.
 - Animace se vzorkuje v Chromiu přes SVG/SMIL. Pro každý z 90 snímků se SVG
   pozastaví a nastaví se přesný čas pomocí `SVGSVGElement.setCurrentTime()`.
 - Monochrome se převádí na bílou s alfa kanálem, aby jej firmware mohl
@@ -33,6 +41,8 @@ firmwarovém allowlistu, nikoli kompletní pracovní mirror knihovny.
 Používané projektové nástroje:
 
 - `tools/render_meteocons_svg.mjs` — přesné vykreslení SVG/SMIL,
+- `tools/render_meteocons_static.mjs` — přímé vykreslení `svg-static` do
+  84 × 84 px; odmítne vstup obsahující SVG animační elementy,
 - `tools/build_meteocons_assets.py` — vytvoření GIFů a úplného manifestu,
 - `tools/split_meteocons_asset_package.py` — rozdělení podle stylu,
 - `tools/generate_weather_animation_metadata.py` — metadata používaných ikon
@@ -53,6 +63,20 @@ npm view @meteocons/svg@<VERZE> dist.tarball version --json
 Stáhni tarball z hodnoty `dist.tarball`. Po rozbalení musí styly
 `monochrome`, `flat` a `line` obsahovat stejnou množinu SVG. Skript tuto
 podmínku kontroluje automaticky.
+
+Pro vestavěný Monochrome fallback použij přesně tyto versionované zdroje:
+
+```text
+https://cdn.meteocons.com/3.0.0-next.10/svg-static/monochrome/<ikona>.svg
+```
+
+Uzavřená sada ikon je `clear-day`, `clear-night`, `mostly-clear-day`,
+`mostly-clear-night`, `partly-cloudy-day`, `partly-cloudy-night`,
+`overcast-day`, `overcast-night`, `overcast`, `drizzle`, `rain`, `sleet`,
+`snow`, `mist` a `thunderstorms`. Každý soubor vykresli
+`tools/render_meteocons_static.mjs` přímo na 84 × 84 px a výsledný PNG předej
+`tools/generate_openweather_icons.swift`. Tento generátor nepřijímá SVG ani
+PNG jiné velikosti, aby nemohlo dojít k druhému zmenšení.
 
 ## 2. Povinný vizuální vzorek
 

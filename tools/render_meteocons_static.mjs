@@ -30,5 +30,17 @@ await page.locator('#icon').evaluate(
   },
   svg,
 );
+const animationElements = await page
+  .locator('#icon')
+  .evaluate((element) =>
+    element.querySelectorAll(
+      'animate, animateMotion, animateTransform, discard, mpath, set',
+    ).length,
+  );
+if (animationElements !== 0) {
+  throw new Error(
+    `Source contains ${animationElements} SVG animation elements; use svg-static instead`,
+  );
+}
 await page.locator('#icon').screenshot({ path: destination, omitBackground: true });
 await browser.close();

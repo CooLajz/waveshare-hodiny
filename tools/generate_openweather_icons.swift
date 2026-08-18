@@ -4,31 +4,26 @@ import AppKit
 import Foundation
 
 let iconFiles = [
-    ("01d", "clear-day"),
-    ("01n", "clear-night"),
-    ("02d", "mostly-clear-day"),
-    ("02n", "mostly-clear-night"),
-    ("03d", "partly-cloudy-day"),
-    ("03n", "partly-cloudy-night"),
-    ("04d", "overcast"),
-    ("04n", "overcast"),
-    ("05d", "overcast-day"),
-    ("05n", "overcast-night"),
-    ("09d", "overcast-day-rain"),
-    ("09n", "overcast-night-rain"),
-    ("10d", "partly-cloudy-day-rain"),
-    ("10n", "partly-cloudy-night-rain"),
-    ("11d", "thunderstorms-day"),
-    ("11n", "thunderstorms-night"),
-    ("13d", "partly-cloudy-day-snow"),
-    ("13n", "partly-cloudy-night-snow"),
-    ("50d", "fog-day"),
-    ("50n", "fog-night"),
+    "clear-day",
+    "clear-night",
+    "mostly-clear-day",
+    "mostly-clear-night",
+    "partly-cloudy-day",
+    "partly-cloudy-night",
+    "overcast-day",
+    "overcast-night",
+    "overcast",
+    "drizzle",
+    "rain",
+    "sleet",
+    "snow",
+    "mist",
+    "thunderstorms",
 ]
 let targetSize = 84
 
 guard CommandLine.arguments.count == 3 else {
-    fputs("Použití: generate_openweather_icons.swift <adresář Meteocons SVG> <výstupní C>\n", stderr)
+    fputs("Použití: generate_openweather_icons.swift <adresář Meteocons PNG 84x84> <výstupní C>\n", stderr)
     exit(2)
 }
 
@@ -100,16 +95,15 @@ var source = """
 
 """
 
-for (iconName, fileName) in iconFiles {
+for fileName in iconFiles {
     let pngURL = sourceDirectory.appendingPathComponent("\(fileName).png")
-    let svgURL = sourceDirectory.appendingPathComponent("\(fileName).svg")
-    let inputURL = FileManager.default.fileExists(atPath: pngURL.path) ? pngURL : svgURL
-    guard let image = NSImage(contentsOf: inputURL) else {
-        fputs("Chybí nebo nelze načíst \(inputURL.path)\n", stderr)
+    guard let image = NSImage(contentsOf: pngURL),
+          image.representations.contains(where: { $0.pixelsWide == targetSize && $0.pixelsHigh == targetSize }) else {
+        fputs("Chybí nebo nemá přesně 84 × 84 px: \(pngURL.path)\n", stderr)
         exit(1)
     }
     let bytes = lvglBytes(from: renderedRGBA(from: image))
-    let symbol = "openweather_\(iconName)"
+    let symbol = "meteocons_static_\(fileName.replacingOccurrences(of: "-", with: "_"))"
     source += """
     static const uint8_t \(symbol)_data[] = {
     \(formatted(bytes))

@@ -2,25 +2,20 @@
 
 #include "lvgl.h"
 
-extern const lv_img_dsc_t openweather_01d;
-extern const lv_img_dsc_t openweather_01n;
-extern const lv_img_dsc_t openweather_02d;
-extern const lv_img_dsc_t openweather_02n;
-extern const lv_img_dsc_t openweather_03d;
-extern const lv_img_dsc_t openweather_03n;
-extern const lv_img_dsc_t openweather_04d;
-extern const lv_img_dsc_t openweather_04n;
-extern const lv_img_dsc_t openweather_05d;
-extern const lv_img_dsc_t openweather_05n;
-extern const lv_img_dsc_t openweather_09d;
-extern const lv_img_dsc_t openweather_09n;
-extern const lv_img_dsc_t openweather_10d;
-extern const lv_img_dsc_t openweather_10n;
-extern const lv_img_dsc_t openweather_11d;
-extern const lv_img_dsc_t openweather_11n;
-extern const lv_img_dsc_t openweather_13d;
-extern const lv_img_dsc_t openweather_13n;
-extern const lv_img_dsc_t openweather_50d;
-extern const lv_img_dsc_t openweather_50n;
+extern const lv_img_dsc_t meteocons_static_clear_day;
+extern const lv_img_dsc_t meteocons_static_clear_night;
+extern const lv_img_dsc_t meteocons_static_mostly_clear_day;
+extern const lv_img_dsc_t meteocons_static_mostly_clear_night;
+extern const lv_img_dsc_t meteocons_static_partly_cloudy_day;
+extern const lv_img_dsc_t meteocons_static_partly_cloudy_night;
+extern const lv_img_dsc_t meteocons_static_overcast_day;
+extern const lv_img_dsc_t meteocons_static_overcast_night;
+extern const lv_img_dsc_t meteocons_static_overcast;
+extern const lv_img_dsc_t meteocons_static_drizzle;
+extern const lv_img_dsc_t meteocons_static_rain;
+extern const lv_img_dsc_t meteocons_static_sleet;
+extern const lv_img_dsc_t meteocons_static_snow;
+extern const lv_img_dsc_t meteocons_static_mist;
+extern const lv_img_dsc_t meteocons_static_thunderstorms;
 
 const lv_img_dsc_t *openWeatherIconForCode(int weatherCode, bool isDay);

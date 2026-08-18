@@ -34,6 +34,7 @@ mkdir -p "$OUTPUT_DIR"
 
 "$PYTHON_BIN" "$ROOT_DIR/tools/generate_secrets.py" "${GENERATE_SECRETS_ARGS[@]}"
 "$PYTHON_BIN" "$ROOT_DIR/tools/generate_release_version.py" "$VERSION"
+"$PYTHON_BIN" "$ROOT_DIR/tools/validate_weather_icon_parity.py"
 
 "$ARDUINO_CLI_BIN" \
   --config-file "$ARDUINO_CONFIG_FILE" \
