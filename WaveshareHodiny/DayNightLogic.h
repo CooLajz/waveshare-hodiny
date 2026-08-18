@@ -8,8 +8,13 @@ enum class ClockSunDecision : uint8_t {
   Night,
 };
 
+bool clockSelectCompletedTransitionTimestamp(
+    bool lastChangedAvailable, int64_t lastChangedTimestamp,
+    bool expectedTransitionAvailable, int64_t expectedTransitionTimestamp,
+    int64_t &selectedTransitionTimestamp);
+
 ClockSunDecision clockEvaluateSunDecision(
     bool horizonIsDay, int8_t sunriseOffsetMinutes,
     int8_t sunsetOffsetMinutes, int64_t nowTimestamp,
-    bool lastChangedAvailable, int64_t lastChangedTimestamp,
+    bool completedTransitionAvailable, int64_t completedTransitionTimestamp,
     bool nextTransitionAvailable, int64_t nextTransitionTimestamp);

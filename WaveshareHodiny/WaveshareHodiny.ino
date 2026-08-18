@@ -771,6 +771,17 @@ bool parseIso8601Timestamp(const String &value, time_t &timestamp) {
   return timestamp > 0;
 }
 
+bool previousLocalDayTimestamp(time_t nextTimestamp,
+                               time_t &previousTimestamp) {
+  if (nextTimestamp <= 0) return false;
+  struct tm localTransition;
+  if (localtime_r(&nextTimestamp, &localTransition) == nullptr) return false;
+  --localTransition.tm_mday;
+  localTransition.tm_isdst = -1;
+  previousTimestamp = mktime(&localTransition);
+  return previousTimestamp > 0 && previousTimestamp < nextTimestamp;
+}
+
 bool applySunState(const ClockConfig &config, const String &payload,
                    const String &state, ClockValues &values) {
   values.sunStateAvailable = false;
@@ -789,23 +800,29 @@ bool applySunState(const ClockConfig &config, const String &payload,
   }
   const bool horizonIsDay = state == "above_horizon";
   String lastChangedText;
-  String nextTransitionText;
   time_t lastChanged = 0;
-  time_t nextTransition = 0;
-  const char *nextTransitionKey =
-      horizonIsDay ? "next_setting" : "next_rising";
+  time_t expectedCompletedTransition = 0;
+  const time_t nextSameTransition = horizonIsDay ? sunrise : sunset;
+  const time_t nextUpcomingTransition = horizonIsDay ? sunset : sunrise;
   const time_t now = time(nullptr);
   const bool lastChangedAvailable =
       extractJsonStringField(payload, "last_changed", lastChangedText) &&
       parseIso8601Timestamp(lastChangedText, lastChanged);
-  const bool nextTransitionAvailable =
-      extractJsonStringField(payload, nextTransitionKey, nextTransitionText) &&
-      parseIso8601Timestamp(nextTransitionText, nextTransition);
+  const bool expectedCompletedTransitionAvailable = previousLocalDayTimestamp(
+      nextSameTransition, expectedCompletedTransition);
+  int64_t completedTransition = 0;
+  const bool completedTransitionAvailable =
+      clockSelectCompletedTransitionTimestamp(
+          lastChangedAvailable, static_cast<int64_t>(lastChanged),
+          expectedCompletedTransitionAvailable,
+          static_cast<int64_t>(expectedCompletedTransition),
+          completedTransition);
+  const bool nextTransitionAvailable = nextUpcomingTransition > 0;
   const ClockSunDecision decision = clockEvaluateSunDecision(
       horizonIsDay, config.sunriseOffsetMinutes, config.sunsetOffsetMinutes,
-      static_cast<int64_t>(now), lastChangedAvailable,
-      static_cast<int64_t>(lastChanged), nextTransitionAvailable,
-      static_cast<int64_t>(nextTransition));
+      static_cast<int64_t>(now), completedTransitionAvailable,
+      completedTransition, nextTransitionAvailable,
+      static_cast<int64_t>(nextUpcomingTransition));
   if (decision == ClockSunDecision::Unavailable) return false;
   values.weatherIsDay = decision == ClockSunDecision::Day;
   values.sunStateAvailable = true;
