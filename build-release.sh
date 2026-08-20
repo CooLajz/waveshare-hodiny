@@ -26,10 +26,6 @@ ARDUINO_CONFIG_FILE="${ARDUINO_CONFIG_FILE:-$ROOT_DIR/WaveshareHodiny/local/ardu
 if [[ ! -f "$ARDUINO_CONFIG_FILE" ]]; then
   ARDUINO_CONFIG_FILE="$ROOT_DIR/arduino-cli.yaml"
 fi
-ARDUINO_DATA_DIR=$("$ARDUINO_CLI_BIN" \
-  --config-file "$ARDUINO_CONFIG_FILE" config get directories.data)
-ESP32_CORE_VERSION="3.0.2"
-
 mkdir -p "$OUTPUT_DIR"
 
 "$PYTHON_BIN" "$ROOT_DIR/tools/generate_secrets.py" "${GENERATE_SECRETS_ARGS[@]}"
@@ -49,12 +45,20 @@ mkdir -p "$OUTPUT_DIR"
   | tee "$OUTPUT_DIR/build.log" \
   | awk '/^FQBN:|Sketch uses|Global variables|Creating esp32s3 image|Successfully created|merge_bin|error:|Error during build/ { print; fflush() }'
 
+ESP32_PLATFORM_DIR=$(sed -n "s/^Using core 'esp32' from platform in folder: //p" \
+  "$OUTPUT_DIR/build.log" | head -n 1)
+BOOT_APP0_BIN="$ESP32_PLATFORM_DIR/tools/partitions/boot_app0.bin"
+if [[ -z "$ESP32_PLATFORM_DIR" || ! -f "$BOOT_APP0_BIN" ]]; then
+  echo "Z verbose výstupu buildu se nepodařilo určit boot_app0.bin použité ESP32 platformy." >&2
+  exit 1
+fi
+
 PACKAGE_COMMAND=(
   "$PYTHON_BIN" "$ROOT_DIR/tools/prepare_release_package.py"
   "$VERSION"
   "$BUILD_PATH/WaveshareHodiny.ino.bootloader.bin"
   "$BUILD_PATH/WaveshareHodiny.ino.partitions.bin"
-  "$ARDUINO_DATA_DIR/packages/esp32/hardware/esp32/$ESP32_CORE_VERSION/tools/partitions/boot_app0.bin"
+  "$BOOT_APP0_BIN"
   "$BUILD_PATH/WaveshareHodiny.ino.bin"
   "$OUTPUT_DIR/WaveshareHodiny.ino.bin"
   "$OUTPUT_DIR/package"
