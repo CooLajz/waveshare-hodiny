@@ -552,7 +552,17 @@ void handleGetConfig() {
   result += '"';
   result += F(",\"timeColor\":\"");
   result += htmlColor(config.timeColor);
-  result += F("\",\"timeFont\":\"");
+  result += F("\",\"timeColonEffect\":\"");
+  if (config.timeColonEffect == CLOCK_TIME_COLON_FADE)
+    result += F("fade");
+  else if (config.timeColonEffect == CLOCK_TIME_COLON_BLINK)
+    result += F("blink");
+  else
+    result += F("steady");
+  result += '"';
+  result += F(",\"showLeadingHourZero\":");
+  result += config.showLeadingHourZero ? F("true") : F("false");
+  result += F(",\"timeFont\":\"");
   if (config.timeFont == CLOCK_TIME_FONT_LIBERATION_SANS)
     result += F("liberation");
   else if (config.timeFont == CLOCK_TIME_FONT_LCD)
@@ -731,6 +741,18 @@ void handleSaveConfig() {
   }
   config.automaticFirmwareUpdate =
       server.arg("automaticFirmwareUpdate") == "1";
+  const String timeColonEffect = server.arg("timeColonEffect");
+  if (timeColonEffect == "steady")
+    config.timeColonEffect = CLOCK_TIME_COLON_STEADY;
+  else if (timeColonEffect == "blink")
+    config.timeColonEffect = CLOCK_TIME_COLON_BLINK;
+  else if (timeColonEffect == "fade")
+    config.timeColonEffect = CLOCK_TIME_COLON_FADE;
+  else {
+    sendError(400, F("Efekt dvojtečky hodin není platný."));
+    return;
+  }
+  config.showLeadingHourZero = server.arg("showLeadingHourZero") == "1";
   const String timeFont = server.arg("timeFont");
   if (timeFont == "barlow")
     config.timeFont = CLOCK_TIME_FONT_BARLOW;
@@ -753,12 +775,16 @@ void handleSaveConfig() {
     sendError(400, F("Barva hodin, data nebo ikon není platná."));
     return;
   }
-  config.secondRingEnabled = server.arg("secondRingEnabled") == "1";
   const String secondEffect = server.arg("secondEffect");
-  if (secondEffect != "dots" && secondEffect != "line" &&
+  if (secondEffect != "off" && secondEffect != "dots" && secondEffect != "line" &&
       secondEffect != "comet") {
     sendError(400, F("Efekt zobrazení vteřin není platný."));
     return;
+  }
+  config.secondRingEnabled = secondEffect != "off";
+  if (secondEffect != "off" && server.hasArg("secondRingEnabled")) {
+    // Kompatibilita se starší webovou stránkou se samostatným přepínačem.
+    config.secondRingEnabled = server.arg("secondRingEnabled") == "1";
   }
   if (secondEffect == "comet")
     config.secondEffect = CLOCK_SECOND_EFFECT_COMET;

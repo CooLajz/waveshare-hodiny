@@ -29,6 +29,7 @@ constexpr unsigned long SECOND_FADE_DOT_MS = 200;
 constexpr unsigned long SECOND_FADE_START_SPAN_MS =
     SECOND_DOT_FADE_TOTAL_MS - SECOND_FADE_DOT_MS;
 constexpr unsigned long SECOND_FADE_FRAME_MS = 25;
+constexpr unsigned long TIME_COLON_FADE_FRAME_MS = 25;
 constexpr unsigned long SECOND_COMET_FRAME_MS = 16;
 constexpr float SECOND_COMET_TRAIL_SECONDS = 12.0f;
 constexpr unsigned long WEATHER_ANIMATION_REVEAL_DELAY_MS = 100;
@@ -150,6 +151,9 @@ char rightWeatherDecoderKey[48] = "";
 lv_img_dsc_t weatherAnimationSource = {};
 bool webActive = false;
 bool wifiConnected = false;
+uint8_t timeColonEffect = CLOCK_TIME_COLON_STEADY;
+char displayedTimeText[6] = "--:--";
+uint32_t lastRenderedTimeColonColor = UINT32_MAX;
 ClockValues currentValues;
 ClockMetricConfig metricAConfig;
 ClockMetricConfig metricBConfig;
@@ -735,6 +739,48 @@ void setTextColor(lv_obj_t *object, lv_color_t color) {
   lv_obj_set_style_text_color(object, color, 0);
 }
 
+void renderTimeColon(unsigned long now, bool force = false) {
+  if (timeLabel == nullptr) return;
+  if (timeColonEffect == CLOCK_TIME_COLON_STEADY) {
+    if (force || lastRenderedTimeColonColor != UINT32_MAX) {
+      lv_label_set_text(timeLabel, displayedTimeText);
+      alignCenter(timeLabel, 0, -105);
+      lastRenderedTimeColonColor = UINT32_MAX;
+    }
+    return;
+  }
+
+  const char *colon = strchr(displayedTimeText, ':');
+  if (colon == nullptr) return;
+  float intensity = (displayedSecond & 1U) == 0 ? 1.0f : 0.0f;
+  if (timeColonEffect == CLOCK_TIME_COLON_FADE) {
+    const float elapsedWithinSecond = constrain(
+        static_cast<float>(now - secondTickStartedAt) / 1000.0f, 0.0f, 1.0f);
+    const float phase = static_cast<float>(displayedSecond & 1U) +
+                        elapsedWithinSecond;
+    intensity = 0.5f - 0.5f * std::cos(phase * PI_VALUE);
+  }
+  const uint32_t baseColor = redNightVisualEnabled() ? 0xFF0000 : timeColor;
+  const uint8_t red = static_cast<uint8_t>(
+      std::round(((baseColor >> 16) & 0xFF) * intensity));
+  const uint8_t green = static_cast<uint8_t>(
+      std::round(((baseColor >> 8) & 0xFF) * intensity));
+  const uint8_t blue = static_cast<uint8_t>(
+      std::round((baseColor & 0xFF) * intensity));
+  const uint32_t renderedColor =
+      (static_cast<uint32_t>(red) << 16) |
+      (static_cast<uint32_t>(green) << 8) | blue;
+  if (!force && renderedColor == lastRenderedTimeColonColor) return;
+
+  char renderedText[24];
+  snprintf(renderedText, sizeof(renderedText), "%.*s#%02x%02x%02x :#%s",
+           static_cast<int>(colon - displayedTimeText), displayedTimeText, red,
+           green, blue, colon + 1);
+  lv_label_set_text(timeLabel, renderedText);
+  alignCenter(timeLabel, 0, -105);
+  lastRenderedTimeColonColor = renderedColor;
+}
+
 void applyDashboardColors() {
   const bool animationIsMonochrome =
       strncmp(weatherAnimationKey, "monochrome-", 11) == 0;
@@ -811,6 +857,7 @@ void applyDashboardColors() {
   }
   alignConnectionStatusIcons();
   renderSecondRing(millis());
+  renderTimeColon(millis(), true);
 }
 
 void toggleNightModeEvent(lv_event_t *event) {
@@ -1238,6 +1285,7 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
   lv_obj_t *content = dashboardContent;
 
   timeLabel = makeLabel(content, &lv_font_montserrat_48, COLOR_TEXT);
+  lv_label_set_recolor(timeLabel, true);
   lv_label_set_text(timeLabel, "--:--");
   alignCenter(timeLabel, 0, -105);
 
@@ -1440,6 +1488,11 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
     roomDecimals = 1;
   }
   automaticDayNightEnabled = config.automaticDayNight;
+  const bool timeColonModeChanged =
+      timeColonEffect != config.timeColonEffect;
+  timeColonEffect = constrain(
+      config.timeColonEffect, static_cast<uint8_t>(CLOCK_TIME_COLON_STEADY),
+      static_cast<uint8_t>(CLOCK_TIME_COLON_FADE));
   secondRingEnabled = config.secondRingEnabled;
   secondEffect = constrain(
       config.secondEffect, static_cast<uint8_t>(CLOCK_SECOND_EFFECT_DOTS),
@@ -1461,6 +1514,7 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
                        static_cast<uint8_t>(CLOCK_TIME_FONT_BARLOW),
                        static_cast<uint8_t>(CLOCK_TIME_FONT_DOTO));
   lv_obj_set_style_text_font(timeLabel, configuredTimeFont(), 0);
+  if (timeColonModeChanged) renderTimeColon(millis(), true);
   alignCenter(timeLabel, 0, -105);
   leftWeatherIconColor =
       (openMeteo ? config.openMeteoSlots[0].color
@@ -1712,14 +1766,20 @@ void clockDashboardLoop() {
   const bool smoothSecondEffectActive =
       secondRingEnabled && (secondEffect == CLOCK_SECOND_EFFECT_LINE ||
                             secondEffect == CLOCK_SECOND_EFFECT_COMET);
-  if (!secondFadeActive && !smoothSecondEffectActive) return;
+  const bool smoothTimeColonActive =
+      timeColonEffect == CLOCK_TIME_COLON_FADE;
+  if (!secondFadeActive && !smoothSecondEffectActive &&
+      !smoothTimeColonActive)
+    return;
   const unsigned long frameInterval =
       secondRingEnabled && secondEffect == CLOCK_SECOND_EFFECT_COMET
           ? SECOND_COMET_FRAME_MS
-          : SECOND_FADE_FRAME_MS;
+          : (smoothTimeColonActive ? TIME_COLON_FADE_FRAME_MS
+                               : SECOND_FADE_FRAME_MS);
   if (now - lastSecondFadeFrameAt < frameInterval) return;
   lastSecondFadeFrameAt = now;
-  renderSecondRing(now);
+  if (secondFadeActive || smoothSecondEffectActive) renderSecondRing(now);
+  if (smoothTimeColonActive) renderTimeColon(now);
 }
 
 void clockDashboardShowSettings() {
@@ -1858,17 +1918,20 @@ void clockDashboardSetSecond(uint8_t second) {
   const bool minuteRolledOver = displayedSecond >= 59 && second <= 1;
   displayedSecond = second;
   secondTickStartedAt = millis();
+  lastRenderedTimeColonColor = UINT32_MAX;
   if (minuteRolledOver) {
     secondFadeActive = true;
     secondFadeStartedAt = millis();
     lastSecondFadeFrameAt = 0;
   }
   renderSecondRing(millis());
+  if (timeColonEffect != CLOCK_TIME_COLON_STEADY)
+    renderTimeColon(millis(), true);
 }
 
 void clockDashboardSetTime(const char *timeText) {
   if (firmwareUpdateActive) return;
   lv_obj_set_style_text_font(timeLabel, configuredTimeFont(), 0);
-  lv_label_set_text(timeLabel, timeText);
-  alignCenter(timeLabel, 0, -105);
+  strlcpy(displayedTimeText, timeText, sizeof(displayedTimeText));
+  renderTimeColon(millis(), true);
 }

@@ -431,9 +431,11 @@ void maintainNetworkTime() {
   if (localTime.tm_sec == lastDisplayedSecond) return;
   lastDisplayedSecond = localTime.tm_sec;
 
+  const ClockConfig config = runtimeConfigSnapshot();
   char timeText[6];
-  snprintf(timeText, sizeof(timeText), "%02d:%02d", localTime.tm_hour,
-           localTime.tm_min);
+  snprintf(timeText, sizeof(timeText), config.showLeadingHourZero ? "%02d:%02d"
+                                                                  : "%d:%02d",
+           localTime.tm_hour, localTime.tm_min);
   clockDashboardSetTime(timeText);
   clockDashboardSetSecond(static_cast<uint8_t>(localTime.tm_sec));
 

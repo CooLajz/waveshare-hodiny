@@ -19,6 +19,8 @@ struct ConfigRecord {
 };
 
 constexpr uint32_t PUBLIC_1_4_SCHEMA_VERSION = 16;
+constexpr uint32_t OPEN_METEO_SCHEMA_VERSION = 17;
+constexpr uint32_t BOOLEAN_COLON_SCHEMA_VERSION = 18;
 constexpr size_t SCHEMA_16_PAYLOAD_SIZE = offsetof(ClockConfig, timeFont);
 constexpr size_t SCHEMA_16_CONFIG_SIZE =
     (SCHEMA_16_PAYLOAD_SIZE + alignof(ClockConfig) - 1) &
@@ -31,6 +33,18 @@ struct ConfigRecordV16 {
   uint32_t checksum;
 };
 
+constexpr size_t SCHEMA_17_PAYLOAD_SIZE =
+    offsetof(ClockConfig, timeColonEffect);
+constexpr size_t SCHEMA_17_CONFIG_SIZE =
+    (SCHEMA_17_PAYLOAD_SIZE + alignof(ClockConfig) - 1) &
+    ~(alignof(ClockConfig) - 1);
+
+struct ConfigRecordV17 {
+  uint32_t magic;
+  uint32_t schemaVersion;
+  uint8_t config[SCHEMA_17_CONFIG_SIZE];
+  uint32_t checksum;
+};
 
 void applyOpenMeteoDefaults(ClockConfig &config) {
   config.dataSource = CLOCK_DATA_SOURCE_OPEN_METEO;
@@ -52,6 +66,8 @@ void applyOpenMeteoDefaults(ClockConfig &config) {
 
 static_assert(SCHEMA_16_CONFIG_SIZE % alignof(ClockConfig) == 0,
               "Záznam veřejné verze 1.4.0 musí zahrnout koncový padding.");
+static_assert(SCHEMA_17_CONFIG_SIZE % alignof(ClockConfig) == 0,
+              "Záznam schema 17 musí zahrnout koncový padding.");
 
 uint32_t bytesChecksum(const uint8_t *bytes, size_t size) {
   uint32_t hash = 2166136261u;
@@ -81,6 +97,9 @@ void normalizeConfig(ClockConfig &config) {
   config.secondEffect = constrain(
       config.secondEffect, static_cast<uint8_t>(CLOCK_SECOND_EFFECT_DOTS),
       static_cast<uint8_t>(CLOCK_SECOND_EFFECT_COMET));
+  config.timeColonEffect = constrain(
+      config.timeColonEffect, static_cast<uint8_t>(CLOCK_TIME_COLON_STEADY),
+      static_cast<uint8_t>(CLOCK_TIME_COLON_FADE));
   config.weatherIconStyle = constrain(
       config.weatherIconStyle,
       static_cast<uint8_t>(CLOCK_WEATHER_ICON_STYLE_MONOCHROME),
@@ -196,6 +215,12 @@ bool clockConfigLoad(ClockConfig &config) {
       storedSize == sizeof(schema16Record) &&
       preferences.getBytes(CONFIG_KEY, &schema16Record,
                            sizeof(schema16Record)) == sizeof(schema16Record);
+  static ConfigRecordV17 schema17Record;
+  schema17Record = ConfigRecordV17{};
+  const bool schema17ReadComplete =
+      storedSize == sizeof(schema17Record) &&
+      preferences.getBytes(CONFIG_KEY, &schema17Record,
+                           sizeof(schema17Record)) == sizeof(schema17Record);
   preferences.end();
 
   const bool currentRecord =
@@ -204,6 +229,39 @@ bool clockConfigLoad(ClockConfig &config) {
       record.config.schemaVersion == CLOCK_CONFIG_SCHEMA_VERSION &&
       record.checksum == configChecksum(record.config);
   if (!currentRecord) {
+    const bool validSchema18Record =
+        readComplete && record.magic == CONFIG_MAGIC &&
+        record.schemaVersion == BOOLEAN_COLON_SCHEMA_VERSION &&
+        record.config.schemaVersion == BOOLEAN_COLON_SCHEMA_VERSION &&
+        record.checksum == configChecksum(record.config);
+    if (validSchema18Record) {
+      config = record.config;
+      config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+      config.timeColonEffect = config.timeColonEffect
+                                   ? CLOCK_TIME_COLON_FADE
+                                   : CLOCK_TIME_COLON_STEADY;
+      normalizeConfig(config);
+      return clockConfigSave(config);
+    }
+
+    uint32_t schema17EmbeddedVersion = 0;
+    memcpy(&schema17EmbeddedVersion, schema17Record.config,
+           sizeof(schema17EmbeddedVersion));
+    const bool validSchema17Record =
+        schema17ReadComplete && schema17Record.magic == CONFIG_MAGIC &&
+        schema17Record.schemaVersion == OPEN_METEO_SCHEMA_VERSION &&
+        schema17EmbeddedVersion == OPEN_METEO_SCHEMA_VERSION &&
+        schema17Record.checksum ==
+            bytesChecksum(schema17Record.config, sizeof(schema17Record.config));
+    if (validSchema17Record) {
+      memcpy(&config, schema17Record.config, SCHEMA_17_PAYLOAD_SIZE);
+      config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+      config.timeColonEffect = CLOCK_TIME_COLON_STEADY;
+      config.showLeadingHourZero = true;
+      normalizeConfig(config);
+      return clockConfigSave(config);
+    }
+
     uint32_t embeddedSchemaVersion = 0;
     memcpy(&embeddedSchemaVersion, schema16Record.config,
            sizeof(embeddedSchemaVersion));

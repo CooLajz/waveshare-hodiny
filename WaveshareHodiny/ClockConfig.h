@@ -12,8 +12,10 @@ constexpr size_t CLOCK_ROOM_ICON_LENGTH = 16;
 constexpr size_t CLOCK_OPEN_METEO_CITY_LENGTH = 64;
 constexpr size_t CLOCK_OPEN_METEO_VALUE_LENGTH = 32;
 constexpr size_t CLOCK_METRIC_COLOR_POINT_COUNT = 10;
-// Schema 16 is the public 1.4.0 baseline. Schema 17 adds Open-Meteo.
-constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 17;
+// Schema 16 is the public 1.4.0 baseline. Schema 17 adds Open-Meteo and
+// schema 18 adds the clock colon animation and leading-zero preferences;
+// schema 19 expands the colon animation from a switch to three modes.
+constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 19;
 
 enum ClockDataSource : uint8_t {
   CLOCK_DATA_SOURCE_OPEN_METEO = 0,
@@ -24,6 +26,12 @@ enum ClockSecondEffect : uint8_t {
   CLOCK_SECOND_EFFECT_DOTS = 0,
   CLOCK_SECOND_EFFECT_LINE = 1,
   CLOCK_SECOND_EFFECT_COMET = 2,
+};
+
+enum ClockTimeColonEffect : uint8_t {
+  CLOCK_TIME_COLON_STEADY = 0,
+  CLOCK_TIME_COLON_BLINK = 1,
+  CLOCK_TIME_COLON_FADE = 2,
 };
 
 enum ClockWeatherIconStyle : uint8_t {
@@ -116,6 +124,8 @@ struct ClockConfig {
   float openMeteoLatitude = 49.1951f;
   float openMeteoLongitude = 16.6068f;
   ClockOpenMeteoSlotConfig openMeteoSlots[4];
+  uint8_t timeColonEffect = CLOCK_TIME_COLON_STEADY;
+  bool showLeadingHourZero = true;
 };
 
 bool clockConfigBegin();
