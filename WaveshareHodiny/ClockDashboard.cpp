@@ -225,6 +225,20 @@ const char *roomIconGlyph(const char *icon) {
   return "\xEF\x88\xB6";  // U+F236
 }
 
+void normalizeMicroSign(char *text) {
+  if (text == nullptr) return;
+  for (size_t index = 0; text[index] != '\0'; ++index) {
+    if (static_cast<uint8_t>(text[index]) == 0xCE &&
+        static_cast<uint8_t>(text[index + 1]) == 0xBC) {
+      // Řecké malé mí U+03BC nahraď znakem mikro U+00B5, který obsahují
+      // dashboardové fonty. Oba znaky mají v UTF-8 stejnou délku.
+      text[index] = static_cast<char>(0xC2);
+      text[index + 1] = static_cast<char>(0xB5);
+      ++index;
+    }
+  }
+}
+
 void ensureWeatherAnimationDecoders() {
   if (!weatherAnimationAvailable || !animatedWeatherIconsEnabled ||
       weatherAnimationKey[0] == '\0') {
@@ -1452,6 +1466,8 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   nightVisualMode = config.nightVisualMode;
   metricAConfig = config.metricA;
   metricBConfig = config.metricB;
+  normalizeMicroSign(metricAConfig.suffix);
+  normalizeMicroSign(metricBConfig.suffix);
   metricAColorScale = config.metricAColorScale;
   metricBColorScale = config.metricBColorScale;
   const bool openMeteo = config.dataSource == CLOCK_DATA_SOURCE_OPEN_METEO;
