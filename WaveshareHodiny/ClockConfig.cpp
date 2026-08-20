@@ -21,6 +21,7 @@ struct ConfigRecord {
 constexpr uint32_t PUBLIC_1_4_SCHEMA_VERSION = 16;
 constexpr uint32_t OPEN_METEO_SCHEMA_VERSION = 17;
 constexpr uint32_t BOOLEAN_COLON_SCHEMA_VERSION = 18;
+constexpr uint32_t COLON_EFFECT_SCHEMA_VERSION = 19;
 constexpr size_t SCHEMA_16_PAYLOAD_SIZE = offsetof(ClockConfig, timeFont);
 constexpr size_t SCHEMA_16_CONFIG_SIZE =
     (SCHEMA_16_PAYLOAD_SIZE + alignof(ClockConfig) - 1) &
@@ -46,6 +47,18 @@ struct ConfigRecordV17 {
   uint32_t checksum;
 };
 
+constexpr size_t SCHEMA_19_PAYLOAD_SIZE = offsetof(ClockConfig, dateFormat);
+constexpr size_t SCHEMA_19_CONFIG_SIZE =
+    (SCHEMA_19_PAYLOAD_SIZE + alignof(ClockConfig) - 1) &
+    ~(alignof(ClockConfig) - 1);
+
+struct ConfigRecordV19 {
+  uint32_t magic;
+  uint32_t schemaVersion;
+  uint8_t config[SCHEMA_19_CONFIG_SIZE];
+  uint32_t checksum;
+};
+
 void applyOpenMeteoDefaults(ClockConfig &config) {
   config.dataSource = CLOCK_DATA_SOURCE_OPEN_METEO;
   clockConfigCopy(config.openMeteoCity, sizeof(config.openMeteoCity), "Brno");
@@ -68,6 +81,8 @@ static_assert(SCHEMA_16_CONFIG_SIZE % alignof(ClockConfig) == 0,
               "Záznam veřejné verze 1.4.0 musí zahrnout koncový padding.");
 static_assert(SCHEMA_17_CONFIG_SIZE % alignof(ClockConfig) == 0,
               "Záznam schema 17 musí zahrnout koncový padding.");
+static_assert(SCHEMA_19_CONFIG_SIZE % alignof(ClockConfig) == 0,
+              "Záznam schema 19 musí zahrnout koncový padding.");
 
 uint32_t bytesChecksum(const uint8_t *bytes, size_t size) {
   uint32_t hash = 2166136261u;
@@ -110,6 +125,10 @@ void normalizeConfig(ClockConfig &config) {
   config.timeFont = constrain(
       config.timeFont, static_cast<uint8_t>(CLOCK_TIME_FONT_BARLOW),
       static_cast<uint8_t>(CLOCK_TIME_FONT_DOTO));
+  config.dateFormat = constrain(
+      config.dateFormat,
+      static_cast<uint8_t>(CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH),
+      static_cast<uint8_t>(CLOCK_DATE_FORMAT_HIDDEN));
   config.dataSource = constrain(
       config.dataSource, static_cast<uint8_t>(CLOCK_DATA_SOURCE_OPEN_METEO),
       static_cast<uint8_t>(CLOCK_DATA_SOURCE_HOME_ASSISTANT));
@@ -221,6 +240,12 @@ bool clockConfigLoad(ClockConfig &config) {
       storedSize == sizeof(schema17Record) &&
       preferences.getBytes(CONFIG_KEY, &schema17Record,
                            sizeof(schema17Record)) == sizeof(schema17Record);
+  static ConfigRecordV19 schema19Record;
+  schema19Record = ConfigRecordV19{};
+  const bool schema19ReadComplete =
+      storedSize == sizeof(schema19Record) &&
+      preferences.getBytes(CONFIG_KEY, &schema19Record,
+                           sizeof(schema19Record)) == sizeof(schema19Record);
   preferences.end();
 
   const bool currentRecord =
@@ -229,17 +254,36 @@ bool clockConfigLoad(ClockConfig &config) {
       record.config.schemaVersion == CLOCK_CONFIG_SCHEMA_VERSION &&
       record.checksum == configChecksum(record.config);
   if (!currentRecord) {
+    uint32_t schema19EmbeddedVersion = 0;
+    memcpy(&schema19EmbeddedVersion, schema19Record.config,
+           sizeof(schema19EmbeddedVersion));
+    const bool validSchema19Record =
+        schema19ReadComplete && schema19Record.magic == CONFIG_MAGIC &&
+        schema19Record.schemaVersion == COLON_EFFECT_SCHEMA_VERSION &&
+        schema19EmbeddedVersion == COLON_EFFECT_SCHEMA_VERSION &&
+        schema19Record.checksum ==
+            bytesChecksum(schema19Record.config, sizeof(schema19Record.config));
+    if (validSchema19Record) {
+      memcpy(&config, schema19Record.config, SCHEMA_19_PAYLOAD_SIZE);
+      config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+      config.dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;
+      normalizeConfig(config);
+      return clockConfigSave(config);
+    }
+
     const bool validSchema18Record =
-        readComplete && record.magic == CONFIG_MAGIC &&
-        record.schemaVersion == BOOLEAN_COLON_SCHEMA_VERSION &&
-        record.config.schemaVersion == BOOLEAN_COLON_SCHEMA_VERSION &&
-        record.checksum == configChecksum(record.config);
+        schema19ReadComplete && schema19Record.magic == CONFIG_MAGIC &&
+        schema19Record.schemaVersion == BOOLEAN_COLON_SCHEMA_VERSION &&
+        schema19EmbeddedVersion == BOOLEAN_COLON_SCHEMA_VERSION &&
+        schema19Record.checksum ==
+            bytesChecksum(schema19Record.config, sizeof(schema19Record.config));
     if (validSchema18Record) {
-      config = record.config;
+      memcpy(&config, schema19Record.config, SCHEMA_19_PAYLOAD_SIZE);
       config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
       config.timeColonEffect = config.timeColonEffect
                                    ? CLOCK_TIME_COLON_FADE
                                    : CLOCK_TIME_COLON_STEADY;
+      config.dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;
       normalizeConfig(config);
       return clockConfigSave(config);
     }
@@ -258,6 +302,7 @@ bool clockConfigLoad(ClockConfig &config) {
       config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
       config.timeColonEffect = CLOCK_TIME_COLON_STEADY;
       config.showLeadingHourZero = true;
+      config.dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;
       normalizeConfig(config);
       return clockConfigSave(config);
     }

@@ -439,10 +439,31 @@ void maintainNetworkTime() {
   clockDashboardSetTime(timeText);
   clockDashboardSetSecond(static_cast<uint8_t>(localTime.tm_sec));
 
-  char dateText[48];
-  snprintf(dateText, sizeof(dateText), "%s %d. %s",
-           CZECH_WEEKDAYS[localTime.tm_wday], localTime.tm_mday,
-           CZECH_MONTHS[localTime.tm_mon]);
+  char dateText[64];
+  switch (config.dateFormat) {
+    case CLOCK_DATE_FORMAT_HIDDEN:
+      dateText[0] = '\0';
+      break;
+    case CLOCK_DATE_FORMAT_NUMERIC:
+      snprintf(dateText, sizeof(dateText), "%02d.%02d.%04d", localTime.tm_mday,
+               localTime.tm_mon + 1, localTime.tm_year + 1900);
+      break;
+    case CLOCK_DATE_FORMAT_DAY_MONTH_YEAR:
+      snprintf(dateText, sizeof(dateText), "%d. %s %d", localTime.tm_mday,
+               CZECH_MONTHS[localTime.tm_mon], localTime.tm_year + 1900);
+      break;
+    case CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH_YEAR:
+      snprintf(dateText, sizeof(dateText), "%s, %d. %s %d",
+               CZECH_WEEKDAYS[localTime.tm_wday], localTime.tm_mday,
+               CZECH_MONTHS[localTime.tm_mon], localTime.tm_year + 1900);
+      break;
+    case CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH:
+    default:
+      snprintf(dateText, sizeof(dateText), "%s, %d. %s",
+               CZECH_WEEKDAYS[localTime.tm_wday], localTime.tm_mday,
+               CZECH_MONTHS[localTime.tm_mon]);
+      break;
+  }
   clockDashboardSetDate(dateText);
 }
 

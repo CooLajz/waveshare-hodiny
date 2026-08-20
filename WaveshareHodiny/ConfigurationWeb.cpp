@@ -6,6 +6,8 @@
 #include <WiFiClientSecure.h>
 #include <Preferences.h>
 #include <esp_system.h>
+#include <mbedtls/md.h>
+#include <mbedtls/pkcs5.h>
 
 #include <cmath>
 #include <cctype>
@@ -16,6 +18,7 @@
 #include "FirmwareHubCa.h"
 #include "FirmwareUpdateService.h"
 #include "HomeAssistantConnectionPolicy.h"
+#include "LoginPage.h"
 #include "NetworkDiagnostics.h"
 
 namespace {
@@ -39,6 +42,204 @@ constexpr char CONTROL_PREFS_NAMESPACE[] = "control-api";
 constexpr char CONTROL_PREFS_KEY[] = "secret";
 constexpr size_t CONTROL_SECRET_LENGTH = 32;
 String controlSecret;
+constexpr char WEB_AUTH_PREFS_NAMESPACE[] = "web-auth";
+constexpr char WEB_AUTH_PREFS_KEY[] = "credential";
+constexpr uint32_t WEB_PASSWORD_MAGIC = 0x57485057;
+constexpr size_t WEB_PASSWORD_SALT_SIZE = 16;
+constexpr size_t WEB_PASSWORD_HASH_SIZE = 32;
+constexpr unsigned int WEB_PASSWORD_ITERATIONS = 50000;
+constexpr size_t WEB_SESSION_COUNT = 4;
+constexpr unsigned long WEB_SESSION_LIFETIME_MS = 8UL * 60UL * 60UL * 1000UL;
+constexpr char WEB_SESSION_COOKIE[] = "wh_session";
+
+struct WebPasswordRecord {
+  uint32_t magic = 0;
+  uint8_t salt[WEB_PASSWORD_SALT_SIZE] = {};
+  uint8_t hash[WEB_PASSWORD_HASH_SIZE] = {};
+  uint32_t checksum = 0;
+};
+
+struct WebSession {
+  String token;
+  unsigned long expiresAt = 0;
+};
+
+WebPasswordRecord webPasswordRecord;
+bool webPasswordEnabled = false;
+WebSession webSessions[WEB_SESSION_COUNT];
+size_t nextWebSessionSlot = 0;
+uint8_t failedLoginAttempts = 0;
+unsigned long loginBlockedUntil = 0;
+
+uint32_t bytesChecksum(const uint8_t *bytes, size_t size) {
+  uint32_t hash = 2166136261u;
+  for (size_t index = 0; index < size; ++index) {
+    hash ^= bytes[index];
+    hash *= 16777619u;
+  }
+  return hash;
+}
+
+uint32_t webPasswordChecksum(const WebPasswordRecord &record) {
+  return bytesChecksum(reinterpret_cast<const uint8_t *>(&record),
+                       offsetof(WebPasswordRecord, checksum));
+}
+
+bool constantTimeEqual(const uint8_t *left, const uint8_t *right,
+                       size_t length) {
+  uint8_t difference = 0;
+  for (size_t index = 0; index < length; ++index)
+    difference |= left[index] ^ right[index];
+  return difference == 0;
+}
+
+bool validWebPasswordLength(const String &password) {
+  size_t characterCount = 0;
+  for (size_t index = 0; index < password.length(); ++index) {
+    if ((static_cast<uint8_t>(password[index]) & 0xC0) != 0x80)
+      ++characterCount;
+  }
+  return characterCount >= 6 && characterCount <= 20;
+}
+
+bool deriveWebPassword(const String &password, const uint8_t *salt,
+                       uint8_t *output) {
+  return mbedtls_pkcs5_pbkdf2_hmac_ext(
+             MBEDTLS_MD_SHA256,
+             reinterpret_cast<const unsigned char *>(password.c_str()),
+             password.length(), salt, WEB_PASSWORD_SALT_SIZE,
+             WEB_PASSWORD_ITERATIONS, WEB_PASSWORD_HASH_SIZE, output) == 0;
+}
+
+void initializeWebPassword() {
+  webPasswordRecord = WebPasswordRecord{};
+  webPasswordEnabled = false;
+  Preferences preferences;
+  if (!preferences.begin(WEB_AUTH_PREFS_NAMESPACE, true, "clockcfg")) return;
+  const size_t storedSize = preferences.getBytesLength(WEB_AUTH_PREFS_KEY);
+  const bool loaded =
+      storedSize == sizeof(webPasswordRecord) &&
+      preferences.getBytes(WEB_AUTH_PREFS_KEY, &webPasswordRecord,
+                           sizeof(webPasswordRecord)) == sizeof(webPasswordRecord);
+  preferences.end();
+  webPasswordEnabled =
+      loaded && webPasswordRecord.magic == WEB_PASSWORD_MAGIC &&
+      webPasswordRecord.checksum == webPasswordChecksum(webPasswordRecord);
+  if (!webPasswordEnabled) webPasswordRecord = WebPasswordRecord{};
+}
+
+bool persistWebPassword(const String &password) {
+  WebPasswordRecord candidate;
+  candidate.magic = WEB_PASSWORD_MAGIC;
+  esp_fill_random(candidate.salt, sizeof(candidate.salt));
+  if (!deriveWebPassword(password, candidate.salt, candidate.hash)) return false;
+  candidate.checksum = webPasswordChecksum(candidate);
+  Preferences preferences;
+  if (!preferences.begin(WEB_AUTH_PREFS_NAMESPACE, false, "clockcfg"))
+    return false;
+  const bool saved =
+      preferences.putBytes(WEB_AUTH_PREFS_KEY, &candidate, sizeof(candidate)) ==
+      sizeof(candidate);
+  preferences.end();
+  if (!saved) return false;
+  webPasswordRecord = candidate;
+  webPasswordEnabled = true;
+  return true;
+}
+
+bool eraseWebPassword() {
+  Preferences preferences;
+  if (!preferences.begin(WEB_AUTH_PREFS_NAMESPACE, false, "clockcfg"))
+    return false;
+  const bool removed = preferences.remove(WEB_AUTH_PREFS_KEY);
+  preferences.end();
+  if (!removed) return false;
+  webPasswordRecord = WebPasswordRecord{};
+  webPasswordEnabled = false;
+  return true;
+}
+
+bool webPasswordMatches(const String &password) {
+  if (!webPasswordEnabled || !validWebPasswordLength(password)) return false;
+  uint8_t candidate[WEB_PASSWORD_HASH_SIZE];
+  if (!deriveWebPassword(password, webPasswordRecord.salt, candidate))
+    return false;
+  return constantTimeEqual(candidate, webPasswordRecord.hash,
+                           sizeof(candidate));
+}
+
+String randomHex(size_t byteCount) {
+  static constexpr char HEX_DIGITS[] = "0123456789abcdef";
+  String result;
+  result.reserve(byteCount * 2);
+  for (size_t index = 0; index < byteCount; ++index) {
+    const uint8_t value = static_cast<uint8_t>(esp_random());
+    result += HEX_DIGITS[value >> 4];
+    result += HEX_DIGITS[value & 0x0F];
+  }
+  return result;
+}
+
+bool deadlinePending(unsigned long deadline) {
+  return deadline != 0 && static_cast<long>(deadline - millis()) > 0;
+}
+
+String requestCookie(const char *name) {
+  const String cookies = server.header("Cookie");
+  const String prefix = String(name) + '=';
+  int start = 0;
+  while (start < static_cast<int>(cookies.length())) {
+    while (start < static_cast<int>(cookies.length()) &&
+           (cookies[start] == ' ' || cookies[start] == ';')) ++start;
+    const int end = cookies.indexOf(';', start);
+    const int itemEnd = end < 0 ? cookies.length() : end;
+    if (cookies.substring(start, start + prefix.length()) == prefix)
+      return cookies.substring(start + prefix.length(), itemEnd);
+    if (end < 0) break;
+    start = end + 1;
+  }
+  return String();
+}
+
+bool webSessionAuthenticated() {
+  if (!webPasswordEnabled) return true;
+  const String token = requestCookie(WEB_SESSION_COOKIE);
+  if (token.length() != 64) return false;
+  for (WebSession &session : webSessions) {
+    if (!deadlinePending(session.expiresAt)) {
+      session.token = "";
+      session.expiresAt = 0;
+      continue;
+    }
+    if (session.token.length() == token.length() &&
+        constantTimeEqual(
+            reinterpret_cast<const uint8_t *>(session.token.c_str()),
+            reinterpret_cast<const uint8_t *>(token.c_str()), token.length()))
+      return true;
+  }
+  return false;
+}
+
+void clearWebSessions() {
+  for (WebSession &session : webSessions) session = WebSession{};
+  nextWebSessionSlot = 0;
+}
+
+void issueWebSession() {
+  WebSession &session = webSessions[nextWebSessionSlot];
+  nextWebSessionSlot = (nextWebSessionSlot + 1) % WEB_SESSION_COUNT;
+  session.token = randomHex(32);
+  session.expiresAt = millis() + WEB_SESSION_LIFETIME_MS;
+  String cookie = String(WEB_SESSION_COOKIE) + '=' + session.token +
+                  F("; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800");
+  server.sendHeader(F("Set-Cookie"), cookie);
+}
+
+void expireWebSessionCookie() {
+  server.sendHeader(F("Set-Cookie"),
+                    String(WEB_SESSION_COOKIE) +
+                        F("=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"));
+}
 
 bool validControlSecret(const String &value) {
   if (value.length() != CONTROL_SECRET_LENGTH) return false;
@@ -444,19 +645,109 @@ void handleRoot() {
   addSecurityHeaders();
   if (webActive) {
     extendWebAvailability();
-    server.send_P(200, PSTR("text/html; charset=utf-8"), CONFIGURATION_PAGE);
+    server.send_P(200, PSTR("text/html; charset=utf-8"),
+                  webPasswordEnabled && !webSessionAuthenticated()
+                      ? LOGIN_PAGE
+                      : CONFIGURATION_PAGE);
   } else {
     server.send_P(200, PSTR("text/html; charset=utf-8"), DIAGNOSTIC_PAGE);
   }
 }
 
+bool requestOriginAllowed() {
+  const String origin = server.header("Origin");
+  if (origin.isEmpty()) return true;
+  return origin == String(F("http://")) + server.hostHeader();
+}
+
 bool requireConfigurationAccess() {
-  if (webActive) {
-    extendWebAvailability();
-    return true;
+  if (!webActive) {
+    sendError(423, F("Konfigurace je zamčená. Aktivuj ji na displeji hodin."));
+    return false;
   }
-  sendError(423, F("Konfigurace je zamčená. Aktivuj ji na displeji hodin."));
-  return false;
+  if (server.method() != HTTP_GET && !requestOriginAllowed()) {
+    sendError(403, F("Požadavek z cizí webové stránky byl odmítnut."));
+    return false;
+  }
+  if (webPasswordEnabled && !webSessionAuthenticated()) {
+    sendError(401, F("Nastavení je chráněné heslem. Přihlas se znovu."));
+    return false;
+  }
+  extendWebAvailability();
+  return true;
+}
+
+void handleWebLogin() {
+  if (!webActive) {
+    sendError(423, F("Konfigurace je zamčená. Aktivuj ji na displeji hodin."));
+    return;
+  }
+  if (!requestOriginAllowed()) {
+    sendError(403, F("Požadavek z cizí webové stránky byl odmítnut."));
+    return;
+  }
+  extendWebAvailability();
+  if (!webPasswordEnabled) {
+    sendError(409, F("Ochrana webového nastavení není zapnutá."));
+    return;
+  }
+  if (deadlinePending(loginBlockedUntil)) {
+    sendError(429, F("Příliš mnoho pokusů. Zkus to za chvíli znovu."));
+    return;
+  }
+  if (!webPasswordMatches(server.arg("password"))) {
+    if (failedLoginAttempts < 8) ++failedLoginAttempts;
+    const uint8_t exponent = failedLoginAttempts > 5
+                                 ? 4
+                                 : failedLoginAttempts - 1;
+    loginBlockedUntil = millis() + (1000UL << exponent);
+    sendError(401, F("Heslo není správné."));
+    return;
+  }
+  failedLoginAttempts = 0;
+  loginBlockedUntil = 0;
+  issueWebSession();
+  sendJson(200, F("{\"ok\":true}"));
+}
+
+void handleWebPassword() {
+  const String action = server.arg("action");
+  if (action == "clear") {
+    if (!webPasswordEnabled) {
+      sendError(409, F("Ochrana heslem už je vypnutá."));
+      return;
+    }
+    if (!eraseWebPassword()) {
+      sendError(500, F("Heslo se nepodařilo vymazat z paměti."));
+      return;
+    }
+    clearWebSessions();
+    expireWebSessionCookie();
+    sendJson(200, F("{\"ok\":true,\"configured\":false}"));
+    return;
+  }
+
+  const bool expectedAction =
+      (!webPasswordEnabled && action == "set") ||
+      (webPasswordEnabled && action == "change");
+  if (!expectedAction) {
+    sendError(409, webPasswordEnabled
+                       ? F("Heslo už je nastavené. Použij Změnit.")
+                       : F("Heslo zatím není nastavené. Použij Nastavit."));
+    return;
+  }
+  const String password = server.arg("password");
+  if (!validWebPasswordLength(password)) {
+    sendError(400, F("Heslo musí mít 6 až 20 znaků."));
+    return;
+  }
+  if (!persistWebPassword(password)) {
+    sendError(500, F("Heslo se nepodařilo uložit do paměti."));
+    return;
+  }
+  clearWebSessions();
+  issueWebSession();
+  sendJson(200, F("{\"ok\":true,\"configured\":true}"));
 }
 
 void handleGetConfig() {
@@ -468,6 +759,8 @@ void handleGetConfig() {
   result += jsonEscape(config.homeAssistantUrl);
   result += F("\",\"tokenConfigured\":");
   result += config.homeAssistantToken[0] == '\0' ? F("false") : F("true");
+  result += F(",\"webPasswordConfigured\":");
+  result += webPasswordEnabled ? F("true") : F("false");
   result += F(",\"dataSource\":\"");
   result += config.dataSource == CLOCK_DATA_SOURCE_HOME_ASSISTANT
                 ? F("home-assistant")
@@ -571,6 +864,17 @@ void handleGetConfig() {
     result += F("doto");
   else
     result += F("barlow");
+  result += F("\",\"dateFormat\":\"");
+  if (config.dateFormat == CLOCK_DATE_FORMAT_NUMERIC)
+    result += F("numeric");
+  else if (config.dateFormat == CLOCK_DATE_FORMAT_DAY_MONTH_YEAR)
+    result += F("day-month-year");
+  else if (config.dateFormat == CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH_YEAR)
+    result += F("weekday-day-month-year");
+  else if (config.dateFormat == CLOCK_DATE_FORMAT_HIDDEN)
+    result += F("hidden");
+  else
+    result += F("weekday-day-month");
   result += F("\",\"dateColor\":\"");
   result += htmlColor(config.dateColor);
   result += '"';
@@ -764,6 +1068,21 @@ void handleSaveConfig() {
     config.timeFont = CLOCK_TIME_FONT_DOTO;
   else {
     sendError(400, F("Font hodin není platný."));
+    return;
+  }
+  const String dateFormat = server.arg("dateFormat");
+  if (dateFormat == "weekday-day-month")
+    config.dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;
+  else if (dateFormat == "numeric")
+    config.dateFormat = CLOCK_DATE_FORMAT_NUMERIC;
+  else if (dateFormat == "day-month-year")
+    config.dateFormat = CLOCK_DATE_FORMAT_DAY_MONTH_YEAR;
+  else if (dateFormat == "weekday-day-month-year")
+    config.dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH_YEAR;
+  else if (dateFormat == "hidden")
+    config.dateFormat = CLOCK_DATE_FORMAT_HIDDEN;
+  else {
+    sendError(400, F("Formát data není platný."));
     return;
   }
   if (!parseHtmlColor(server.arg("timeColor"), config.timeColor) ||
@@ -1137,6 +1456,7 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
   currentDisplayPowerCallback = displayPowerCallback;
   currentDisplayPowerStatusCallback = displayPowerStatusCallback;
   initializeControlSecret();
+  initializeWebPassword();
   Preferences preferences;
   if (preferences.begin(WEB_PREFS_NAMESPACE, true, "clockcfg")) {
     selectedWebMode = static_cast<ConfigurationWebMode>(constrain(
@@ -1145,7 +1465,13 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
         static_cast<uint8_t>(CONFIGURATION_WEB_DISABLED)));
     preferences.end();
   }
+  const char *collectedHeaders[] = {"Cookie", "Origin"};
+  server.collectHeaders(collectedHeaders, 2);
   server.on("/", HTTP_GET, handleRoot);
+  server.on("/api/auth/login", HTTP_POST, handleWebLogin);
+  server.on("/api/web-password", HTTP_POST, []() {
+    if (requireConfigurationAccess()) handleWebPassword();
+  });
   server.on("/api/config", HTTP_GET, []() {
     if (requireConfigurationAccess()) handleGetConfig();
   });

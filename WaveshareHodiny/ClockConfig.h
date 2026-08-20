@@ -14,8 +14,9 @@ constexpr size_t CLOCK_OPEN_METEO_VALUE_LENGTH = 32;
 constexpr size_t CLOCK_METRIC_COLOR_POINT_COUNT = 10;
 // Schema 16 is the public 1.4.0 baseline. Schema 17 adds Open-Meteo and
 // schema 18 adds the clock colon animation and leading-zero preferences;
-// schema 19 expands the colon animation from a switch to three modes.
-constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 19;
+// schema 19 expands the colon animation from a switch to three modes and
+// schema 20 adds the selectable date format.
+constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 20;
 
 enum ClockDataSource : uint8_t {
   CLOCK_DATA_SOURCE_OPEN_METEO = 0,
@@ -50,6 +51,14 @@ enum ClockTimeFont : uint8_t {
   CLOCK_TIME_FONT_LIBERATION_SANS = 1,
   CLOCK_TIME_FONT_LCD = 2,
   CLOCK_TIME_FONT_DOTO = 3,
+};
+
+enum ClockDateFormat : uint8_t {
+  CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH = 0,
+  CLOCK_DATE_FORMAT_NUMERIC = 1,
+  CLOCK_DATE_FORMAT_DAY_MONTH_YEAR = 2,
+  CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH_YEAR = 3,
+  CLOCK_DATE_FORMAT_HIDDEN = 4,
 };
 
 struct ClockMetricConfig {
@@ -126,6 +135,7 @@ struct ClockConfig {
   ClockOpenMeteoSlotConfig openMeteoSlots[4];
   uint8_t timeColonEffect = CLOCK_TIME_COLON_STEADY;
   bool showLeadingHourZero = true;
+  uint8_t dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;
 };
 
 bool clockConfigBegin();
