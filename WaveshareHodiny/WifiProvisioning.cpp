@@ -55,9 +55,15 @@ bool saveStoredCredentials(const String &ssid, const String &password) {
 #endif
 }
 
+void beginWifiConnection(const String &ssid, const String &password) {
+  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+  WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+  WiFi.begin(ssid.c_str(), password.c_str());
+}
+
 void connectStoredCredentials() {
   if (storedSsid.isEmpty()) return;
-  WiFi.begin(storedSsid.c_str(), storedPassword.c_str());
+  beginWifiConnection(storedSsid, storedPassword);
   lastWifiAttempt = millis();
 }
 }  // namespace
@@ -121,7 +127,7 @@ void wifiProvisioningStart(const String &ssid, const String &password) {
   provisioningActive = true;
   provisioningStartedAt = millis();
   WiFi.disconnect();
-  WiFi.begin(pendingSsid.c_str(), pendingPassword.c_str());
+  beginWifiConnection(pendingSsid, pendingPassword);
   lastWifiAttempt = millis();
 #else
   (void)ssid;
