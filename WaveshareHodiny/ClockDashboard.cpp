@@ -66,10 +66,8 @@ lv_obj_t *nightBrightnessSlider = nullptr;
 lv_obj_t *dayBrightnessValueLabel = nullptr;
 lv_obj_t *nightBrightnessValueLabel = nullptr;
 lv_obj_t *automaticDayNightSwitch = nullptr;
-lv_obj_t *secondRingSwitch = nullptr;
-lv_obj_t *secondEffectDropdown = nullptr;
-lv_obj_t *animatedIconsSwitch = nullptr;
-lv_obj_t *weatherStyleDropdown = nullptr;
+lv_obj_t *secondModeDropdown = nullptr;
+lv_obj_t *weatherIconModeDropdown = nullptr;
 lv_obj_t *automaticUpdateSwitch = nullptr;
 lv_obj_t *webModeDropdown = nullptr;
 lv_obj_t *settingsContent[3] = {};
@@ -135,6 +133,38 @@ bool metricBConfigured = false;
 bool weatherAnimationAvailable = false;
 bool animatedWeatherIconsEnabled = true;
 uint8_t configuredWeatherIconStyle = CLOCK_WEATHER_ICON_STYLE_MONOCHROME;
+
+uint8_t selectedSecondMode() {
+  return secondRingEnabled ? secondEffect + 1 : 0;
+}
+
+void applySelectedSecondMode(uint8_t selected) {
+  secondRingEnabled = selected != 0;
+  if (secondRingEnabled) {
+    secondEffect = constrain(
+        static_cast<uint8_t>(selected - 1),
+        static_cast<uint8_t>(CLOCK_SECOND_EFFECT_DOTS),
+        static_cast<uint8_t>(CLOCK_SECOND_EFFECT_COMET));
+  }
+}
+
+uint8_t selectedWeatherIconMode() {
+  if (!animatedWeatherIconsEnabled) return 0;
+  if (configuredWeatherIconStyle == CLOCK_WEATHER_ICON_STYLE_FLAT) return 1;
+  if (configuredWeatherIconStyle == CLOCK_WEATHER_ICON_STYLE_LINE) return 2;
+  return 3;
+}
+
+void applySelectedWeatherIconMode(uint8_t selected) {
+  animatedWeatherIconsEnabled = selected != 0;
+  if (selected == 1) {
+    configuredWeatherIconStyle = CLOCK_WEATHER_ICON_STYLE_FLAT;
+  } else if (selected == 2) {
+    configuredWeatherIconStyle = CLOCK_WEATHER_ICON_STYLE_LINE;
+  } else {
+    configuredWeatherIconStyle = CLOCK_WEATHER_ICON_STYLE_MONOCHROME;
+  }
+}
 bool weatherAnimationRevealPending = false;
 unsigned long weatherAnimationRevealAt = 0;
 bool firmwareUpdateActive = false;
@@ -886,17 +916,9 @@ void showSettings() {
   } else {
     lv_obj_clear_state(automaticDayNightSwitch, LV_STATE_CHECKED);
   }
-  if (secondRingEnabled) {
-    lv_obj_add_state(secondRingSwitch, LV_STATE_CHECKED);
-  } else {
-    lv_obj_clear_state(secondRingSwitch, LV_STATE_CHECKED);
-  }
-  lv_dropdown_set_selected(secondEffectDropdown, secondEffect);
-  if (animatedWeatherIconsEnabled)
-    lv_obj_add_state(animatedIconsSwitch, LV_STATE_CHECKED);
-  else
-    lv_obj_clear_state(animatedIconsSwitch, LV_STATE_CHECKED);
-  lv_dropdown_set_selected(weatherStyleDropdown, configuredWeatherIconStyle);
+  lv_dropdown_set_selected(secondModeDropdown, selectedSecondMode());
+  lv_dropdown_set_selected(weatherIconModeDropdown,
+                           selectedWeatherIconMode());
   if (automaticFirmwareUpdateEnabled)
     lv_obj_add_state(automaticUpdateSwitch, LV_STATE_CHECKED);
   else
@@ -921,12 +943,9 @@ void closeSettings(bool saveChanges) {
         static_cast<uint8_t>(lv_slider_get_value(nightBrightnessSlider));
     automaticDayNightEnabled =
         lv_obj_has_state(automaticDayNightSwitch, LV_STATE_CHECKED);
-    secondRingEnabled =
-        lv_obj_has_state(secondRingSwitch, LV_STATE_CHECKED);
-    secondEffect = lv_dropdown_get_selected(secondEffectDropdown);
-    animatedWeatherIconsEnabled =
-        lv_obj_has_state(animatedIconsSwitch, LV_STATE_CHECKED);
-    configuredWeatherIconStyle = lv_dropdown_get_selected(weatherStyleDropdown);
+    applySelectedSecondMode(lv_dropdown_get_selected(secondModeDropdown));
+    applySelectedWeatherIconMode(
+        lv_dropdown_get_selected(weatherIconModeDropdown));
     automaticFirmwareUpdateEnabled =
         lv_obj_has_state(automaticUpdateSwitch, LV_STATE_CHECKED);
     selectedWebMode = lv_dropdown_get_selected(webModeDropdown);
@@ -1025,20 +1044,29 @@ lv_obj_t *makeSettingsSwitch(lv_obj_t *parent, const char *title, int y,
 }
 
 lv_obj_t *makeSettingsDropdown(lv_obj_t *parent, const char *title,
-                               const char *options, int y, uint8_t selected) {
+                               const char *options, int y, uint8_t selected,
+                               int labelX = -92, int controlX = 95,
+                               int controlWidth = 180,
+                               int labelYOffset = 0,
+                               bool centerText = false) {
   lv_obj_t *label = makeLabel(parent, &clock_czech_16, COLOR_TEXT);
   lv_label_set_text(label, title);
-  alignCenter(label, -92, y);
+  alignCenter(label, labelX, y + labelYOffset);
   lv_obj_t *control = lv_dropdown_create(parent);
-  lv_obj_set_size(control, 180, 42);
-  alignCenter(control, 95, y);
+  lv_obj_set_size(control, controlWidth, 42);
+  alignCenter(control, controlX, y);
   lv_dropdown_set_options(control, options);
-  lv_dropdown_set_symbol(control, "v");
+  lv_dropdown_set_symbol(control, centerText ? nullptr : "v");
   lv_dropdown_set_selected(control, selected);
   lv_obj_set_style_bg_color(control, COLOR_DIVIDER, 0);
   lv_obj_set_style_text_color(control, COLOR_TEXT, 0);
   lv_obj_set_style_text_font(control, &clock_czech_16, 0);
   lv_obj_set_style_text_font(lv_dropdown_get_list(control), &clock_czech_16, 0);
+  if (centerText) {
+    lv_obj_set_style_text_align(control, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_align(lv_dropdown_get_list(control),
+                                LV_TEXT_ALIGN_CENTER, 0);
+  }
   return control;
 }
 
@@ -1173,16 +1201,13 @@ void createSettingsPage(lv_obj_t *screen) {
   automaticDayNightSwitch = makeSettingsSwitch(
       settingsContent[0], "AUTOMATICKY DEN/NOC", 92, automaticDayNightEnabled);
 
-  secondRingSwitch = makeSettingsSwitch(settingsContent[1], "ZOBRAZIT VTEŘINY",
-                                        -92, secondRingEnabled);
-  secondEffectDropdown = makeSettingsDropdown(
-      settingsContent[1], "VZHLED VTEŘIN", "TEČKY\nLINKA\nKOMETA", -34,
-      secondEffect);
-  animatedIconsSwitch = makeSettingsSwitch(
-      settingsContent[1], "ANIMOVANÉ IKONY", 30, animatedWeatherIconsEnabled);
-  weatherStyleDropdown = makeSettingsDropdown(
-      settingsContent[1], "VZHLED IKON", "JEDNOBAREVNÉ\nBAREVNÉ\nLINKOVÉ", 90,
-      configuredWeatherIconStyle);
+  weatherIconModeDropdown = makeSettingsDropdown(
+      settingsContent[1], "IKONY POČASÍ",
+      "STATICKÉ MONOCHROMATICKÉ\nANIMOVANÉ FLAT\nANIMOVANÉ LINE\nANIMOVANÉ MONOCHROMATICKÉ",
+      -54, selectedWeatherIconMode(), 0, 0, 360, -40, true);
+  secondModeDropdown = makeSettingsDropdown(
+      settingsContent[1], "VTEŘINY", "VYPNUTO\nTEČKY\nLINKA\nKOMETA", 50,
+      selectedSecondMode(), 0, 0, 360, -40, true);
 
   wifiAddressLabel = makeLabel(settingsContent[2], &lv_font_montserrat_16, COLOR_MUTED);
   lv_label_set_text(wifiAddressLabel, "IP: —");
