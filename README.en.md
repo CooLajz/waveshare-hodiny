@@ -250,8 +250,8 @@ or full erase is a separate operation and may remove user data.
 
 Version 1.6.0 contains one historical configuration migration from public
 version 1.5.5. It preserves the existing data source, Home Assistant settings,
-entities and appearance, adds the radar options with a 50 km range and six
-frames, and leaves automatic rotation disabled. Intermediate development
+entities and appearance, adds the radar options with the full-country view and
+six frames, and leaves automatic rotation disabled. Intermediate development
 schemas are not maintained as separate migration steps.
 
 Automatic updates are disabled after a clean installation. When enabled, the

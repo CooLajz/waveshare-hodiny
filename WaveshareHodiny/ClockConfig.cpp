@@ -302,7 +302,7 @@ bool clockConfigLoad(ClockConfig &config) {
 
   memcpy(&config, legacy.config, sizeof(legacy.config));
   config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
-  config.radarRadiusKm = 50;
+  config.radarRadiusKm = 0;
   config.radarFrameCount = 6;
   config.automaticRadarRotation = false;
   config.clockDisplaySeconds = 120;

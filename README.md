@@ -324,7 +324,7 @@ vymazání celé flash je jiná operace a může uživatelská data odstranit.
 Verze 1.6.0 podporuje jedinou historickou migraci konfigurace z veřejné verze
 1.5.5. Zachová dosavadní zdroj dat, Home Assistant, entity, vzhled a další
 uložené hodnoty a doplní nové radarové volby. U migrovaného zařízení se radar
-nastaví na 50 km, 6 snímků a automatické střídání zůstane vypnuté. Starší
+nastaví na celou ČR, 6 snímků a automatické střídání zůstane vypnuté. Starší
 vývojové meziverze nejsou samostatně podporované migračními kroky. Přechod z
 1.5.5 na 1.6.0 byl ověřen skutečnou A/B OTA aktualizací včetně zachování
 uložené konfigurace.
