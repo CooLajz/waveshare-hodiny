@@ -71,4 +71,7 @@ void clockDashboardSetWeatherAnimation(const uint8_t *gifData, size_t size,
 void clockDashboardSetRadarSnapshot(const uint16_t *pixels,
                                     const char *frameTime, uint16_t radiusKm,
                                     const char *message, bool loading,
-                                    bool latestFrame);
+                                    bool latestFrame,
+                                    uint8_t currentFrameNumber,
+                                    uint8_t animationFrameCount,
+                                    uint8_t pauseSeconds);

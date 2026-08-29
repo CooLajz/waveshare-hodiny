@@ -30,7 +30,6 @@ constexpr unsigned long REFRESH_INTERVAL_MS = 300000;
 constexpr unsigned long RETRY_INTERVAL_MS = 60000;
 constexpr time_t VALID_TIME_THRESHOLD = 1700000000;
 constexpr unsigned long ANIMATION_STEP_MS = 500;
-constexpr unsigned long ANIMATION_END_PAUSE_MS = 5000;
 constexpr unsigned long PREPARATION_FRAME_MIN_MS = 500;
 constexpr int RADAR_SOURCE_WIDTH = 680;
 constexpr int RADAR_SOURCE_HEIGHT = 460;
@@ -54,6 +53,8 @@ float centerLatitude = 49.1951f;
 float centerLongitude = 16.6068f;
 uint16_t centerRadiusKm = 50;
 uint8_t requestedFrameCount = 6;
+uint8_t mapOpacity = 100;
+uint8_t pauseSeconds = 5;
 uint16_t *displayBuffers[DISPLAY_BUFFER_COUNT] = {};
 uint16_t *decodeBuffer = nullptr;
 uint8_t *preparedFrames[MAX_ANIMATION_FRAME_COUNT] = {};
@@ -470,9 +471,31 @@ void drawDecodedLine(PNGDRAW *draw) {
   }
 }
 
-void setPixel(uint16_t *buffer, int x, int y, uint16_t color) {
-  if (x >= 0 && x < CHMI_RADAR_WIDTH && y >= 0 && y < CHMI_RADAR_HEIGHT)
-    buffer[y * CHMI_RADAR_WIDTH + x] = color;
+uint16_t blendRgb565(uint16_t background, uint16_t foreground,
+                     uint8_t opacity) {
+  if (opacity == 0) return background;
+  if (opacity >= 100) return foreground;
+  const uint16_t inverse = 100 - opacity;
+  const uint16_t red =
+      (((background >> 11) & 0x1f) * inverse +
+       ((foreground >> 11) & 0x1f) * opacity + 50) /
+      100;
+  const uint16_t green =
+      (((background >> 5) & 0x3f) * inverse +
+       ((foreground >> 5) & 0x3f) * opacity + 50) /
+      100;
+  const uint16_t blue =
+      ((background & 0x1f) * inverse + (foreground & 0x1f) * opacity + 50) /
+      100;
+  return static_cast<uint16_t>((red << 11) | (green << 5) | blue);
+}
+
+void setMapPixel(uint16_t *buffer, int x, int y, uint16_t color,
+                 uint8_t opacity) {
+  if (x >= 0 && x < CHMI_RADAR_WIDTH && y >= 0 && y < CHMI_RADAR_HEIGHT) {
+    uint16_t &pixel = buffer[y * CHMI_RADAR_WIDTH + x];
+    pixel = blendRgb565(pixel, color, opacity);
+  }
 }
 
 uint8_t lineOutCode(int x, int y) {
@@ -481,7 +504,7 @@ uint8_t lineOutCode(int x, int y) {
 }
 
 void drawMapLine(uint16_t *buffer, int x0, int y0, int x1, int y1,
-                 uint16_t color) {
+                 uint16_t color, uint8_t opacity) {
   uint8_t code0 = lineOutCode(x0, y0);
   uint8_t code1 = lineOutCode(x1, y1);
   while (code0 || code1) {
@@ -518,7 +541,7 @@ void drawMapLine(uint16_t *buffer, int x0, int y0, int x1, int y1,
   const int stepY = y0 < y1 ? 1 : -1;
   int error = deltaX + deltaY;
   for (;;) {
-    setPixel(buffer, x0, y0, color);
+    setMapPixel(buffer, x0, y0, color, opacity);
     if (x0 == x1 && y0 == y1) break;
     const int doubled = 2 * error;
     if (doubled >= deltaY) {
@@ -553,14 +576,14 @@ const uint8_t *mapGlyph(char character) {
 }
 
 void fillMapRect(uint16_t *buffer, int x, int y, int width, int height,
-                 uint16_t color) {
+                 uint16_t color, uint8_t opacity) {
   for (int row = y; row < y + height; ++row)
     for (int column = x; column < x + width; ++column)
-      setPixel(buffer, column, row, color);
+      setMapPixel(buffer, column, row, color, opacity);
 }
 
 void drawMapText(uint16_t *buffer, int x, int y, const char *text,
-                 uint16_t color) {
+                 uint16_t color, uint8_t opacity) {
   for (size_t index = 0; text[index] != '\0'; ++index) {
     const char character = static_cast<char>(
         toupper(static_cast<unsigned char>(text[index])));
@@ -569,12 +592,13 @@ void drawMapText(uint16_t *buffer, int x, int y, const char *text,
       for (int column = 0; column < 5; ++column)
         for (int row = 0; row < 7; ++row)
           if (glyph[column] & (1U << row))
-            setPixel(buffer, x + index * 6 + column, y + row, color);
+            setMapPixel(buffer, x + index * 6 + column, y + row, color,
+                        opacity);
     } else if (character == '-') {
       for (int column = 1; column < 5; ++column)
-        setPixel(buffer, x + index * 6 + column, y + 3, color);
+        setMapPixel(buffer, x + index * 6 + column, y + 3, color, opacity);
     } else if (character == '.') {
-      setPixel(buffer, x + index * 6 + 2, y + 6, color);
+      setMapPixel(buffer, x + index * 6 + 2, y + 6, color, opacity);
     }
   }
 }
@@ -601,7 +625,8 @@ bool mapBoxesOverlap(const MapLabelBox &left, const MapLabelBox &right) {
 
 void drawMapOverlay(uint16_t *buffer, float markerLatitude,
                     float markerLongitude, uint16_t radiusKm, int cropX1,
-                    int cropX2, int cropY1, int cropY2) {
+                    int cropX2, int cropY1, int cropY2, uint8_t opacity) {
+  if (opacity == 0) return;
   constexpr uint16_t borderColor = 0xbdf7;
   constexpr uint16_t cityColor = 0x07ff;
   int previousX = 0;
@@ -620,7 +645,7 @@ void drawMapOverlay(uint16_t *buffer, float markerLatitude,
     projectRadarPoint(latitude, longitude, cropX1, cropX2, cropY1, cropY2, x,
                       y);
     if (index > 0)
-      drawMapLine(buffer, previousX, previousY, x, y, borderColor);
+      drawMapLine(buffer, previousX, previousY, x, y, borderColor, opacity);
     previousX = x;
     previousY = y;
   }
@@ -658,9 +683,10 @@ void drawMapOverlay(uint16_t *buffer, float markerLatitude,
       for (int offsetY = -2; offsetY <= 2; ++offsetY)
         for (int offsetX = -2; offsetX <= 2; ++offsetX)
           if (offsetX * offsetX + offsetY * offsetY <= 4)
-            setPixel(buffer, x + offsetX, y + offsetY, 0xffff);
-      fillMapRect(buffer, box.x, box.y, box.width, box.height, 0x0000);
-      drawMapText(buffer, box.x + 2, box.y + 2, label, cityColor);
+            setMapPixel(buffer, x + offsetX, y + offsetY, 0xffff, opacity);
+      fillMapRect(buffer, box.x, box.y, box.width, box.height, 0x0000,
+                  opacity);
+      drawMapText(buffer, box.x + 2, box.y + 2, label, cityColor, opacity);
       occupied[occupiedCount++] = box;
     }
   }
@@ -674,8 +700,8 @@ void drawMapOverlay(uint16_t *buffer, float markerLatitude,
   const int markerDeltaY = markerY - CHMI_RADAR_HEIGHT / 2;
   if (markerDeltaX * markerDeltaX + markerDeltaY * markerDeltaY < 225 * 225) {
     for (int offset = -9; offset <= 9; ++offset) {
-      setPixel(buffer, markerX + offset, markerY, white);
-      setPixel(buffer, markerX, markerY + offset, white);
+      setMapPixel(buffer, markerX + offset, markerY, white, opacity);
+      setMapPixel(buffer, markerX, markerY + offset, white, opacity);
     }
   }
 }
@@ -713,7 +739,7 @@ void radarProjectionBounds(float latitude, float longitude, uint16_t radiusKm,
 }
 
 bool showBaseMap(float latitude, float longitude, uint16_t radiusKm,
-                 uint32_t revision) {
+                 uint8_t mapOpacityValue, uint32_t revision) {
   if (!ensureBuffers()) return false;
   imageWidth = RADAR_SOURCE_WIDTH;
   imageHeight = RADAR_SOURCE_HEIGHT;
@@ -727,7 +753,7 @@ bool showBaseMap(float latitude, float longitude, uint16_t radiusKm,
   uint16_t *target = displayBuffers[targetBuffer];
   memset(target, 0, RADAR_PIXEL_COUNT * sizeof(uint16_t));
   drawMapOverlay(target, latitude, longitude, radiusKm, cropX1, cropX2, cropY1,
-                 cropY2);
+                 cropY2, mapOpacityValue);
   drawDisplayRing(target);
   portENTER_CRITICAL(&stateMux);
   const bool nightVisual = redNightMode;
@@ -749,7 +775,8 @@ bool showBaseMap(float latitude, float longitude, uint16_t radiusKm,
 }
 
 bool decodeRadar(const uint8_t *pngData, size_t pngSize, float latitude,
-                 float longitude, uint16_t radiusKm, uint16_t *target) {
+                 float longitude, uint16_t radiusKm, uint8_t mapOpacityValue,
+                 uint16_t *target) {
   if (pngData == nullptr ||
       png.openRAM(const_cast<uint8_t *>(pngData), static_cast<int>(pngSize),
                   drawDecodedLine) !=
@@ -811,7 +838,7 @@ bool decodeRadar(const uint8_t *pngData, size_t pngSize, float latitude,
   // odmítáme.
   if (result != PNG_SUCCESS && !completeImage) return false;
   drawMapOverlay(target, markerLatitude, markerLongitude, radiusKm, cropX1,
-                 cropX2, cropY1, cropY2);
+                 cropX2, cropY1, cropY2, mapOpacityValue);
   drawDisplayRing(target);
   return true;
 }
@@ -848,13 +875,15 @@ void frameTimeFromName(const char *fileName, char *output) {
 }
 
 bool currentRequest(float &latitude, float &longitude, uint16_t &radiusKm,
-                    uint8_t &wantedFrameCount, uint32_t &revision) {
+                    uint8_t &wantedFrameCount, uint8_t &mapOpacityValue,
+                    uint32_t &revision) {
   portENTER_CRITICAL(&stateMux);
   const bool requested = active;
   latitude = centerLatitude;
   longitude = centerLongitude;
   radiusKm = centerRadiusKm;
   wantedFrameCount = requestedFrameCount;
+  mapOpacityValue = mapOpacity;
   revision = requestRevision;
   portEXIT_CRITICAL(&stateMux);
   return requested;
@@ -968,9 +997,10 @@ bool cachePendingPng(size_t slot, size_t size) {
 
 bool prepareFrame(size_t index, const uint8_t *pngData, size_t pngSize,
                   const char *fileName, float latitude, float longitude,
-                  uint16_t radiusKm, uint32_t revision) {
+                  uint16_t radiusKm, uint8_t mapOpacityValue,
+                  uint32_t revision) {
   if (!decodeRadar(pngData, pngSize, latitude, longitude, radiusKm,
-                   decodeBuffer) ||
+                   mapOpacityValue, decodeBuffer) ||
       !packDecodedFrame(index) || !requestMatches(revision)) {
     return false;
   }
@@ -1060,7 +1090,7 @@ void releaseUnusedFrames(size_t usedCount) {
 
 bool rebuildAnimationFromCache(float latitude, float longitude,
                                uint16_t radiusKm, uint8_t wantedFrameCount,
-                               uint32_t revision) {
+                               uint8_t mapOpacityValue, uint32_t revision) {
   if (!ensureBuffers()) {
     setStatus(false, "Nedostatek pameti pro radar");
     return false;
@@ -1073,7 +1103,7 @@ bool rebuildAnimationFromCache(float latitude, float longitude,
   for (size_t index = 0; index < availableCount; ++index) {
     if (!prepareFrame(index, cachedPngFrames[index], cachedPngSizes[index],
                       cachedPngNames[index], latitude, longitude, radiusKm,
-                      revision) ||
+                      mapOpacityValue, revision) ||
         !showProgressivelyPreparedFrame(index, radiusKm, revision)) {
       setStatus(false, "Snimek CHMU se nepodarilo pripravit");
       portENTER_CRITICAL(&stateMux);
@@ -1088,7 +1118,8 @@ bool rebuildAnimationFromCache(float latitude, float longitude,
 }
 
 bool loadAnimation(float latitude, float longitude, uint16_t radiusKm,
-                   uint8_t wantedFrameCount, uint32_t revision) {
+                   uint8_t wantedFrameCount, uint8_t mapOpacityValue,
+                   uint32_t revision) {
   if (WiFi.status() != WL_CONNECTED) {
     setStatus(false, "Wi-Fi neni pripojena");
     return false;
@@ -1154,7 +1185,7 @@ bool loadAnimation(float latitude, float longitude, uint16_t radiusKm,
         strcmp(cachedPngNames[index], fileName) == 0) {
       if (!prepareFrame(index, cachedPngFrames[index], cachedPngSizes[index],
                         cachedPngNames[index], latitude, longitude, radiusKm,
-                        revision)) {
+                        mapOpacityValue, revision)) {
         setStatus(false, "Snimek CHMU se nepodarilo pripravit");
         return false;
       }
@@ -1172,7 +1203,7 @@ bool loadAnimation(float latitude, float longitude, uint16_t radiusKm,
     }
     if (!prepareFrame(index, cachedPngFrames[index], cachedPngSizes[index],
                       cachedPngNames[index], latitude, longitude, radiusKm,
-                      revision)) {
+                      mapOpacityValue, revision)) {
       setStatus(false, "Snimek CHMU se nepodarilo pripravit");
       return false;
     }
@@ -1260,7 +1291,8 @@ void commitPendingRefresh() {
 }
 
 bool refreshLatestFrame(float latitude, float longitude, uint16_t radiusKm,
-                        uint8_t wantedFrameCount, uint32_t revision) {
+                        uint8_t wantedFrameCount, uint8_t mapOpacityValue,
+                        uint32_t revision) {
   if (WiFi.status() != WL_CONNECTED || !ensureBuffers()) return false;
   setStatus(true, "Obnovuji radar CHMU...");
   char latestNames[MAX_ANIMATION_FRAME_COUNT][FILE_NAME_CAPACITY] = {};
@@ -1275,7 +1307,7 @@ bool refreshLatestFrame(float latitude, float longitude, uint16_t radiusKm,
   if (selectedCount != animationFrameCount || selectedCount != cachedPngCount ||
       selectedCount == 0) {
     return loadAnimation(latitude, longitude, radiusKm, wantedFrameCount,
-                         revision);
+                         mapOpacityValue, revision);
   }
   bool unchanged = true;
   for (size_t index = 0; index < selectedCount; ++index) {
@@ -1308,7 +1340,7 @@ bool refreshLatestFrame(float latitude, float longitude, uint16_t radiusKm,
   }
   if (shift == 0) {
     return loadAnimation(latitude, longitude, radiusKm, wantedFrameCount,
-                         revision);
+                         mapOpacityValue, revision);
   }
 
   pendingRefreshCount = 0;
@@ -1319,7 +1351,7 @@ bool refreshLatestFrame(float latitude, float longitude, uint16_t radiusKm,
     if (!downloadPngWithRetry(fileName, pngSize, revision) ||
         !cachePendingPng(slot, pngSize) ||
         !decodeRadar(pngBuffer, pngSize, latitude, longitude, radiusKm,
-                     decodeBuffer) ||
+                     mapOpacityValue, decodeBuffer) ||
         !packPendingFrame(slot) || !requestMatches(revision)) {
       setStatus(false, "Nove snimky CHMU se nepodarilo pripravit");
       pendingRefreshCount = 0;
@@ -1391,12 +1423,14 @@ void advanceAnimation(unsigned long now) {
   const bool paused = animationPause;
   const bool preparing = preparationInProgress;
   const unsigned long pauseStarted = animationPauseStartedAt;
+  const unsigned long pauseDuration =
+      static_cast<unsigned long>(pauseSeconds) * 1000UL;
   const unsigned long lastStep = lastAnimationStepAt;
   const int currentFrame = displayedFrame;
   portEXIT_CRITICAL(&stateMux);
   if (!canAnimate || preparing) return;
   if (paused) {
-    if (now - pauseStarted >= ANIMATION_END_PAUSE_MS) {
+    if (now - pauseStarted >= pauseDuration) {
       const int first = firstPreparedFrame();
       if (first >= 0 && first != currentFrame &&
           showPreparedFrame(static_cast<size_t>(first), now)) {
@@ -1436,9 +1470,10 @@ void radarTask(void *) {
     float longitude = 0;
     uint16_t radiusKm = 50;
     uint8_t wantedFrameCount = 6;
+    uint8_t mapOpacityValue = 100;
     uint32_t revision = 0;
     if (!currentRequest(latitude, longitude, radiusKm, wantedFrameCount,
-                        revision))
+                        mapOpacityValue, revision))
       continue;
     const unsigned long now = millis();
     bool haveFrames = false;
@@ -1458,7 +1493,7 @@ void radarTask(void *) {
     frameToRedraw = displayedFrame;
     portEXIT_CRITICAL(&stateMux);
     if (showBase) {
-      showBaseMap(latitude, longitude, radiusKm, revision);
+      showBaseMap(latitude, longitude, radiusKm, mapOpacityValue, revision);
       portENTER_CRITICAL(&stateMux);
       if (revision == requestRevision) {
         showBaseMapRequested = false;
@@ -1472,7 +1507,8 @@ void radarTask(void *) {
       if (frameToRedraw >= 0)
         redrawn = showPreparedFrame(static_cast<size_t>(frameToRedraw), now);
       else if (frameToRedraw == -2)
-        redrawn = showBaseMap(latitude, longitude, radiusKm, revision);
+        redrawn = showBaseMap(latitude, longitude, radiusKm, mapOpacityValue,
+                              revision);
       portENTER_CRITICAL(&stateMux);
       if (revision == requestRevision) nightVisualRedrawRequested = false;
       portEXIT_CRITICAL(&stateMux);
@@ -1493,7 +1529,8 @@ void radarTask(void *) {
     }
     if (rebuildRequested) {
       const bool success = rebuildAnimationFromCache(
-          latitude, longitude, radiusKm, wantedFrameCount, revision);
+          latitude, longitude, radiusKm, wantedFrameCount, mapOpacityValue,
+          revision);
       const unsigned long scheduledNextAttemptAt =
           success ? millis() + millisecondsUntilNextRefreshSlot() : 0;
       portENTER_CRITICAL(&stateMux);
@@ -1517,9 +1554,9 @@ void radarTask(void *) {
       const bool success =
           fullPreparation
               ? loadAnimation(latitude, longitude, radiusKm, wantedFrameCount,
-                              revision)
+                              mapOpacityValue, revision)
               : refreshLatestFrame(latitude, longitude, radiusKm,
-                                   wantedFrameCount, revision);
+                                   wantedFrameCount, mapOpacityValue, revision);
       portENTER_CRITICAL(&stateMux);
       const bool requestChanged = revision != requestRevision;
       if (!requestChanged) reloadRequested = false;
@@ -1544,15 +1581,21 @@ void chmiRadarServiceBegin() {
 }
 
 void chmiRadarServiceSetActive(bool requested, float latitude, float longitude,
-                               uint16_t radiusKm, uint8_t frameCount) {
+                               uint16_t radiusKm, uint8_t frameCount,
+                               uint8_t mapOpacityValue,
+                               uint8_t pauseSecondsValue) {
   frameCount = constrain(frameCount, static_cast<uint8_t>(1),
                          static_cast<uint8_t>(MAX_ANIMATION_FRAME_COUNT));
+  mapOpacityValue = constrain(mapOpacityValue, static_cast<uint8_t>(0),
+                              static_cast<uint8_t>(100));
+  pauseSecondsValue = constrain(pauseSecondsValue, static_cast<uint8_t>(0),
+                                static_cast<uint8_t>(30));
   portENTER_CRITICAL(&stateMux);
   const bool wasActive = active;
   const bool projectionChanged =
       fabsf(centerLatitude - latitude) > 0.00001f ||
       fabsf(centerLongitude - longitude) > 0.00001f ||
-      centerRadiusKm != radiusKm;
+      centerRadiusKm != radiusKm || mapOpacity != mapOpacityValue;
   const bool frameCountChanged = requestedFrameCount != frameCount;
   bool completePngCache = cachedPngCount == requestedFrameCount;
   if (completePngCache) {
@@ -1585,6 +1628,8 @@ void chmiRadarServiceSetActive(bool requested, float latitude, float longitude,
   centerLongitude = longitude;
   centerRadiusKm = radiusKm;
   requestedFrameCount = frameCount;
+  mapOpacity = mapOpacityValue;
+  pauseSeconds = pauseSecondsValue;
   if (!requested && wasActive) {
     ++requestRevision;
     rebuildFromCacheRequested = false;
@@ -1645,7 +1690,10 @@ void chmiRadarServiceSnapshot(ChmiRadarSnapshot &snapshot) {
   snapshot.latestFrame =
       ready && displayedFrame >= 0 &&
       displayedFrame + 1 == static_cast<int>(animationFrameCount);
+  snapshot.currentFrameNumber =
+      displayedFrame >= 0 ? static_cast<uint8_t>(displayedFrame + 1) : 0;
   snapshot.animationFrameCount = static_cast<uint8_t>(animationFrameCount);
+  snapshot.pauseSeconds = pauseSeconds;
   snapshot.radiusKm = activeRadiusKm;
   strlcpy(snapshot.frameTime, frameTime, sizeof(snapshot.frameTime));
   strlcpy(snapshot.message, statusMessage, sizeof(snapshot.message));

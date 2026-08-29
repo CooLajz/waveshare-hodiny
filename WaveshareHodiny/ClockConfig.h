@@ -12,10 +12,10 @@ constexpr size_t CLOCK_ROOM_ICON_LENGTH = 16;
 constexpr size_t CLOCK_OPEN_METEO_CITY_LENGTH = 64;
 constexpr size_t CLOCK_OPEN_METEO_VALUE_LENGTH = 32;
 constexpr size_t CLOCK_METRIC_COLOR_POINT_COUNT = 10;
-// Schema 20 is the public 1.5.5 baseline. Schema 23 is the 1.6.0 format and
+// Schema 20 is the public 1.5.5 baseline. Schema 24 is the 1.6.0 format and
 // adds CHMI radar settings plus automatic clock/radar rotation. Intermediate
 // development schemas were never released and are intentionally unsupported.
-constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 23;
+constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 24;
 
 enum ClockDataSource : uint8_t {
   CLOCK_DATA_SOURCE_OPEN_METEO = 0,
@@ -140,6 +140,8 @@ struct ClockConfig {
   bool automaticRadarRotation = false;
   uint16_t clockDisplaySeconds = 120;
   uint16_t radarDisplaySeconds = 20;
+  uint8_t radarMapOpacity = 100;
+  uint8_t radarPauseSeconds = 5;
 };
 
 bool clockConfigBegin();

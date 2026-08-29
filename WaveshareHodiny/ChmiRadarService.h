@@ -12,7 +12,9 @@ struct ChmiRadarSnapshot {
   bool loading = false;
   bool ready = false;
   bool latestFrame = false;
+  uint8_t currentFrameNumber = 0;
   uint8_t animationFrameCount = 0;
+  uint8_t pauseSeconds = 5;
   uint16_t radiusKm = 50;
   char frameTime[6] = "";
   char message[64] = "Čekám na otevření radaru";
@@ -45,7 +47,8 @@ struct ChmiRadarDiagnostics {
 
 void chmiRadarServiceBegin();
 void chmiRadarServiceSetActive(bool active, float latitude, float longitude,
-                               uint16_t radiusKm, uint8_t frameCount);
+                               uint16_t radiusKm, uint8_t frameCount,
+                               uint8_t mapOpacity, uint8_t pauseSeconds);
 void chmiRadarServiceSetRedNightMode(bool enabled);
 void chmiRadarServiceSnapshot(ChmiRadarSnapshot &snapshot);
 void chmiRadarServiceDiagnostics(ChmiRadarDiagnostics &diagnostics);

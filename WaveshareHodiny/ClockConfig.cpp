@@ -116,6 +116,8 @@ void normalizeConfig(ClockConfig &config) {
       constrain(config.clockDisplaySeconds, 10, 3600);
   config.radarDisplaySeconds =
       constrain(config.radarDisplaySeconds, 10, 3600);
+  config.radarMapOpacity = constrain(config.radarMapOpacity, 0, 100);
+  config.radarPauseSeconds = constrain(config.radarPauseSeconds, 0, 30);
   if (!std::isfinite(config.openMeteoLatitude) ||
       config.openMeteoLatitude < -90.0f || config.openMeteoLatitude > 90.0f ||
       !std::isfinite(config.openMeteoLongitude) ||
@@ -250,6 +252,8 @@ bool clockConfigLoad(ClockConfig &config) {
   config.automaticRadarRotation = false;
   config.clockDisplaySeconds = 120;
   config.radarDisplaySeconds = 20;
+  config.radarMapOpacity = 100;
+  config.radarPauseSeconds = 5;
   normalizeConfig(config);
   return clockConfigSave(config);
 }

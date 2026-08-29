@@ -95,7 +95,8 @@ bool radarRadiusApplyPending = false;
 unsigned long radarRadiusApplyAt = 0;
 bool automaticRadarRotationPaused = true;
 unsigned long displayModeStartedAt = 0;
-uint32_t radarRotationCycleBaseline = 0;
+bool radarRotationWaitingForCycle = false;
+uint32_t radarRotationCycleAtTimeout = 0;
 bool radarRedNightModeApplied = false;
 
 constexpr uint32_t LOOP_WATCHDOG_TIMEOUT_MS = 20UL * 1000UL;
@@ -167,6 +168,7 @@ void applyPendingRuntimeConfiguration() {
   runtimeConfigurationApplyPending = false;
   runtimeConfigurationApplyAt = 0;
   automaticRadarRotationPaused = true;
+  radarRotationWaitingForCycle = false;
   xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
   dashboardConfigBuffer = runtimeConfig;
   xSemaphoreGive(runtimeConfigMutex);
@@ -175,7 +177,9 @@ void applyPendingRuntimeConfiguration() {
     chmiRadarServiceSetActive(true, dashboardConfigBuffer.openMeteoLatitude,
                               dashboardConfigBuffer.openMeteoLongitude,
                               dashboardConfigBuffer.radarRadiusKm,
-                              dashboardConfigBuffer.radarFrameCount);
+                              dashboardConfigBuffer.radarFrameCount,
+                              dashboardConfigBuffer.radarMapOpacity,
+                              dashboardConfigBuffer.radarPauseSeconds);
   }
   // Zápis do flash může na ESP32-S3 rozhodit vertikální synchronizaci RGB
   // panelu. Provádíme ji až po dokončení obsluhy HTTP požadavku.
@@ -251,15 +255,12 @@ void handleSettingsOpen() {
 void handleRadarVisibility(bool visible) {
   displayModeStartedAt = millis();
   automaticRadarRotationPaused = false;
-  if (visible) {
-    ChmiRadarSnapshot snapshot;
-    chmiRadarServiceSnapshot(snapshot);
-    radarRotationCycleBaseline = snapshot.completedAnimationCycles;
-  }
+  radarRotationWaitingForCycle = false;
   const ClockConfig config = runtimeConfigSnapshot();
   chmiRadarServiceSetActive(visible, config.openMeteoLatitude,
                             config.openMeteoLongitude, config.radarRadiusKm,
-                            config.radarFrameCount);
+                            config.radarFrameCount, config.radarMapOpacity,
+                            config.radarPauseSeconds);
 }
 
 void handleRadarRangeChange(int8_t direction) {
@@ -284,6 +285,7 @@ void handleRadarRangeChange(int8_t direction) {
   radarRadiusApplyPending = true;
   radarRadiusApplyAt = millis() + 350;
   displayModeStartedAt = millis();
+  radarRotationWaitingForCycle = false;
 }
 
 void maintainRadarRangeChange() {
@@ -296,7 +298,9 @@ void maintainRadarRangeChange() {
       chmiRadarServiceSetActive(true, config.openMeteoLatitude,
                                 config.openMeteoLongitude,
                                 config.radarRadiusKm,
-                                config.radarFrameCount);
+                                config.radarFrameCount,
+                                config.radarMapOpacity,
+                                config.radarPauseSeconds);
     }
   }
 }
@@ -315,11 +319,14 @@ bool previewRadarRangeFromWeb(uint16_t radiusKm) {
   radarRadiusApplyPending = false;
   radarRadiusApplyAt = 0;
   displayModeStartedAt = millis();
+  radarRotationWaitingForCycle = false;
   if (clockDashboardRadarVisible()) {
     chmiRadarServiceSetActive(true, config.openMeteoLatitude,
                               config.openMeteoLongitude,
                               config.radarRadiusKm,
-                              config.radarFrameCount);
+                              config.radarFrameCount,
+                              config.radarMapOpacity,
+                              config.radarPauseSeconds);
   }
   return true;
 }
@@ -331,12 +338,14 @@ void maintainAutomaticRadarRotation() {
       clockDashboardAutomaticRotationAllowed();
   if (!allowed) {
     automaticRadarRotationPaused = true;
+    radarRotationWaitingForCycle = false;
     return;
   }
   const unsigned long now = millis();
   if (automaticRadarRotationPaused) {
     automaticRadarRotationPaused = false;
     displayModeStartedAt = now;
+    radarRotationWaitingForCycle = false;
     return;
   }
   const bool radarVisible = clockDashboardRadarVisible();
@@ -350,9 +359,17 @@ void maintainAutomaticRadarRotation() {
     chmiRadarServiceSnapshot(snapshot);
     const bool staticRadarReady =
         snapshot.ready && snapshot.animationFrameCount <= 1;
-    const bool completeCycleFinished =
-        snapshot.completedAnimationCycles != radarRotationCycleBaseline;
-    if (!staticRadarReady && !completeCycleFinished) return;
+    if (!staticRadarReady) {
+      if (!radarRotationWaitingForCycle) {
+        // Nastavený čas je pouze minimum. Od této chvíle čekáme na dokončení
+        // právě rozběhnutého cyklu včetně koncové pauzy.
+        radarRotationWaitingForCycle = true;
+        radarRotationCycleAtTimeout = snapshot.completedAnimationCycles;
+        return;
+      }
+      if (snapshot.completedAnimationCycles == radarRotationCycleAtTimeout)
+        return;
+    }
   }
   clockDashboardSetRadarVisible(!radarVisible);
 }
@@ -383,7 +400,10 @@ void maintainRadarDisplay() {
   clockDashboardSetRadarSnapshot(snapshot.pixels, snapshot.frameTime,
                                  displayedRadarRadiusKm,
                                  snapshot.message, snapshot.loading,
-                                 snapshot.latestFrame);
+                                 snapshot.latestFrame,
+                                 snapshot.currentFrameNumber,
+                                 snapshot.animationFrameCount,
+                                 snapshot.pauseSeconds);
 }
 
 void maintainRadarNightVisual() {

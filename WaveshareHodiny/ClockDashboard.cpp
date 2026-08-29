@@ -63,6 +63,7 @@ lv_obj_t *dashboardContent = nullptr;
 lv_obj_t *radarPage = nullptr;
 lv_obj_t *radarCanvas = nullptr;
 lv_obj_t *radarTitleLabel = nullptr;
+lv_obj_t *radarProgressBar = nullptr;
 lv_obj_t *radarStatusLabel = nullptr;
 lv_obj_t *settingsPage = nullptr;
 lv_obj_t *dayBrightnessSlider = nullptr;
@@ -224,6 +225,7 @@ void setRadarVisible(bool visible) {
     // Při návratu na radar neodkrývej snímek, který zůstal v canvasu z
     // předchozího cyklu. Canvas znovu zobrazí až první snapshot nové animace.
     lv_obj_add_flag(radarCanvas, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(radarProgressBar, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(radarPage);
@@ -883,6 +885,12 @@ void applyDashboardColors() {
     for (lv_obj_t *label : coloredLabels) setTextColor(label, COLOR_ERROR);
     setTextColor(radarTitleLabel, COLOR_ERROR);
     setTextColor(radarStatusLabel, COLOR_ERROR);
+    if (radarProgressBar != nullptr) {
+      lv_obj_set_style_bg_color(radarProgressBar,
+                                LV_COLOR_MAKE(58, 14, 14), LV_PART_MAIN);
+      lv_obj_set_style_bg_color(radarProgressBar, COLOR_ERROR,
+                                LV_PART_INDICATOR);
+    }
     lv_obj_set_style_img_recolor(weatherImage, COLOR_ERROR, 0);
     lv_obj_set_style_img_recolor_opa(weatherImage, LV_OPA_COVER, 0);
     lv_obj_set_style_img_recolor(roomWeatherImage, COLOR_ERROR, 0);
@@ -897,6 +905,12 @@ void applyDashboardColors() {
     setTextColor(timeLabel, configuredColor(timeColor));
     setTextColor(radarTitleLabel, COLOR_TEXT);
     setTextColor(radarStatusLabel, COLOR_OUTSIDE);
+    if (radarProgressBar != nullptr) {
+      lv_obj_set_style_bg_color(radarProgressBar, COLOR_DIVIDER,
+                                LV_PART_MAIN);
+      lv_obj_set_style_bg_color(radarProgressBar, COLOR_OUTSIDE,
+                                LV_PART_INDICATOR);
+    }
     setTextColor(dateLabel, configuredColor(dateColor));
     setTextColor(outsideTitleLabel, configuredOutsideColor);
     setTextColor(outsideIntegerLabel, configuredOutsideColor);
@@ -1012,6 +1026,23 @@ void createRadarPage(lv_obj_t *screen) {
   lv_obj_set_style_pad_hor(radarTitleLabel, 8, 0);
   lv_obj_set_style_pad_ver(radarTitleLabel, 4, 0);
   alignCenter(radarTitleLabel, 0, -205);
+
+  radarProgressBar = lv_bar_create(radarPage);
+  lv_obj_set_size(radarProgressBar, 220, 3);
+  lv_obj_align(radarProgressBar, LV_ALIGN_CENTER, 0, -186);
+  lv_bar_set_range(radarProgressBar, 0, 1);
+  lv_bar_set_value(radarProgressBar, 0, LV_ANIM_OFF);
+  lv_obj_set_style_radius(radarProgressBar, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_radius(radarProgressBar, LV_RADIUS_CIRCLE,
+                          LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(radarProgressBar, COLOR_DIVIDER, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(radarProgressBar, LV_OPA_70, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(radarProgressBar, COLOR_OUTSIDE,
+                            LV_PART_INDICATOR);
+  lv_obj_set_style_bg_opa(radarProgressBar, LV_OPA_70, LV_PART_INDICATOR);
+  lv_obj_clear_flag(radarProgressBar, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(radarProgressBar, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(radarProgressBar, LV_OBJ_FLAG_HIDDEN);
 
   radarStatusLabel = makeLabel(radarPage, &clock_czech_16, COLOR_OUTSIDE);
   lv_label_set_long_mode(radarStatusLabel, LV_LABEL_LONG_WRAP);
@@ -1948,15 +1979,38 @@ bool clockDashboardAutomaticRotationAllowed() {
 void clockDashboardSetRadarSnapshot(const uint16_t *pixels,
                                     const char *frameTime, uint16_t radiusKm,
                                     const char *message, bool loading,
-                                    bool latestFrame) {
+                                    bool latestFrame,
+                                    uint8_t currentFrameNumber,
+                                    uint8_t animationFrameCount,
+                                    uint8_t pauseSeconds) {
   if (radarCanvas == nullptr || radarStatusLabel == nullptr ||
-      radarTitleLabel == nullptr)
+      radarTitleLabel == nullptr || radarProgressBar == nullptr)
     return;
   if (pixels != nullptr) {
     lv_canvas_set_buffer(radarCanvas, const_cast<uint16_t *>(pixels), 480, 480,
                          LV_IMG_CF_TRUE_COLOR);
     lv_obj_clear_flag(radarCanvas, LV_OBJ_FLAG_HIDDEN);
     lv_obj_invalidate(radarCanvas);
+  }
+  if (pixels != nullptr && currentFrameNumber > 0 &&
+      animationFrameCount > 1) {
+    lv_bar_set_range(radarProgressBar, 0, animationFrameCount);
+    if (latestFrame) {
+      lv_bar_set_value(radarProgressBar, animationFrameCount, LV_ANIM_OFF);
+      if (pauseSeconds > 0) {
+        lv_obj_set_style_anim_time(
+            radarProgressBar,
+            static_cast<uint32_t>(pauseSeconds) * 1000UL, LV_PART_MAIN);
+        lv_bar_set_value(radarProgressBar, 0, LV_ANIM_ON);
+      } else {
+        lv_bar_set_value(radarProgressBar, 0, LV_ANIM_OFF);
+      }
+    } else {
+      lv_bar_set_value(radarProgressBar, currentFrameNumber, LV_ANIM_OFF);
+    }
+    lv_obj_clear_flag(radarProgressBar, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(radarProgressBar, LV_OBJ_FLAG_HIDDEN);
   }
   char title[96];
   const bool highlightLatestFrame = latestFrame && !redNightVisualEnabled();

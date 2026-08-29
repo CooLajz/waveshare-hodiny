@@ -928,6 +928,10 @@ void handleGetConfig() {
   result += activeRadarRadiusKm;
   result += F(",\"radarFrameCount\":");
   result += config.radarFrameCount;
+  result += F(",\"radarMapOpacity\":");
+  result += config.radarMapOpacity;
+  result += F(",\"radarPauseSeconds\":");
+  result += config.radarPauseSeconds;
   result += F(",\"automaticRadarRotation\":");
   result += config.automaticRadarRotation ? F("true") : F("false");
   result += F(",\"clockDisplaySeconds\":");
@@ -1113,6 +1117,18 @@ void handleSaveConfig() {
     return;
   }
   config.radarFrameCount = static_cast<uint8_t>(radarFrameCount);
+  const int radarMapOpacity = server.arg("radarMapOpacity").toInt();
+  if (radarMapOpacity < 0 || radarMapOpacity > 100) {
+    sendError(400, F("Viditelnost mapy meteoradaru musí být od 0 do 100 %."));
+    return;
+  }
+  config.radarMapOpacity = static_cast<uint8_t>(radarMapOpacity);
+  const int radarPauseSeconds = server.arg("radarPauseSeconds").toInt();
+  if (radarPauseSeconds < 0 || radarPauseSeconds > 30) {
+    sendError(400, F("Pauza animace meteoradaru musí být od 0 do 30 sekund."));
+    return;
+  }
+  config.radarPauseSeconds = static_cast<uint8_t>(radarPauseSeconds);
   const int clockDisplaySeconds = server.arg("clockDisplaySeconds").toInt();
   const int radarDisplaySeconds = server.arg("radarDisplaySeconds").toInt();
   if (clockDisplaySeconds < 10 || clockDisplaySeconds > 3600 ||
