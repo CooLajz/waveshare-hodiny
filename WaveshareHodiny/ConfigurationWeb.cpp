@@ -14,6 +14,7 @@
 #include <cctype>
 
 #include "ConfigurationPage.h"
+#include "ConfigurationLocalization.h"
 #include "ChmiRadarService.h"
 #include "DiagnosticPage.h"
 #include "Display_ST7701.h"
@@ -583,7 +584,7 @@ void addSecurityHeaders() {
   server.sendHeader(
       F("Content-Security-Policy"),
       F("default-src 'self'; style-src 'unsafe-inline'; script-src "
-        "'unsafe-inline'; connect-src 'self'; form-action 'self'; "
+        "'self' 'unsafe-inline'; connect-src 'self'; form-action 'self'; "
         "frame-ancestors 'none'"));
 }
 
@@ -602,6 +603,32 @@ void sendError(int status, const __FlashStringHelper *message) {
 ClockConfig &currentConfig() {
   if (configLoadCallback != nullptr) configLoadCallback(configBuffer);
   return configBuffer;
+}
+
+uint8_t browserLanguage() {
+  String language = server.header("Accept-Language");
+  language.trim();
+  const int comma = language.indexOf(',');
+  if (comma >= 0) language.remove(comma);
+  const int quality = language.indexOf(';');
+  if (quality >= 0) language.remove(quality);
+  language.trim();
+  language.toLowerCase();
+  const bool czechOrSlovak =
+      language == "cs" || language.startsWith("cs-") ||
+      language.startsWith("cs_") || language == "sk" ||
+      language.startsWith("sk-") || language.startsWith("sk_");
+  return czechOrSlovak ? CLOCK_LANGUAGE_CZECH : CLOCK_LANGUAGE_ENGLISH;
+}
+
+void persistBrowserLanguageIfUnset() {
+  ClockConfig &config = currentConfig();
+  if (config.language != CLOCK_LANGUAGE_UNSET) return;
+  config.language = browserLanguage();
+  config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+  if (configSaveCallback == nullptr || !configSaveCallback(config, false)) {
+    config.language = CLOCK_LANGUAGE_UNSET;
+  }
 }
 
 bool validRadarRadius(int radiusKm) {
@@ -785,6 +812,7 @@ void resolveConnectionInput(String &url, String &token) {
 }
 
 void handleRoot() {
+  persistBrowserLanguageIfUnset();
   addSecurityHeaders();
   if (webActive) {
     extendWebAvailability();
@@ -798,6 +826,7 @@ void handleRoot() {
 }
 
 void handleDiagnosticPage() {
+  persistBrowserLanguageIfUnset();
   addSecurityHeaders();
   server.send_P(200, PSTR("text/html; charset=utf-8"), DIAGNOSTIC_PAGE);
 }
@@ -916,6 +945,8 @@ void handleGetConfig() {
   result += config.dataSource == CLOCK_DATA_SOURCE_HOME_ASSISTANT
                 ? F("home-assistant")
                 : F("open-meteo");
+  result += F("\",\"language\":\"");
+  result += config.language == CLOCK_LANGUAGE_ENGLISH ? F("en") : F("cs");
   result += F("\",\"openMeteoCity\":\"");
   result += jsonEscape(config.openMeteoCity);
   result += F("\",\"openMeteoLatitude\":");
@@ -1080,6 +1111,15 @@ void handleGetConfig() {
 
 void handleSaveConfig() {
   ClockConfig &config = currentConfig();
+  const String language = server.arg("language");
+  if (language == "cs")
+    config.language = CLOCK_LANGUAGE_CZECH;
+  else if (language == "en")
+    config.language = CLOCK_LANGUAGE_ENGLISH;
+  else {
+    sendError(400, F("Jazyk není platný."));
+    return;
+  }
   const String dataSource = server.arg("dataSource");
   if (dataSource == "open-meteo")
     config.dataSource = CLOCK_DATA_SOURCE_OPEN_METEO;
@@ -1520,6 +1560,8 @@ void handleDiagnostics() {
     result += F("disabled");
   else
     result += F("timed");
+  result += F("\",\"language\":\"");
+  result += config.language == CLOCK_LANGUAGE_ENGLISH ? F("en") : F("cs");
   result += F("\",\"firmwareVersion\":\"");
   result += jsonEscape(FIRMWARE_VERSION);
   result += F("\",\"chipModel\":\"");
@@ -1848,9 +1890,15 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
         static_cast<uint8_t>(CONFIGURATION_WEB_DISABLED)));
     preferences.end();
   }
-  const char *collectedHeaders[] = {"Cookie", "Origin", "Content-Type"};
-  server.collectHeaders(collectedHeaders, 3);
+  const char *collectedHeaders[] = {"Cookie", "Origin", "Content-Type",
+                                    "Accept-Language"};
+  server.collectHeaders(collectedHeaders, 4);
   server.on("/", HTTP_GET, handleRoot);
+  server.on("/ui-language.js", HTTP_GET, []() {
+    addSecurityHeaders();
+    server.send_P(200, PSTR("text/javascript; charset=utf-8"),
+                  CONFIGURATION_LOCALIZATION_JS);
+  });
   server.on("/diagnostics", HTTP_GET, handleDiagnosticPage);
   registerBoundedPost("/api/auth/login", handleWebLogin);
   registerBoundedPost("/api/web-password", []() {

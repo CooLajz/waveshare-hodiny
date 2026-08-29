@@ -26,8 +26,10 @@ const char DIAGNOSTIC_PAGE[] PROGMEM = R"HTML(<!doctype html>
   <div class="notice">Tato diagnostika je pouze pro čtení. Nastavení zařízení ani uložené hodnoty nemění.</div>
   <div class="footer">Údaje se automaticky obnovují každých 5 sekund. <span class="pulse" id="lastRefresh">Čekám na první načtení…</span></div>
 </main>
+<script src="/ui-language.js"></script>
 <script>
 const $=id=>document.getElementById(id);
+fetch("/api/status",{cache:"no-store"}).then(response=>response.json()).then(data=>window.clockUiSetLanguage?.(data.language)).catch(()=>{});
 const bytes=value=>{const number=Number(value)||0;if(number>=1048576)return(number/1048576).toFixed(1)+" MB";if(number>=1024)return Math.round(number/1024)+" kB";return number+" B"};
 const duration=value=>{let seconds=Math.floor((Number(value)||0)/1000);const days=Math.floor(seconds/86400);seconds%=86400;const hours=Math.floor(seconds/3600);seconds%=3600;const minutes=Math.floor(seconds/60);return(days?days+" d ":"")+(hours?hours+" h ":"")+minutes+" min"};
 const ago=(uptime,finished)=>{if(!finished)return"Dosud neproběhlo";const seconds=Math.max(0,Math.floor((uptime-finished)/1000));return seconds<60?seconds+" s zpět":Math.floor(seconds/60)+" min zpět"};

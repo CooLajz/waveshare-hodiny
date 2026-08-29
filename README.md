@@ -1,5 +1,7 @@
 # Waveshare Hodiny
 
+🇬🇧 **[English documentation](README.en.md)**
+
 Český informační dashboard pro kulatý dotykový displej
 [Waveshare ESP32-S3-Touch-LCD-2.1](https://www.waveshare.com/esp32-s3-touch-lcd-2.1.htm)
 s rozlišením 480 × 480 px. Zobrazuje čas, datum, počasí, teploty, další
@@ -19,7 +21,7 @@ aby displej v noci nerušil.
 ## Co firmware umí
 
 - velké digitální hodiny s fonty Barlow, Liberation Sans, LCD DSEG nebo Doto,
-  české datum v několika formátech a volitelný vteřinový prstenec,
+  české nebo anglické datum v několika formátech a volitelný vteřinový prstenec,
 - synchronizaci času přes NTP a české časové pásmo včetně letního času,
 - dvě místnosti s vlastním názvem, teplotou, ikonou a barvou,
 - animované i statické ikony počasí založené na Meteocons,
@@ -143,6 +145,9 @@ zobrazí jako `--`.
 
 Web umožňuje nastavit:
 
+- jazyk zařízení; dokud není uložená volba, displej používá češtinu a při
+  prvním otevření webu se uloží čeština pro prohlížeče `cs`/`sk`, jinak
+  angličtina; další návštěvy už respektují uložené nastavení zařízení,
 - zdroj dat Open-Meteo nebo Home Assistant a společnou polohu zařízení,
 - Home Assistant URL, token, entitu počasí a entitu slunce,
 - levou a pravou místnost včetně názvu, teploty, ikony a barev,

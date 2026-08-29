@@ -19,6 +19,8 @@ struct ConfigRecord {
 };
 
 constexpr uint32_t PUBLIC_1_5_5_SCHEMA_VERSION = 20;
+constexpr uint32_t LANGUAGE_SCHEMA_VERSION = 25;
+constexpr uint32_t RADAR_SCHEMA_VERSION = 24;
 
 // Firmware 1.5.5 stored the same prefix as ClockConfig up to dateFormat.
 // Keeping the payload as bytes preserves its exact released NVS layout and
@@ -106,6 +108,9 @@ void normalizeConfig(ClockConfig &config) {
   config.dataSource = constrain(
       config.dataSource, static_cast<uint8_t>(CLOCK_DATA_SOURCE_OPEN_METEO),
       static_cast<uint8_t>(CLOCK_DATA_SOURCE_HOME_ASSISTANT));
+  config.language = constrain(
+      config.language, static_cast<uint8_t>(CLOCK_LANGUAGE_UNSET),
+      static_cast<uint8_t>(CLOCK_LANGUAGE_ENGLISH));
   if (config.radarRadiusKm != 0 && config.radarRadiusKm != 25 &&
       config.radarRadiusKm != 50 &&
       config.radarRadiusKm != 100 && config.radarRadiusKm != 200) {
@@ -230,6 +235,40 @@ bool clockConfigLoad(ClockConfig &config) {
     return true;
   }
 
+  // Schema 25 used 0 for Czech and 1 for English. Preserve that explicit
+  // choice while migrating to the tri-state representation.
+  const bool validLanguageRecord =
+      readComplete && storedSize == sizeof(record) &&
+      record.magic == CONFIG_MAGIC &&
+      record.schemaVersion == LANGUAGE_SCHEMA_VERSION &&
+      record.config.schemaVersion == LANGUAGE_SCHEMA_VERSION &&
+      record.checksum == configChecksum(record.config);
+  if (validLanguageRecord) {
+    const uint8_t legacyLanguage = record.config.language;
+    config = record.config;
+    config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+    config.language = legacyLanguage == 1 ? CLOCK_LANGUAGE_ENGLISH
+                                          : CLOCK_LANGUAGE_CZECH;
+    normalizeConfig(config);
+    return clockConfigSave(config);
+  }
+
+  // Schema 24 has the same binary size. The language byte occupied trailing
+  // padding, so the old checksum can be verified before migration.
+  const bool validRadarRecord =
+      readComplete && storedSize == sizeof(record) &&
+      record.magic == CONFIG_MAGIC &&
+      record.schemaVersion == RADAR_SCHEMA_VERSION &&
+      record.config.schemaVersion == RADAR_SCHEMA_VERSION &&
+      record.checksum == configChecksum(record.config);
+  if (validRadarRecord) {
+    config = record.config;
+    config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+    config.language = CLOCK_LANGUAGE_UNSET;
+    normalizeConfig(config);
+    return clockConfigSave(config);
+  }
+
   const ConfigRecordV155 &legacy =
       *reinterpret_cast<const ConfigRecordV155 *>(&record);
   uint32_t embeddedSchemaVersion = 0;
@@ -254,6 +293,7 @@ bool clockConfigLoad(ClockConfig &config) {
   config.radarDisplaySeconds = 20;
   config.radarMapOpacity = 100;
   config.radarPauseSeconds = 5;
+  config.language = CLOCK_LANGUAGE_UNSET;
   normalizeConfig(config);
   return clockConfigSave(config);
 }

@@ -84,6 +84,15 @@ lv_obj_t *deviceInfoLabel = nullptr;
 lv_obj_t *firmwareStatusLabel = nullptr;
 lv_obj_t *firmwareCheckButton = nullptr;
 lv_obj_t *firmwareInstallButton = nullptr;
+lv_obj_t *dayBrightnessTitleLabel = nullptr;
+lv_obj_t *nightBrightnessTitleLabel = nullptr;
+lv_obj_t *automaticDayNightTitleLabel = nullptr;
+lv_obj_t *weatherIconModeTitleLabel = nullptr;
+lv_obj_t *secondModeTitleLabel = nullptr;
+lv_obj_t *webModeTitleLabel = nullptr;
+lv_obj_t *automaticUpdateTitleLabel = nullptr;
+lv_obj_t *firmwareCheckLabel = nullptr;
+lv_obj_t *firmwareInstallLabel = nullptr;
 lv_obj_t *wifiAddressLabel = nullptr;
 lv_obj_t *firmwareVersionLabel = nullptr;
 lv_obj_t *firmwareUpdateOverlay = nullptr;
@@ -125,6 +134,7 @@ uint32_t roomColor = 0xFFB843;
 uint32_t timeColor = 0xF6F6F6;
 uint32_t dateColor = 0xB5B5B5;
 uint8_t timeFont = CLOCK_TIME_FONT_BARLOW;
+uint8_t language = CLOCK_LANGUAGE_CZECH;
 bool outsideUsesWeatherIcon = true;
 bool roomUsesWeatherIcon = false;
 bool homeAssistantStatusRelevant = true;
@@ -218,6 +228,76 @@ const lv_font_t *configuredTimeFont() {
 
 void showSettingsSubpage(uint8_t page);
 void alignCenter(lv_obj_t *object, int x, int y);
+
+bool englishLanguage() { return language == CLOCK_LANGUAGE_ENGLISH; }
+
+const char *localizedDefaultLabel(const char *value) {
+  if (!englishLanguage() || value == nullptr) return value;
+  if (strcmp(value, "VENKU") == 0) return "OUTSIDE";
+  if (strcmp(value, "MÍSTNOST") == 0) return "ROOM";
+  if (strcmp(value, "TEPLOTA") == 0) return "TEMPERATURE";
+  if (strcmp(value, "POCITOVÁ") == 0) return "FEELS LIKE";
+  if (strcmp(value, "VLHKOST") == 0) return "HUMIDITY";
+  if (strcmp(value, "TLAK") == 0) return "PRESSURE";
+  return value;
+}
+
+void applyDashboardLanguage() {
+  const bool english = englishLanguage();
+  if (dayBrightnessTitleLabel != nullptr)
+    lv_label_set_text(dayBrightnessTitleLabel,
+                      english ? "DAY BRIGHTNESS" : "DENNÍ JAS");
+  if (nightBrightnessTitleLabel != nullptr)
+    lv_label_set_text(nightBrightnessTitleLabel,
+                      english ? "NIGHT BRIGHTNESS" : "NOČNÍ JAS");
+  if (automaticDayNightTitleLabel != nullptr)
+    lv_label_set_text(automaticDayNightTitleLabel,
+                      english ? "AUTOMATIC DAY/NIGHT"
+                              : "AUTOMATICKY DEN/NOC");
+  if (weatherIconModeTitleLabel != nullptr)
+    lv_label_set_text(weatherIconModeTitleLabel,
+                      english ? "WEATHER ICONS" : "IKONY POČASÍ");
+  if (weatherIconModeDropdown != nullptr) {
+    const uint16_t selected = lv_dropdown_get_selected(weatherIconModeDropdown);
+    lv_dropdown_set_options(
+        weatherIconModeDropdown,
+        english ? "STATIC MONOCHROME\nANIMATED FLAT\nANIMATED LINE\nANIMATED MONOCHROME"
+                : "STATICKÉ MONOCHROMATICKÉ\nANIMOVANÉ FLAT\nANIMOVANÉ LINE\nANIMOVANÉ MONOCHROMATICKÉ");
+    lv_dropdown_set_selected(weatherIconModeDropdown, selected);
+  }
+  if (secondModeTitleLabel != nullptr)
+    lv_label_set_text(secondModeTitleLabel,
+                      english ? "SECONDS" : "VTEŘINY");
+  if (secondModeDropdown != nullptr) {
+    const uint16_t selected = lv_dropdown_get_selected(secondModeDropdown);
+    lv_dropdown_set_options(secondModeDropdown,
+                            english ? "OFF\nDOTS\nLINE\nCOMET"
+                                    : "VYPNUTO\nTEČKY\nLINKA\nKOMETA");
+    lv_dropdown_set_selected(secondModeDropdown, selected);
+  }
+  if (webModeDropdown != nullptr) {
+    const uint16_t selected = lv_dropdown_get_selected(webModeDropdown);
+    lv_dropdown_set_options(webModeDropdown,
+                            english ? "10 MINUTES\nALWAYS\nOFF"
+                                    : "10 MINUT\nVŽDY\nVYPNUTÝ");
+    lv_dropdown_set_selected(webModeDropdown, selected);
+  }
+  if (automaticUpdateTitleLabel != nullptr)
+    lv_label_set_text(automaticUpdateTitleLabel,
+                      english ? "AUTOMATIC OTA" : "AUTOMATICKÉ OTA");
+  if (firmwareCheckLabel != nullptr)
+    lv_label_set_text(firmwareCheckLabel,
+                      english ? "CHECK" : "ZKONTROLOVAT");
+  if (firmwareInstallLabel != nullptr)
+    lv_label_set_text(firmwareInstallLabel,
+                      english ? "UPDATE" : "AKTUALIZOVAT");
+  if (firmwareUpdateTitleLabel != nullptr)
+    lv_label_set_text(firmwareUpdateTitleLabel,
+                      english ? "FIRMWARE UPDATE"
+                              : "AKTUALIZACE FIRMWARE");
+  displayedDeviceInfo[0] = '\0';
+  displayedFirmwareStatus[0] = '\0';
+}
 
 void setRadarVisible(bool visible) {
   if (radarVisible == visible || settingsVisible) return;
@@ -1051,7 +1131,9 @@ void createRadarPage(lv_obj_t *screen) {
   lv_label_set_long_mode(radarStatusLabel, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(radarStatusLabel, 340);
   lv_obj_set_style_text_align(radarStatusLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(radarStatusLabel, "Načítám radar ČHMÚ...");
+  lv_label_set_text(radarStatusLabel, englishLanguage()
+                                          ? "LOADING CHMI RADAR..."
+                                          : "Načítám radar ČHMÚ...");
   lv_obj_set_style_bg_color(radarStatusLabel, COLOR_BACKGROUND, 0);
   lv_obj_set_style_bg_opa(radarStatusLabel, LV_OPA_80, 0);
   lv_obj_set_style_pad_all(radarStatusLabel, 6, 0);
@@ -1159,8 +1241,9 @@ void settingsNextEvent(lv_event_t *event) {
 }
 
 lv_obj_t *makeSettingsSwitch(lv_obj_t *parent, const char *title, int y,
-                             bool checked) {
+                             bool checked, lv_obj_t **titleLabel = nullptr) {
   lv_obj_t *label = makeLabel(parent, &clock_czech_16, COLOR_TEXT);
+  if (titleLabel != nullptr) *titleLabel = label;
   lv_label_set_text(label, title);
   alignCenter(label, -55, y);
   lv_obj_t *control = lv_switch_create(parent);
@@ -1179,8 +1262,10 @@ lv_obj_t *makeSettingsDropdown(lv_obj_t *parent, const char *title,
                                int labelX = -92, int controlX = 95,
                                int controlWidth = 180,
                                int labelYOffset = 0,
-                               bool centerText = false) {
+                               bool centerText = false,
+                               lv_obj_t **titleLabel = nullptr) {
   lv_obj_t *label = makeLabel(parent, &clock_czech_16, COLOR_TEXT);
+  if (titleLabel != nullptr) *titleLabel = label;
   lv_label_set_text(label, title);
   alignCenter(label, labelX, y + labelYOffset);
   lv_obj_t *control = lv_dropdown_create(parent);
@@ -1279,10 +1364,10 @@ void createSettingsPage(lv_obj_t *screen) {
     lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
   }
 
-  lv_obj_t *dayBrightnessTitle =
+  dayBrightnessTitleLabel =
       makeLabel(settingsContent[0], &clock_czech_16, COLOR_ROOM);
-  lv_label_set_text(dayBrightnessTitle, "DENNÍ JAS");
-  alignCenter(dayBrightnessTitle, -55, -72);
+  lv_label_set_text(dayBrightnessTitleLabel, "DENNÍ JAS");
+  alignCenter(dayBrightnessTitleLabel, -55, -72);
 
   dayBrightnessValueLabel =
       makeLabel(settingsContent[0], &lv_font_montserrat_28, COLOR_TEXT);
@@ -1304,10 +1389,10 @@ void createSettingsPage(lv_obj_t *screen) {
   lv_obj_add_event_cb(dayBrightnessSlider, brightnessSliderEvent, LV_EVENT_ALL,
                       nullptr);
 
-  lv_obj_t *nightBrightnessTitle =
+  nightBrightnessTitleLabel =
       makeLabel(settingsContent[0], &clock_czech_16, COLOR_OUTSIDE);
-  lv_label_set_text(nightBrightnessTitle, "NOČNÍ JAS");
-  alignCenter(nightBrightnessTitle, -55, 8);
+  lv_label_set_text(nightBrightnessTitleLabel, "NOČNÍ JAS");
+  alignCenter(nightBrightnessTitleLabel, -55, 8);
 
   nightBrightnessValueLabel =
       makeLabel(settingsContent[0], &lv_font_montserrat_28, COLOR_TEXT);
@@ -1330,15 +1415,17 @@ void createSettingsPage(lv_obj_t *screen) {
                       nullptr);
 
   automaticDayNightSwitch = makeSettingsSwitch(
-      settingsContent[0], "AUTOMATICKY DEN/NOC", 92, automaticDayNightEnabled);
+      settingsContent[0], "AUTOMATICKY DEN/NOC", 92, automaticDayNightEnabled,
+      &automaticDayNightTitleLabel);
 
   weatherIconModeDropdown = makeSettingsDropdown(
       settingsContent[1], "IKONY POČASÍ",
       "STATICKÉ MONOCHROMATICKÉ\nANIMOVANÉ FLAT\nANIMOVANÉ LINE\nANIMOVANÉ MONOCHROMATICKÉ",
-      -54, selectedWeatherIconMode(), 0, 0, 360, -40, true);
+      -54, selectedWeatherIconMode(), 0, 0, 360, -40, true,
+      &weatherIconModeTitleLabel);
   secondModeDropdown = makeSettingsDropdown(
       settingsContent[1], "VTEŘINY", "VYPNUTO\nTEČKY\nLINKA\nKOMETA", 50,
-      selectedSecondMode(), 0, 0, 360, -40, true);
+      selectedSecondMode(), 0, 0, 360, -40, true, &secondModeTitleLabel);
 
   wifiAddressLabel = makeLabel(settingsContent[2], &lv_font_montserrat_16, COLOR_MUTED);
   lv_label_set_text(wifiAddressLabel, "IP: —");
@@ -1350,9 +1437,11 @@ void createSettingsPage(lv_obj_t *screen) {
   lv_label_set_text(deviceInfoLabel, "");
   alignCenter(deviceInfoLabel, 0, -64);
   webModeDropdown = makeSettingsDropdown(
-      settingsContent[2], "WEB", "10 MINUT\nVŽDY\nVYPNUTÝ", -24, selectedWebMode);
+      settingsContent[2], "WEB", "10 MINUT\nVŽDY\nVYPNUTÝ", -24,
+      selectedWebMode, -92, 95, 180, 0, false, &webModeTitleLabel);
   automaticUpdateSwitch = makeSettingsSwitch(
-      settingsContent[2], "AUTOMATICKÉ OTA", 30, automaticFirmwareUpdateEnabled);
+      settingsContent[2], "AUTOMATICKÉ OTA", 30,
+      automaticFirmwareUpdateEnabled, &automaticUpdateTitleLabel);
 
   firmwareCheckButton = lv_btn_create(settingsContent[2]);
   lv_obj_set_size(firmwareCheckButton, 190, 42);
@@ -1360,9 +1449,10 @@ void createSettingsPage(lv_obj_t *screen) {
   lv_obj_set_style_radius(firmwareCheckButton, 21, 0);
   lv_obj_set_style_bg_color(firmwareCheckButton, COLOR_HUMIDITY, 0);
   lv_obj_add_event_cb(firmwareCheckButton, firmwareCheckEvent, LV_EVENT_SHORT_CLICKED, nullptr);
-  lv_obj_t *checkLabel = makeLabel(firmwareCheckButton, &clock_czech_16, COLOR_TEXT);
-  lv_label_set_text(checkLabel, "ZKONTROLOVAT");
-  lv_obj_center(checkLabel);
+  firmwareCheckLabel =
+      makeLabel(firmwareCheckButton, &clock_czech_16, COLOR_TEXT);
+  lv_label_set_text(firmwareCheckLabel, "ZKONTROLOVAT");
+  lv_obj_center(firmwareCheckLabel);
 
   firmwareInstallButton = lv_btn_create(settingsContent[2]);
   lv_obj_set_size(firmwareInstallButton, 190, 42);
@@ -1371,9 +1461,10 @@ void createSettingsPage(lv_obj_t *screen) {
   lv_obj_set_style_bg_color(firmwareInstallButton, COLOR_AIR, 0);
   lv_obj_add_event_cb(firmwareInstallButton, firmwareInstallEvent,
                       LV_EVENT_SHORT_CLICKED, nullptr);
-  lv_obj_t *installLabel = makeLabel(firmwareInstallButton, &clock_czech_16, COLOR_BACKGROUND);
-  lv_label_set_text(installLabel, "AKTUALIZOVAT");
-  lv_obj_center(installLabel);
+  firmwareInstallLabel =
+      makeLabel(firmwareInstallButton, &clock_czech_16, COLOR_BACKGROUND);
+  lv_label_set_text(firmwareInstallLabel, "AKTUALIZOVAT");
+  lv_obj_center(firmwareInstallLabel);
   lv_obj_add_flag(firmwareInstallButton, LV_OBJ_FLAG_HIDDEN);
   firmwareStatusLabel = makeLabel(settingsContent[2], &clock_czech_16, COLOR_MUTED);
   lv_obj_set_width(firmwareStatusLabel, 360);
@@ -1582,6 +1673,10 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
 }
 
 void clockDashboardApplyConfiguration(const ClockConfig &config) {
+  language = constrain(config.language,
+                       static_cast<uint8_t>(CLOCK_LANGUAGE_UNSET),
+                       static_cast<uint8_t>(CLOCK_LANGUAGE_ENGLISH));
+  applyDashboardLanguage();
   const bool nightVisualChanged = nightVisualMode != config.nightVisualMode;
   nightVisualMode = config.nightVisualMode;
   metricAConfig = config.metricA;
@@ -1623,12 +1718,12 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   };
   if (openMeteo) {
     clockConfigCopy(metricAConfig.name, sizeof(metricAConfig.name),
-                    config.openMeteoSlots[2].name);
+                    localizedDefaultLabel(config.openMeteoSlots[2].name));
     clockConfigCopy(metricAConfig.suffix, sizeof(metricAConfig.suffix),
                     openMeteoUnit(config.openMeteoSlots[2].value));
     metricAConfig.decimals = openMeteoDecimals(config.openMeteoSlots[2].value);
     clockConfigCopy(metricBConfig.name, sizeof(metricBConfig.name),
-                    config.openMeteoSlots[3].name);
+                    localizedDefaultLabel(config.openMeteoSlots[3].name));
     clockConfigCopy(metricBConfig.suffix, sizeof(metricBConfig.suffix),
                     openMeteoUnit(config.openMeteoSlots[3].value));
     metricBConfig.decimals = openMeteoDecimals(config.openMeteoSlots[3].value);
@@ -1705,20 +1800,20 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   renderSecondRing(millis());
   if (nightVisualChanged) applyDashboardColors();
   lv_label_set_text(outsideTitleLabel, openMeteo
-                                           ? config.openMeteoSlots[0].name
+                                           ? localizedDefaultLabel(config.openMeteoSlots[0].name)
                                            : config.leftSide.name[0] == '\0'
-                                           ? "MÍSTNOST"
-                                           : config.leftSide.name);
+                                           ? (englishLanguage() ? "ROOM" : "MÍSTNOST")
+                                           : localizedDefaultLabel(config.leftSide.name));
   alignCenter(outsideTitleLabel, -122, 5);
   setObjectVisible(outsideTitleLabel, outsideConfigured);
   setObjectVisible(outsideIntegerLabel, outsideConfigured);
   setObjectVisible(outsideDecimalLabel, outsideConfigured);
   setObjectVisible(outsideUnitLabel, outsideConfigured);
   lv_label_set_text(roomTitleLabel, openMeteo
-                                        ? config.openMeteoSlots[1].name
+                                        ? localizedDefaultLabel(config.openMeteoSlots[1].name)
                                         : config.rightSide.name[0] == '\0'
-                                        ? "MÍSTNOST"
-                                        : config.rightSide.name);
+                                        ? (englishLanguage() ? "ROOM" : "MÍSTNOST")
+                                        : localizedDefaultLabel(config.rightSide.name));
   alignCenter(roomTitleLabel, 127, 5);
   setObjectVisible(roomTitleLabel, roomConfigured);
   setObjectVisible(roomIntegerLabel, roomConfigured);
@@ -1868,7 +1963,9 @@ void clockDashboardLoop() {
       now - lastSettingsInfoRefreshAt >= 500) {
     lastSettingsInfoRefreshAt = now;
     char info[64];
-    snprintf(info, sizeof(info), "CPU: %u MHz   PAMĚŤ: %lu kB",
+    snprintf(info, sizeof(info),
+             englishLanguage() ? "CPU: %u MHz   MEMORY: %lu kB"
+                               : "CPU: %u MHz   PAMĚŤ: %lu kB",
              static_cast<unsigned>(getCpuFrequencyMhz()),
              static_cast<unsigned long>(ESP.getFreeHeap() / 1024));
     if (strcmp(displayedDeviceInfo, info) != 0) {
@@ -1880,28 +1977,47 @@ void clockDashboardLoop() {
     char statusText[160] = "";
     switch (snapshot.state) {
       case FirmwareUpdateState::Checking:
-        strlcpy(statusText, "KONTROLUJI AKTUALIZACI", sizeof(statusText));
+        strlcpy(statusText,
+                englishLanguage() ? "CHECKING FOR UPDATE"
+                                  : "KONTROLUJI AKTUALIZACI",
+                sizeof(statusText));
         break;
       case FirmwareUpdateState::Available:
-        snprintf(statusText, sizeof(statusText), "NOVÁ VERZE  %s",
+        snprintf(statusText, sizeof(statusText),
+                 englishLanguage() ? "NEW VERSION  %s" : "NOVÁ VERZE  %s",
                  snapshot.serverVersion);
         break;
       case FirmwareUpdateState::Current:
-        strlcpy(statusText, "FIRMWARE JE AKTUÁLNÍ", sizeof(statusText));
+        strlcpy(statusText,
+                englishLanguage() ? "FIRMWARE IS UP TO DATE"
+                                  : "FIRMWARE JE AKTUÁLNÍ",
+                sizeof(statusText));
         break;
       case FirmwareUpdateState::Downloading:
-        strlcpy(statusText, "STAHUJI AKTUALIZACI", sizeof(statusText));
+        strlcpy(statusText,
+                englishLanguage() ? "DOWNLOADING UPDATE"
+                                  : "STAHUJI AKTUALIZACI",
+                sizeof(statusText));
         break;
       case FirmwareUpdateState::Failed:
-        strlcpy(statusText, "KONTROLA SELHALA", sizeof(statusText));
+        strlcpy(statusText,
+                englishLanguage() ? "UPDATE CHECK FAILED"
+                                  : "KONTROLA SELHALA",
+                sizeof(statusText));
         break;
       case FirmwareUpdateState::Restarting:
-        strlcpy(statusText, "RESTARTUJI ZAŘÍZENÍ", sizeof(statusText));
+        strlcpy(statusText,
+                englishLanguage() ? "RESTARTING DEVICE"
+                                  : "RESTARTUJI ZAŘÍZENÍ",
+                sizeof(statusText));
         break;
       default:
-        strlcpy(statusText, snapshot.installationSupported
-                                ? "AKTUALIZACE NEZKONTROLOVÁNA"
-                                : "OTA JEN V RELEASE",
+        strlcpy(statusText,
+                snapshot.installationSupported
+                    ? (englishLanguage() ? "UPDATE NOT CHECKED"
+                                         : "AKTUALIZACE NEZKONTROLOVÁNA")
+                    : (englishLanguage() ? "OTA IN RELEASE ONLY"
+                                         : "OTA JEN V RELEASE"),
                 sizeof(statusText));
         break;
     }
@@ -2028,15 +2144,23 @@ void clockDashboardSetRadarSnapshot(const uint16_t *pixels,
   const char *timePrefix = highlightLatestFrame ? "#65FF45 " : "";
   const char *timeSuffix = highlightLatestFrame ? "#" : "";
   if (radiusKm == 0 && frameTime != nullptr && frameTime[0] != '\0')
-    snprintf(title, sizeof(title), "ČHMÚ - ČR - %s%s%s", timePrefix,
+    snprintf(title, sizeof(title), englishLanguage() ? "CHMI - CZ - %s%s%s"
+                                                    : "ČHMÚ - ČR - %s%s%s",
+             timePrefix,
              frameTime, timeSuffix);
   else if (radiusKm == 0)
-    snprintf(title, sizeof(title), "ČHMÚ - ČR");
+    snprintf(title, sizeof(title), englishLanguage() ? "CHMI - CZ"
+                                                    : "ČHMÚ - ČR");
   else if (frameTime != nullptr && frameTime[0] != '\0')
-    snprintf(title, sizeof(title), "ČHMÚ - %u km - %s%s%s", radiusKm,
+    snprintf(title, sizeof(title),
+             englishLanguage() ? "CHMI - %u km - %s%s%s"
+                               : "ČHMÚ - %u km - %s%s%s",
+             radiusKm,
              timePrefix, frameTime, timeSuffix);
   else
-    snprintf(title, sizeof(title), "ČHMÚ - %u km", radiusKm);
+    snprintf(title, sizeof(title), englishLanguage() ? "CHMI - %u km"
+                                                    : "ČHMÚ - %u km",
+             radiusKm);
   lv_label_set_text(radarTitleLabel, title);
   lv_label_set_text(radarStatusLabel, "");
   alignCenter(radarTitleLabel, 0, -205);

@@ -30,8 +30,10 @@ const char LOGIN_PAGE[] PROGMEM = R"HTML(
     <div class="feedback" id="feedback" role="status"></div>
   </form>
 </main>
+<script src="/ui-language.js"></script>
 <script>
 const form=document.getElementById("loginForm"),button=document.getElementById("loginButton"),feedback=document.getElementById("feedback"),password=document.getElementById("password");
+fetch("/api/status",{cache:"no-store"}).then(response=>response.json()).then(data=>window.clockUiSetLanguage?.(data.language)).catch(()=>{});
 form.addEventListener("submit",async event=>{event.preventDefault();button.disabled=true;feedback.className="feedback";feedback.textContent="Přihlašuji…";try{const body=new URLSearchParams({password:password.value});const response=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},body});const payload=await response.json().catch(()=>({message:"Neplatná odpověď zařízení"}));if(!response.ok)throw new Error(payload.message||"Přihlášení se nezdařilo");location.replace("/")}catch(error){feedback.className="feedback error";feedback.textContent=error.message;password.select()}finally{button.disabled=false}});
 </script>
 </body>

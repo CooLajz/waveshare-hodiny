@@ -118,6 +118,14 @@ const char *CZECH_MONTHS[] = {
     "LEDNA", "ÚNORA", "BŘEZNA", "DUBNA", "KVĚTNA", "ČERVNA",
     "ČERVENCE", "SRPNA", "ZÁŘÍ", "ŘÍJNA", "LISTOPADU", "PROSINCE",
 };
+const char *ENGLISH_WEEKDAYS[] = {
+    "SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY",
+    "THURSDAY", "FRIDAY", "SATURDAY",
+};
+const char *ENGLISH_MONTHS[] = {
+    "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
+    "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER",
+};
 
 void applyDevelopmentDefaults(ClockConfig &config);
 
@@ -639,28 +647,53 @@ void maintainNetworkTime() {
   clockDashboardSetSecond(static_cast<uint8_t>(localTime.tm_sec));
 
   char dateText[64];
+  const bool english = config.language == CLOCK_LANGUAGE_ENGLISH;
+  const char *const *weekdays = english ? ENGLISH_WEEKDAYS : CZECH_WEEKDAYS;
+  const char *const *months = english ? ENGLISH_MONTHS : CZECH_MONTHS;
   switch (config.dateFormat) {
     case CLOCK_DATE_FORMAT_HIDDEN:
       dateText[0] = '\0';
       break;
     case CLOCK_DATE_FORMAT_NUMERIC:
-      snprintf(dateText, sizeof(dateText), "%02d.%02d.%04d", localTime.tm_mday,
-               localTime.tm_mon + 1, localTime.tm_year + 1900);
+      if (english) {
+        snprintf(dateText, sizeof(dateText), "%04d-%02d-%02d",
+                 localTime.tm_year + 1900, localTime.tm_mon + 1,
+                 localTime.tm_mday);
+      } else {
+        snprintf(dateText, sizeof(dateText), "%02d.%02d.%04d",
+                 localTime.tm_mday, localTime.tm_mon + 1,
+                 localTime.tm_year + 1900);
+      }
       break;
     case CLOCK_DATE_FORMAT_DAY_MONTH_YEAR:
-      snprintf(dateText, sizeof(dateText), "%d. %s %d", localTime.tm_mday,
-               CZECH_MONTHS[localTime.tm_mon], localTime.tm_year + 1900);
+      if (english)
+        snprintf(dateText, sizeof(dateText), "%s %d, %d",
+                 months[localTime.tm_mon], localTime.tm_mday,
+                 localTime.tm_year + 1900);
+      else
+        snprintf(dateText, sizeof(dateText), "%d. %s %d", localTime.tm_mday,
+                 months[localTime.tm_mon], localTime.tm_year + 1900);
       break;
     case CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH_YEAR:
-      snprintf(dateText, sizeof(dateText), "%s, %d. %s %d",
-               CZECH_WEEKDAYS[localTime.tm_wday], localTime.tm_mday,
-               CZECH_MONTHS[localTime.tm_mon], localTime.tm_year + 1900);
+      if (english)
+        snprintf(dateText, sizeof(dateText), "%s, %s %d, %d",
+                 weekdays[localTime.tm_wday], months[localTime.tm_mon],
+                 localTime.tm_mday, localTime.tm_year + 1900);
+      else
+        snprintf(dateText, sizeof(dateText), "%s, %d. %s %d",
+                 weekdays[localTime.tm_wday], localTime.tm_mday,
+                 months[localTime.tm_mon], localTime.tm_year + 1900);
       break;
     case CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH:
     default:
-      snprintf(dateText, sizeof(dateText), "%s, %d. %s",
-               CZECH_WEEKDAYS[localTime.tm_wday], localTime.tm_mday,
-               CZECH_MONTHS[localTime.tm_mon]);
+      if (english)
+        snprintf(dateText, sizeof(dateText), "%s, %s %d",
+                 weekdays[localTime.tm_wday], months[localTime.tm_mon],
+                 localTime.tm_mday);
+      else
+        snprintf(dateText, sizeof(dateText), "%s, %d. %s",
+                 weekdays[localTime.tm_wday], localTime.tm_mday,
+                 months[localTime.tm_mon]);
       break;
   }
   clockDashboardSetDate(dateText);
