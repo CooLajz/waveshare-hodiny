@@ -4,3 +4,4 @@
 
 void weatherAnimationServiceLoop(int weatherCode, bool isDay, uint8_t style,
                                  bool enabled);
+void weatherAnimationServiceSetFirmwareUpdateActive(bool active);

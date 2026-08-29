@@ -95,6 +95,7 @@ const AssetMetadata *installedAsset = nullptr;
 uint8_t *downloadedData = nullptr;
 uint8_t *installedData = nullptr;
 volatile unsigned long lastFailureAt = 0;
+volatile bool firmwareUpdateActive = false;
 
 const AssetMetadata *metadataForKey(const char *key) {
   if (key == nullptr) return nullptr;
@@ -220,6 +221,7 @@ void downloadTask(void *) {
 
 void weatherAnimationServiceLoop(int weatherCode, bool isDay, uint8_t style,
                                  bool enabled) {
+  if (firmwareUpdateActive) return;
   char desiredKey[48] = "";
   const AssetMetadata *desired =
       enabled && weatherAnimationAssetKey(desiredKey, sizeof(desiredKey),
@@ -267,4 +269,8 @@ void weatherAnimationServiceLoop(int weatherCode, bool isDay, uint8_t style,
           MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) != pdPASS) {
     setFailed();
   }
+}
+
+void weatherAnimationServiceSetFirmwareUpdateActive(bool active) {
+  firmwareUpdateActive = active;
 }

@@ -1580,6 +1580,59 @@ void chmiRadarServiceBegin() {
       MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 }
 
+void chmiRadarServicePrepareForFirmwareUpdate() {
+  portENTER_CRITICAL(&stateMux);
+  active = false;
+  ++requestRevision;
+  portEXIT_CRITICAL(&stateMux);
+
+  // OTA drzi sitovy koordinator, radar tedy v tuto chvili nemuze byt uvnitr
+  // HTTP/TLS operace. Ukoncenim tasku zastavime i pripadny dekodovaci cyklus,
+  // nez uvolnime jeho pracovni a zobrazovaci buffery.
+  if (taskHandle != nullptr) {
+    vTaskDeleteWithCaps(taskHandle);
+    taskHandle = nullptr;
+  }
+  png.close();
+  for (uint16_t *&buffer : displayBuffers) {
+    if (buffer != nullptr) heap_caps_free(buffer);
+    buffer = nullptr;
+  }
+  if (decodeBuffer != nullptr) heap_caps_free(decodeBuffer);
+  decodeBuffer = nullptr;
+  if (pngBuffer != nullptr) heap_caps_free(pngBuffer);
+  pngBuffer = nullptr;
+  if (lineBuffer != nullptr) heap_caps_free(lineBuffer);
+  lineBuffer = nullptr;
+  lineCapacity = 0;
+  for (size_t index = 0; index < MAX_ANIMATION_FRAME_COUNT; ++index) {
+    if (preparedFrames[index] != nullptr) heap_caps_free(preparedFrames[index]);
+    preparedFrames[index] = nullptr;
+    if (cachedPngFrames[index] != nullptr) heap_caps_free(cachedPngFrames[index]);
+    cachedPngFrames[index] = nullptr;
+    cachedPngSizes[index] = 0;
+    cachedPngCapacities[index] = 0;
+    preparedFrameReady[index] = false;
+  }
+  for (size_t index = 0; index < MAX_PENDING_REFRESH_FRAMES; ++index) {
+    if (pendingPreparedFrames[index] != nullptr)
+      heap_caps_free(pendingPreparedFrames[index]);
+    pendingPreparedFrames[index] = nullptr;
+    if (pendingPngFrames[index] != nullptr) heap_caps_free(pendingPngFrames[index]);
+    pendingPngFrames[index] = nullptr;
+    pendingPngSizes[index] = 0;
+    pendingPngCapacities[index] = 0;
+  }
+  decodeTarget = nullptr;
+  cachedPngCount = 0;
+  pendingRefreshCount = 0;
+  animationFrameCount = 0;
+  displayedFrame = -1;
+  ready = false;
+  loading = false;
+  preparationInProgress = false;
+}
+
 void chmiRadarServiceSetActive(bool requested, float latitude, float longitude,
                                uint16_t radiusKm, uint8_t frameCount,
                                uint8_t mapOpacityValue,

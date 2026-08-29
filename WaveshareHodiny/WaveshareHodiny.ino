@@ -660,6 +660,7 @@ void maintainNetworkTime() {
 }
 
 void handleFirmwareUpdateLifecycle(bool updating) {
+  weatherAnimationServiceSetFirmwareUpdateActive(updating);
   if (homeAssistantTaskHandle != nullptr) {
     if (updating) {
       vTaskSuspend(homeAssistantTaskHandle);
@@ -687,7 +688,9 @@ void handleFirmwareUpdateLifecycle(bool updating) {
     // Necháme několik obnovovacích cyklů naplnit framebuffer i RGB bounce
     // buffery čistou černou ještě před prvním zápisem OTA do flash.
     delay(500);
+    chmiRadarServicePrepareForFirmwareUpdate();
   } else {
+    chmiRadarServiceBegin();
     firmwareUpdateCountdownStarted = false;
     firmwareUpdateBlackRequested = false;
     displayResyncAt = millis() + 500;

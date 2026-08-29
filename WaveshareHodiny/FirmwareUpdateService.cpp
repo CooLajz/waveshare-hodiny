@@ -146,9 +146,20 @@ bool installFirmware(const String &url, uint32_t expectedSize,
   }
   const int responseCode = http.GET();
   if (responseCode != HTTP_CODE_OK) {
+    String detail;
+    if (responseCode < 0) {
+      char tlsError[160] = {};
+      client.lastError(tlsError, sizeof(tlsError));
+      detail = tlsError[0] != '\0' ? tlsError
+                                   : HTTPClient::errorToString(responseCode);
+    } else {
+      detail = String("HTTP ") + responseCode;
+    }
     http.end();
-    setMessage(FirmwareUpdateState::Failed,
-               "Server nevydal aplikační OTA obraz.", false);
+    client.stop();
+    const String message =
+        String("Server nevydal aplikační OTA obraz: ") + detail + ".";
+    setMessage(FirmwareUpdateState::Failed, message.c_str(), false);
     if (lifecycleCallback != nullptr) lifecycleCallback(false);
     return false;
   }
@@ -259,45 +270,51 @@ void checkFirmware(bool installWhenAvailable) {
     return;
   }
 
-  const String metadataEndpoint = metadataUrl();
-  WiFiClientSecure client;
-  client.setCACert(FIRMWARE_RELEASE_ROOT_CA);
-  client.setTimeout(NETWORK_TIMEOUT_MS);
-  HTTPClient http;
-  http.setConnectTimeout(NETWORK_TIMEOUT_MS);
-  http.setTimeout(NETWORK_TIMEOUT_MS);
-  if (!http.begin(client, metadataEndpoint)) {
-    setMessage(FirmwareUpdateState::Failed,
-               "Nepodařilo se otevřít server aktualizací.", false);
-    return;
-  }
-  http.addHeader("Accept", "application/json");
-  const int responseCode = http.GET();
-  if (responseCode == HTTP_CODE_NOT_FOUND) {
-    http.end();
-    setMessage(FirmwareUpdateState::Failed,
-               "Server zatím nemá OTA metadata pro tento projekt.",
-               false);
-    return;
-  }
-  if (responseCode != HTTP_CODE_OK) {
-    String detail;
-    if (responseCode < 0) {
-      char tlsError[160] = {};
-      client.lastError(tlsError, sizeof(tlsError));
-      detail = tlsError[0] != '\0' ? tlsError
-                                   : HTTPClient::errorToString(responseCode);
-    } else {
-      detail = String("HTTP ") + responseCode;
+  String payload;
+  {
+    const String metadataEndpoint = metadataUrl();
+    WiFiClientSecure client;
+    client.setCACert(FIRMWARE_RELEASE_ROOT_CA);
+    client.setTimeout(NETWORK_TIMEOUT_MS);
+    HTTPClient http;
+    http.setConnectTimeout(NETWORK_TIMEOUT_MS);
+    http.setTimeout(NETWORK_TIMEOUT_MS);
+    if (!http.begin(client, metadataEndpoint)) {
+      setMessage(FirmwareUpdateState::Failed,
+                 "Nepodařilo se otevřít server aktualizací.", false);
+      return;
     }
+    http.addHeader("Accept", "application/json");
+    const int responseCode = http.GET();
+    if (responseCode == HTTP_CODE_NOT_FOUND) {
+      http.end();
+      client.stop();
+      setMessage(FirmwareUpdateState::Failed,
+                 "Server zatím nemá OTA metadata pro tento projekt.",
+                 false);
+      return;
+    }
+    if (responseCode != HTTP_CODE_OK) {
+      String detail;
+      if (responseCode < 0) {
+        char tlsError[160] = {};
+        client.lastError(tlsError, sizeof(tlsError));
+        detail = tlsError[0] != '\0' ? tlsError
+                                     : HTTPClient::errorToString(responseCode);
+      } else {
+        detail = String("HTTP ") + responseCode;
+      }
+      http.end();
+      client.stop();
+      const String message =
+          String("Kontrola verze na serveru selhala: ") + detail + ".";
+      setMessage(FirmwareUpdateState::Failed, message.c_str(), false);
+      return;
+    }
+    payload = http.getString();
     http.end();
-    const String message =
-        String("Kontrola verze na serveru selhala: ") + detail + ".";
-    setMessage(FirmwareUpdateState::Failed, message.c_str(), false);
-    return;
+    client.stop();
   }
-  const String payload = http.getString();
-  http.end();
 
   String version;
   String chipFamily;
