@@ -64,6 +64,7 @@ lv_obj_t *radarPage = nullptr;
 lv_obj_t *radarCanvas = nullptr;
 lv_obj_t *radarTitleLabel = nullptr;
 lv_obj_t *radarProgressBar = nullptr;
+bool radarFullPreparationInProgress = false;
 lv_obj_t *radarStatusLabel = nullptr;
 lv_obj_t *settingsPage = nullptr;
 lv_obj_t *dayBrightnessSlider = nullptr;
@@ -908,7 +909,9 @@ void applyDashboardColors() {
     if (radarProgressBar != nullptr) {
       lv_obj_set_style_bg_color(radarProgressBar, COLOR_DIVIDER,
                                 LV_PART_MAIN);
-      lv_obj_set_style_bg_color(radarProgressBar, COLOR_OUTSIDE,
+      lv_obj_set_style_bg_color(radarProgressBar,
+                                radarFullPreparationInProgress ? COLOR_ERROR
+                                                               : COLOR_OUTSIDE,
                                 LV_PART_INDICATOR);
     }
     setTextColor(dateLabel, configuredColor(dateColor));
@@ -1979,6 +1982,7 @@ bool clockDashboardAutomaticRotationAllowed() {
 void clockDashboardSetRadarSnapshot(const uint16_t *pixels,
                                     const char *frameTime, uint16_t radiusKm,
                                     const char *message, bool loading,
+                                    bool fullPreparationInProgress,
                                     bool latestFrame,
                                     uint8_t currentFrameNumber,
                                     uint8_t animationFrameCount,
@@ -1986,6 +1990,13 @@ void clockDashboardSetRadarSnapshot(const uint16_t *pixels,
   if (radarCanvas == nullptr || radarStatusLabel == nullptr ||
       radarTitleLabel == nullptr || radarProgressBar == nullptr)
     return;
+  radarFullPreparationInProgress = fullPreparationInProgress;
+  if (!redNightVisualEnabled()) {
+    lv_obj_set_style_bg_color(
+        radarProgressBar,
+        fullPreparationInProgress ? COLOR_ERROR : COLOR_OUTSIDE,
+        LV_PART_INDICATOR);
+  }
   if (pixels != nullptr) {
     lv_canvas_set_buffer(radarCanvas, const_cast<uint16_t *>(pixels), 480, 480,
                          LV_IMG_CF_TRUE_COLOR);

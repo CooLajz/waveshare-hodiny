@@ -173,14 +173,15 @@ void applyPendingRuntimeConfiguration() {
   dashboardConfigBuffer = runtimeConfig;
   xSemaphoreGive(runtimeConfigMutex);
   clockDashboardApplyConfiguration(dashboardConfigBuffer);
-  if (clockDashboardRadarVisible()) {
-    chmiRadarServiceSetActive(true, dashboardConfigBuffer.openMeteoLatitude,
-                              dashboardConfigBuffer.openMeteoLongitude,
-                              dashboardConfigBuffer.radarRadiusKm,
-                              dashboardConfigBuffer.radarFrameCount,
-                              dashboardConfigBuffer.radarMapOpacity,
-                              dashboardConfigBuffer.radarPauseSeconds);
-  }
+  chmiRadarServiceSetActive(
+      clockDashboardRadarVisible(),
+      dashboardConfigBuffer.automaticRadarRotation,
+      dashboardConfigBuffer.openMeteoLatitude,
+      dashboardConfigBuffer.openMeteoLongitude,
+      dashboardConfigBuffer.radarRadiusKm,
+      dashboardConfigBuffer.radarFrameCount,
+      dashboardConfigBuffer.radarMapOpacity,
+      dashboardConfigBuffer.radarPauseSeconds);
   // Zápis do flash může na ESP32-S3 rozhodit vertikální synchronizaci RGB
   // panelu. Provádíme ji až po dokončení obsluhy HTTP požadavku.
   LCD_Resync();
@@ -257,7 +258,8 @@ void handleRadarVisibility(bool visible) {
   automaticRadarRotationPaused = false;
   radarRotationWaitingForCycle = false;
   const ClockConfig config = runtimeConfigSnapshot();
-  chmiRadarServiceSetActive(visible, config.openMeteoLatitude,
+  chmiRadarServiceSetActive(visible, config.automaticRadarRotation,
+                            config.openMeteoLatitude,
                             config.openMeteoLongitude, config.radarRadiusKm,
                             config.radarFrameCount, config.radarMapOpacity,
                             config.radarPauseSeconds);
@@ -293,9 +295,11 @@ void maintainRadarRangeChange() {
       static_cast<long>(millis() - radarRadiusApplyAt) >= 0) {
     radarRadiusApplyPending = false;
     radarRadiusApplyAt = 0;
-    if (clockDashboardRadarVisible()) {
-      const ClockConfig config = runtimeConfigSnapshot();
-      chmiRadarServiceSetActive(true, config.openMeteoLatitude,
+    const ClockConfig config = runtimeConfigSnapshot();
+    if (clockDashboardRadarVisible() || config.automaticRadarRotation) {
+      chmiRadarServiceSetActive(clockDashboardRadarVisible(),
+                                config.automaticRadarRotation,
+                                config.openMeteoLatitude,
                                 config.openMeteoLongitude,
                                 config.radarRadiusKm,
                                 config.radarFrameCount,
@@ -320,8 +324,10 @@ bool previewRadarRangeFromWeb(uint16_t radiusKm) {
   radarRadiusApplyAt = 0;
   displayModeStartedAt = millis();
   radarRotationWaitingForCycle = false;
-  if (clockDashboardRadarVisible()) {
-    chmiRadarServiceSetActive(true, config.openMeteoLatitude,
+  if (clockDashboardRadarVisible() || config.automaticRadarRotation) {
+    chmiRadarServiceSetActive(clockDashboardRadarVisible(),
+                              config.automaticRadarRotation,
+                              config.openMeteoLatitude,
                               config.openMeteoLongitude,
                               config.radarRadiusKm,
                               config.radarFrameCount,
@@ -400,6 +406,7 @@ void maintainRadarDisplay() {
   clockDashboardSetRadarSnapshot(snapshot.pixels, snapshot.frameTime,
                                  displayedRadarRadiusKm,
                                  snapshot.message, snapshot.loading,
+                                 snapshot.fullPreparationInProgress,
                                  snapshot.latestFrame,
                                  snapshot.currentFrameNumber,
                                  snapshot.animationFrameCount,
@@ -1313,6 +1320,11 @@ void setup() {
                        handleRadarRangeChange);
   clockDashboardApplyConfiguration(runtimeConfig);
   chmiRadarServiceBegin();
+  chmiRadarServiceSetActive(
+      false, runtimeConfig.automaticRadarRotation,
+      runtimeConfig.openMeteoLatitude, runtimeConfig.openMeteoLongitude,
+      runtimeConfig.radarRadiusKm, runtimeConfig.radarFrameCount,
+      runtimeConfig.radarMapOpacity, runtimeConfig.radarPauseSeconds);
   clockDashboardSetSecond(60);
   displayResyncAt = millis() + 2000;
 #if FIRMWARE_RELEASE

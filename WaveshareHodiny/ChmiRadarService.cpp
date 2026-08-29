@@ -49,6 +49,7 @@ constexpr uint16_t WHOLE_COUNTRY_RADIUS_KM = 260;
 TaskHandle_t taskHandle = nullptr;
 portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
 bool active = false;
+bool visible = false;
 float centerLatitude = 49.1951f;
 float centerLongitude = 16.6068f;
 uint16_t centerRadiusKm = 50;
@@ -78,6 +79,7 @@ bool loading = false;
 bool ready = false;
 bool animationPause = false;
 bool preparationInProgress = false;
+bool fullPreparationInProgress = false;
 unsigned long lastAnimationStepAt = 0;
 unsigned long animationPauseStartedAt = 0;
 unsigned long lastProgressiveFrameShownAt = 0;
@@ -1030,6 +1032,16 @@ void beginProgressivePreparation(size_t count) {
 
 bool showProgressivelyPreparedFrame(size_t index, uint16_t radiusKm,
                                     uint32_t revision) {
+  portENTER_CRITICAL(&stateMux);
+  const bool valid = active && revision == requestRevision;
+  const bool shouldDisplay = visible && !restartAnimationRequested;
+  if (valid) {
+    ready = true;
+    activeRadiusKm = radiusKm;
+  }
+  portEXIT_CRITICAL(&stateMux);
+  if (!valid) return false;
+  if (!shouldDisplay) return true;
   if (index > 0) {
     while (requestMatches(revision)) {
       portENTER_CRITICAL(&stateMux);
@@ -1040,14 +1052,7 @@ bool showProgressivelyPreparedFrame(size_t index, uint16_t radiusKm,
       delay(min(10UL, PREPARATION_FRAME_MIN_MS - elapsed));
     }
   }
-  portENTER_CRITICAL(&stateMux);
-  const bool valid = active && revision == requestRevision;
-  if (valid) {
-    ready = true;
-    activeRadiusKm = radiusKm;
-  }
-  portEXIT_CRITICAL(&stateMux);
-  const bool shown = valid && showPreparedFrame(index, millis());
+  const bool shown = showPreparedFrame(index, millis());
   if (shown) {
     portENTER_CRITICAL(&stateMux);
     lastProgressiveFrameShownAt = millis();
@@ -1061,9 +1066,11 @@ void finishProgressivePreparation(uint32_t revision) {
   portENTER_CRITICAL(&stateMux);
   if (revision == requestRevision) {
     preparationInProgress = false;
+    fullPreparationInProgress = false;
     animationPause = true;
     animationPauseStartedAt = now;
     lastAnimationStepAt = now;
+    ++generation;
   }
   portEXIT_CRITICAL(&stateMux);
 }
@@ -1128,17 +1135,29 @@ bool loadAnimation(float latitude, float longitude, uint16_t radiusKm,
     setStatus(false, "Nedostatek pameti pro radar");
     return false;
   }
+  portENTER_CRITICAL(&stateMux);
+  fullPreparationInProgress = true;
+  ++generation;
+  portEXIT_CRITICAL(&stateMux);
   setStatus(true, "Obnovuji radar CHMU...");
   char latestNames[MAX_ANIMATION_FRAME_COUNT][FILE_NAME_CAPACITY] = {};
   size_t latestCount = 0;
   if (!latestFileNames(latestNames, latestCount, revision)) {
     setStatus(false, "Seznam CHMU se nepodarilo nacist");
+    portENTER_CRITICAL(&stateMux);
+    if (revision == requestRevision) fullPreparationInProgress = false;
+    portEXIT_CRITICAL(&stateMux);
     return false;
   }
   const size_t selectedCount =
       min(latestCount, static_cast<size_t>(wantedFrameCount));
   const size_t selectedStart = latestCount - selectedCount;
-  if (selectedCount == 0) return false;
+  if (selectedCount == 0) {
+    portENTER_CRITICAL(&stateMux);
+    if (revision == requestRevision) fullPreparationInProgress = false;
+    portEXIT_CRITICAL(&stateMux);
+    return false;
+  }
 
   size_t loadedCount = 0;
   bool canResume = animationFrameCount == selectedCount &&
@@ -1217,9 +1236,17 @@ bool loadAnimation(float latitude, float longitude, uint16_t radiusKm,
   };
 
   for (size_t index = 0; index < selectedCount; ++index) {
-    if (!prepareMissingFrame(index)) return false;
+    if (!prepareMissingFrame(index)) {
+      portENTER_CRITICAL(&stateMux);
+      if (revision == requestRevision) fullPreparationInProgress = false;
+      portEXIT_CRITICAL(&stateMux);
+      return false;
+    }
     if (!showProgressivelyPreparedFrame(index, radiusKm, revision)) {
       setStatus(false, "Snímek CHMU se nepodařilo zobrazit");
+      portENTER_CRITICAL(&stateMux);
+      if (revision == requestRevision) fullPreparationInProgress = false;
+      portEXIT_CRITICAL(&stateMux);
       return false;
     }
   }
@@ -1369,12 +1396,13 @@ bool refreshLatestFrame(float latitude, float longitude, uint16_t radiusKm,
   const bool atBoundary = animationPause &&
                           displayedFrame + 1 ==
                               static_cast<int>(animationFrameCount);
+  const bool refreshInBackground = !visible;
   portEXIT_CRITICAL(&stateMux);
   if (animationFrameCount == 1) {
     commitPendingRefresh();
     return showPreparedFrame(0, millis());
   }
-  if (atBoundary) commitPendingRefresh();
+  if (atBoundary || refreshInBackground) commitPendingRefresh();
   return true;
 }
 
@@ -1418,6 +1446,7 @@ bool showPreparedFrame(size_t index, unsigned long now) {
 
 void advanceAnimation(unsigned long now) {
   portENTER_CRITICAL(&stateMux);
+  const bool isVisible = visible;
   const bool canAnimate = ready && animationFrameCount > 1 &&
                           displayedFrame >= 0;
   const bool paused = animationPause;
@@ -1428,7 +1457,7 @@ void advanceAnimation(unsigned long now) {
   const unsigned long lastStep = lastAnimationStepAt;
   const int currentFrame = displayedFrame;
   portEXIT_CRITICAL(&stateMux);
-  if (!canAnimate || preparing) return;
+  if (!isVisible || !canAnimate || preparing) return;
   if (paused) {
     if (now - pauseStarted >= pauseDuration) {
       const int first = firstPreparedFrame();
@@ -1583,6 +1612,7 @@ void chmiRadarServiceBegin() {
 void chmiRadarServicePrepareForFirmwareUpdate() {
   portENTER_CRITICAL(&stateMux);
   active = false;
+  visible = false;
   ++requestRevision;
   portEXIT_CRITICAL(&stateMux);
 
@@ -1631,9 +1661,11 @@ void chmiRadarServicePrepareForFirmwareUpdate() {
   ready = false;
   loading = false;
   preparationInProgress = false;
+  fullPreparationInProgress = false;
 }
 
-void chmiRadarServiceSetActive(bool requested, float latitude, float longitude,
+void chmiRadarServiceSetActive(bool requestedVisible, bool backgroundRefresh,
+                               float latitude, float longitude,
                                uint16_t radiusKm, uint8_t frameCount,
                                uint8_t mapOpacityValue,
                                uint8_t pauseSecondsValue) {
@@ -1644,7 +1676,9 @@ void chmiRadarServiceSetActive(bool requested, float latitude, float longitude,
   pauseSecondsValue = constrain(pauseSecondsValue, static_cast<uint8_t>(0),
                                 static_cast<uint8_t>(30));
   portENTER_CRITICAL(&stateMux);
-  const bool wasActive = active;
+  const bool wasEnabled = active;
+  const bool wasVisible = visible;
+  const bool requestedEnabled = requestedVisible || backgroundRefresh;
   const bool projectionChanged =
       fabsf(centerLatitude - latitude) > 0.00001f ||
       fabsf(centerLongitude - longitude) > 0.00001f ||
@@ -1669,54 +1703,62 @@ void chmiRadarServiceSetActive(bool requested, float latitude, float longitude,
         break;
       }
   }
-  const bool freshPngCache =
-      completePngCache && !frameCountChanged &&
-      lastSuccessfulRefreshAt != 0 &&
-      millis() - lastSuccessfulRefreshAt < REFRESH_INTERVAL_MS;
-  const bool freshPreparedCache =
-      completePreparedCache && !projectionChanged && !frameCountChanged &&
-      freshPngCache;
-  active = requested;
+  const bool freshCache = lastSuccessfulRefreshAt != 0 &&
+                          millis() - lastSuccessfulRefreshAt <
+                              REFRESH_INTERVAL_MS;
+  active = requestedEnabled;
+  visible = requestedVisible;
   centerLatitude = latitude;
   centerLongitude = longitude;
   centerRadiusKm = radiusKm;
   requestedFrameCount = frameCount;
   mapOpacity = mapOpacityValue;
   pauseSeconds = pauseSecondsValue;
-  if (!requested && wasActive) {
+  if (!requestedEnabled && wasEnabled) {
     ++requestRevision;
     rebuildFromCacheRequested = false;
     reloadRequested = false;
     showBaseMapRequested = false;
     restartAnimationRequested = false;
     preparationInProgress = false;
-  } else if (requested && !wasActive) {
-    if (freshPreparedCache) {
+    fullPreparationInProgress = false;
+  } else if (requestedEnabled && (projectionChanged || frameCountChanged)) {
+    ++requestRevision;
+    showBaseMapRequested = requestedVisible;
+    restartAnimationRequested = false;
+    rebuildFromCacheRequested = projectionChanged && !frameCountChanged &&
+                                completePngCache;
+    reloadRequested = !rebuildFromCacheRequested;
+    nextAttemptAt = 0;
+  } else if (requestedEnabled && !wasEnabled) {
+    if (completePreparedCache) {
       for (size_t index = 0; index < animationFrameCount; ++index)
         if (preparedFrameReady[index])
           preparedFrameRevisions[index] = requestRevision;
-      restartAnimationRequested = true;
+      restartAnimationRequested = requestedVisible;
       showBaseMapRequested = false;
       rebuildFromCacheRequested = false;
       reloadRequested = false;
+      if (!freshCache) nextAttemptAt = 0;
     } else {
       ++requestRevision;
-      showBaseMapRequested = true;
+      showBaseMapRequested = requestedVisible;
       restartAnimationRequested = false;
-      rebuildFromCacheRequested = freshPngCache;
-      reloadRequested = !freshPngCache;
+      rebuildFromCacheRequested = completePngCache;
+      reloadRequested = !completePngCache;
       nextAttemptAt = 0;
     }
-  } else if (requested && (projectionChanged || frameCountChanged)) {
-    ++requestRevision;
-    showBaseMapRequested = true;
+  } else if (requestedEnabled && requestedVisible && !wasVisible) {
+    // Cache mohla být během zobrazení hodin doplněna. Při návratu vždy
+    // začínáme od jejího nejstaršího připraveného snímku.
+    restartAnimationRequested = completePreparedCache ||
+                                preparationInProgress || ready;
+    showBaseMapRequested = !ready && !preparationInProgress;
+  } else if (requestedEnabled && !requestedVisible && wasVisible) {
     restartAnimationRequested = false;
-    rebuildFromCacheRequested = projectionChanged && freshPngCache;
-    reloadRequested = !rebuildFromCacheRequested;
-    nextAttemptAt = 0;
   }
   portEXIT_CRITICAL(&stateMux);
-  if (requested && taskHandle != nullptr) xTaskNotifyGive(taskHandle);
+  if (requestedEnabled && taskHandle != nullptr) xTaskNotifyGive(taskHandle);
 }
 
 void chmiRadarServiceSetRedNightMode(bool enabled) {
@@ -1726,7 +1768,7 @@ void chmiRadarServiceSetRedNightMode(bool enabled) {
     return;
   }
   redNightMode = enabled;
-  nightVisualRedrawRequested = active && displayedFrame != -1;
+  nightVisualRedrawRequested = visible && displayedFrame != -1;
   const bool notify = nightVisualRedrawRequested;
   portEXIT_CRITICAL(&stateMux);
   if (notify && taskHandle != nullptr) xTaskNotifyGive(taskHandle);
@@ -1740,6 +1782,7 @@ void chmiRadarServiceSnapshot(ChmiRadarSnapshot &snapshot) {
   snapshot.completedAnimationCycles = completedAnimationCycles;
   snapshot.loading = loading;
   snapshot.ready = ready;
+  snapshot.fullPreparationInProgress = fullPreparationInProgress;
   snapshot.latestFrame =
       ready && displayedFrame >= 0 &&
       displayedFrame + 1 == static_cast<int>(animationFrameCount);
@@ -1756,7 +1799,7 @@ void chmiRadarServiceSnapshot(ChmiRadarSnapshot &snapshot) {
 void chmiRadarServiceDiagnostics(ChmiRadarDiagnostics &diagnostics) {
   const unsigned long now = millis();
   portENTER_CRITICAL(&stateMux);
-  diagnostics.active = active;
+  diagnostics.active = visible;
   diagnostics.loading = loading;
   diagnostics.ready = ready;
   diagnostics.preparationInProgress = preparationInProgress;

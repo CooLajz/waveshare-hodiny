@@ -11,6 +11,7 @@ struct ChmiRadarSnapshot {
   uint32_t completedAnimationCycles = 0;
   bool loading = false;
   bool ready = false;
+  bool fullPreparationInProgress = false;
   bool latestFrame = false;
   uint8_t currentFrameNumber = 0;
   uint8_t animationFrameCount = 0;
@@ -47,7 +48,8 @@ struct ChmiRadarDiagnostics {
 
 void chmiRadarServiceBegin();
 void chmiRadarServicePrepareForFirmwareUpdate();
-void chmiRadarServiceSetActive(bool active, float latitude, float longitude,
+void chmiRadarServiceSetActive(bool visible, bool backgroundRefresh,
+                               float latitude, float longitude,
                                uint16_t radiusKm, uint8_t frameCount,
                                uint8_t mapOpacity, uint8_t pauseSeconds);
 void chmiRadarServiceSetRedNightMode(bool enabled);
