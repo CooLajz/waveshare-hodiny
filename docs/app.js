@@ -28,9 +28,12 @@ const translations = {
   "Spusťte instalaci": "Start installation", "Prohlížeč Vás požádá o výběr sériového portu.": "Your browser will ask you to select a serial port.",
   "Nastavte Wi-Fi": "Configure Wi-Fi", "Po instalaci zadejte síť přes Improv Serial.": "After installation, enter the network using Improv Serial.",
   "Veřejný stabilní firmware": "Public stable firmware", "Zjišťuji dostupnost…": "Checking availability…", "Připojit zařízení": "Connect device",
+  "Vyberte verzi firmware": "Select firmware version", "Načítám dostupné verze…": "Loading available versions…",
   "Tento prohlížeč nepodporuje Web Serial. Otevřete stránku v desktopovém Chromu nebo Edge.": "This browser does not support Web Serial. Open this page in desktop Chrome or Edge.",
   "Přístup k sériovému portu není povolený. Otevřete stránku přes zabezpečené HTTPS.": "Serial port access is not allowed. Open this page over secure HTTPS.",
   "Instalátor se připravuje.": "Preparing the installer.", "Pozor:": "Warning:",
+  "Instalujete starší verzi.": "You are installing an older version.",
+  "Konfigurace vytvořená novějším firmwarem nemusí být se starší verzí plně kompatibilní. Pokud zařízení po návratu nefunguje správně, může být nutná čistá instalace se smazáním uživatelských dat.": "Configuration created by newer firmware may not be fully compatible with an older version. If the device does not work correctly after reverting, a clean installation that erases user data may be required.",
   "první čistá instalace může vymazat uložená data zařízení. Aktualizace stejného layoutu je nabídnuta bez mazání.": "a first clean installation may erase stored device data. An update using the same layout is offered without erasing it.",
   "Displej podle Vás": "Your display, your way", "Barvy, jas i chování nastavíte ve webu": "Configure colors, brightness and behavior on the web",
   "Každá veličina může mít vlastní plynulou barevnou škálu. Denní a noční jas, meteoradar, animace i entity změníte bez nového sestavení firmware. Při vypnuté automatice přepne krátký dotyk denní a noční vzhled na hodinách i radaru.": "Each value can have its own smooth color scale. Change day and night brightness, radar, animations and entities without rebuilding the firmware. When automatic mode is disabled, a short tap switches the clock and radar between day and night appearance.",
@@ -55,6 +58,8 @@ const originalAttributes = new WeakMap();
 let currentLanguage = "cs";
 let installerVersion = "";
 let installerAvailable = false;
+let latestInstallerVersion = "";
+let installerReleases = [];
 
 const translatedText = (source, language) => language === "en" ? translations[source] || source : source;
 
@@ -85,6 +90,7 @@ function translateDocument(language) {
     Object.entries(originalAttributes.get(element)).forEach(([name, source]) => element.setAttribute(name, translatedText(source, language)));
   });
   document.querySelectorAll("[data-language]").forEach((button) => button.setAttribute("aria-pressed", button.dataset.language === language ? "true" : "false"));
+  refreshFirmwareOptions();
   updateInstallerText();
 }
 
@@ -102,24 +108,68 @@ document.querySelectorAll("[data-language]").forEach((button) => button.addEvent
 
 const installButton = document.querySelector("#install-button");
 const statusLabel = document.querySelector("#installer-status");
+const firmwareSelect = document.querySelector("#firmware-select");
+const downgradeWarning = document.querySelector("#installer-downgrade");
+
+function refreshFirmwareOptions() {
+  if (!firmwareSelect || installerReleases.length === 0) return;
+  const selectedVersion = installerReleases.some((release) => release.version === firmwareSelect.value)
+    ? firmwareSelect.value
+    : latestInstallerVersion;
+  firmwareSelect.replaceChildren(...installerReleases.map((release) => {
+    const option = document.createElement("option");
+    option.value = release.version;
+    option.textContent = release.version === latestInstallerVersion ? `${release.version} (${currentLanguage === "en" ? "latest" : "nejnovější"})` : release.version;
+    option.dataset.manifest = release.manifest;
+    return option;
+  }));
+  firmwareSelect.value = selectedVersion;
+}
+
+async function selectFirmware(release) {
+  const response = await fetch(release.manifest, { cache: "no-store" });
+  if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
+  const manifest = await response.json();
+  const build = manifest.builds?.find((item) => item.chipFamily === "ESP32-S3");
+  if (manifest.version !== release.version || !build || build.parts?.length !== 4) throw new Error("invalid installation manifest");
+  installButton.setAttribute("manifest", release.manifest);
+  installButton.setAttribute("ready", "");
+  installerVersion = manifest.version;
+  installerAvailable = true;
+  downgradeWarning.hidden = installerVersion === latestInstallerVersion;
+  updateInstallerText();
+}
 
 async function prepareInstaller() {
   try {
-    const response = await fetch("firmware/manifest.json", { cache: "no-store" });
-    if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
-    const manifest = await response.json();
-    const build = manifest.builds?.find((item) => item.chipFamily === "ESP32-S3");
-    if (!manifest.version || !build || build.parts?.length !== 4) throw new Error("invalid installation manifest");
-    installButton.setAttribute("manifest", "firmware/manifest.json");
-    installButton.setAttribute("ready", "");
-    installerVersion = manifest.version;
-    installerAvailable = true;
+    const response = await fetch("firmware/releases.json", { cache: "no-store" });
+    if (!response.ok) throw new Error(`release catalog HTTP ${response.status}`);
+    const catalog = await response.json();
+    if (!Array.isArray(catalog.releases) || catalog.releases.length < 1 || catalog.releases.length > 5) throw new Error("invalid release catalog");
+    installerReleases = catalog.releases;
+    latestInstallerVersion = installerReleases[0].version;
+    refreshFirmwareOptions();
+    firmwareSelect.disabled = false;
+    await selectFirmware(catalog.releases[0]);
   } catch (error) {
     statusLabel.classList.add("error");
     console.info(messages[currentLanguage].log, error.message);
   }
   updateInstallerText();
 }
+
+firmwareSelect.addEventListener("change", async () => {
+  statusLabel.classList.remove("error");
+  installButton.removeAttribute("ready");
+  try {
+    await selectFirmware({ version: firmwareSelect.value, manifest: firmwareSelect.selectedOptions[0].dataset.manifest });
+  } catch (error) {
+    installerAvailable = false;
+    statusLabel.classList.add("error");
+    console.info(messages[currentLanguage].log, error.message);
+    updateInstallerText();
+  }
+});
 
 translateDocument(preferredLanguage());
 prepareInstaller();

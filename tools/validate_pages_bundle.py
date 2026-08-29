@@ -139,6 +139,59 @@ def main() -> None:
         or ota["url"] != "/waveshare-hodiny/firmware/waveshare-hodiny.ota.bin"
     ):
         raise SystemExit("OTA metadata neodpovídají veřejnému OTA obrazu.")
+
+    catalog_path = firmware / "releases.json"
+    if catalog_path.exists():
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        releases = catalog.get("releases")
+        if not isinstance(releases, list) or not 1 <= len(releases) <= 5:
+            raise SystemExit("Katalog musí obsahovat jednu až pět stabilních verzí.")
+        versions: set[str] = set()
+        for index, release in enumerate(releases):
+            if not isinstance(release, dict) or set(release) != {"version", "manifest"}:
+                raise SystemExit("Položka katalogu verzí má neplatnou strukturu.")
+            version = release["version"]
+            relative_manifest = release["manifest"]
+            expected_manifest = f"firmware/releases/{version}/manifest.json"
+            if (
+                not isinstance(version, str)
+                or not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version)
+                or version in versions
+                or relative_manifest != expected_manifest
+            ):
+                raise SystemExit("Katalog obsahuje neplatnou nebo duplicitní verzi.")
+            versions.add(version)
+            archived_manifest_path = site / relative_manifest
+            archived_manifest = json.loads(archived_manifest_path.read_text(encoding="utf-8"))
+            if archived_manifest.get("version") != version:
+                raise SystemExit(f"Manifest archivní verze {version} nesouhlasí s katalogem.")
+            archived_builds = archived_manifest.get("builds")
+            if not isinstance(archived_builds, list) or len(archived_builds) != 1:
+                raise SystemExit(f"Archivní verze {version} nemá právě jeden build.")
+            archived_build = archived_builds[0]
+            archived_parts = archived_build.get("parts")
+            if (
+                archived_build.get("chipFamily") != "ESP32-S3"
+                or archived_build.get("improv") is not True
+                or not isinstance(archived_parts, list)
+                or len(archived_parts) != len(EXPECTED_PARTS)
+                or any(
+                    not isinstance(part, dict)
+                    or set(part) != {"path", "offset"}
+                    or not isinstance(part["path"], str)
+                    or not isinstance(part["offset"], int)
+                    or isinstance(part["offset"], bool)
+                    for part in archived_parts
+                )
+                or {part.get("path"): part.get("offset") for part in archived_parts if isinstance(part, dict)} != EXPECTED_PARTS
+            ):
+                raise SystemExit(f"Archivní manifest {version} nemá očekávaný instalační build.")
+            for name in EXPECTED_PARTS:
+                archived_part = archived_manifest_path.parent / name
+                if not archived_part.is_file() or archived_part.stat().st_size == 0:
+                    raise SystemExit(f"Archivní verzi {version} chybí část {name}.")
+            if index == 0 and archived_manifest != manifest:
+                raise SystemExit("První verze katalogu neodpovídá aktuálnímu manifestu.")
     print(f"Web i instalační balíček verze {manifest.get('version')} jsou platné.")
 
 

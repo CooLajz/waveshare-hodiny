@@ -99,12 +99,17 @@
             <div class="installer-orbit" aria-hidden="true"><span></span></div>
             <p class="installer-label">Veřejný stabilní firmware</p>
             <p class="installer-version" id="firmware-version">Zjišťuji dostupnost…</p>
+            <label class="firmware-select-label" for="firmware-select">Vyberte verzi firmware</label>
+            <select class="firmware-select" id="firmware-select" disabled>
+              <option>Načítám dostupné verze…</option>
+            </select>
             <esp-web-install-button id="install-button">
               <button class="button button-primary install-action" slot="activate" type="button">Připojit zařízení</button>
               <p slot="unsupported">Tento prohlížeč nepodporuje Web Serial. Otevřete stránku v desktopovém Chromu nebo Edge.</p>
               <p slot="not-allowed">Přístup k sériovému portu není povolený. Otevřete stránku přes zabezpečené HTTPS.</p>
             </esp-web-install-button>
             <p class="installer-status" id="installer-status" role="status">Instalátor se připravuje.</p>
+            <p class="installer-downgrade" id="installer-downgrade" role="status" hidden><strong>Instalujete starší verzi.</strong> Konfigurace vytvořená novějším firmwarem nemusí být se starší verzí plně kompatibilní. Pokud zařízení po návratu nefunguje správně, může být nutná čistá instalace se smazáním uživatelských dat.</p>
             <p class="installer-warning"><strong>Pozor:</strong> první čistá instalace může vymazat uložená data zařízení. Aktualizace stejného layoutu je nabídnuta bez mazání.</p>
           </div>
         </div>

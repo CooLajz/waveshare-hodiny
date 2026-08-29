@@ -40,8 +40,24 @@ jobs:
           cp screenshots/*.png _site/screenshots/
           cp media/waveshare-hodiny-minute-transition.mp4 _site/media/
 
-          latest_tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)"
+          releases="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 5 --exclude-drafts --exclude-pre-releases --json tagName)"
+          latest_tag="$(jq -r '.[0].tagName // empty' <<<"$releases")"
           if [[ -n "$latest_tag" ]]; then
+            while IFS= read -r tag; do
+              version="${tag#v}"
+              release_dir="_site/firmware/releases/$version"
+              mkdir -p "$release_dir"
+              gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir "$release_dir" \
+                --pattern manifest.json \
+                --pattern waveshare-hodiny.bootloader.bin \
+                --pattern waveshare-hodiny.partitions.bin \
+                --pattern waveshare-hodiny.boot-app0.bin \
+                --pattern waveshare-hodiny.app.bin
+            done < <(jq -r '.[].tagName' <<<"$releases")
+
+            jq '{releases: [.[] | {version: (.tagName | ltrimstr("v")), manifest: ("firmware/releases/" + (.tagName | ltrimstr("v")) + "/manifest.json")}]}' \
+              <<<"$releases" > _site/firmware/releases.json
+
             gh release download "$latest_tag" --repo "$GITHUB_REPOSITORY" --dir _site/firmware \
               --pattern manifest.json \
               --pattern waveshare-hodiny.bootloader.bin \

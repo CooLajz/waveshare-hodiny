@@ -83,10 +83,15 @@ h2 { margin-bottom: 18px; font-size: clamp(2rem, 4vw, 3.6rem); line-height: 1.04
 .installer-orbit span { width: 38px; height: 38px; border: 3px solid var(--cyan); border-radius: 50%; box-shadow: 0 0 25px rgba(48,215,232,.28); }
 .installer-label { margin-bottom: 3px; color: var(--muted); font-size: .82rem; text-transform: uppercase; letter-spacing: .1em; }
 .installer-version { margin-bottom: 22px; font-size: 1.45rem; font-weight: 800; }
+.firmware-select-label { display: block; margin-bottom: 7px; color: var(--muted); font-size: .8rem; text-align: left; }
+.firmware-select { width: 100%; margin-bottom: 14px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); color: var(--text); font: inherit; cursor: pointer; }
+.firmware-select:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.firmware-select:disabled { cursor: wait; opacity: .62; }
 .install-action { width: 100%; font-size: 1rem; }
 esp-web-install-button:not([ready]) { display: none; }
 .installer-status { min-height: 1.7em; margin: 14px 0 0; color: var(--muted); font-size: .86rem; }
 .installer-status.error { color: #ff8888; }
+.installer-downgrade { margin: 18px 0 0; padding: 13px 14px; border: 1px solid rgba(240,68,68,.35); border-radius: 10px; background: rgba(240,68,68,.08); color: #ffb0b0; font-size: .78rem; text-align: left; }
 .installer-warning { margin: 24px 0 0; padding-top: 20px; border-top: 1px solid var(--line); color: #7f909b; font-size: .76rem; text-align: left; }
 .showcase-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
 .showcase-grid figure { margin: 0; overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
