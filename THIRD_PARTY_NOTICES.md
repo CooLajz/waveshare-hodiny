@@ -1,31 +1,30 @@
-# Third-party notices
+# Oznámení o komponentách třetích stran
 
-The MIT license in the repository root applies to the original project code.
-The following components and assets retain their own licenses and copyright
-notices.
+Na původní kód projektu se vztahuje licence MIT uvedená v kořeni repozitáře.
+Následující komponenty a podklady si zachovávají vlastní licence a autorská
+oznámení.
 
-## Runtime and build dependencies
+## Běhové a sestavovací závislosti
 
-| Component | Version used by the project | License | Source |
+| Komponenta | Verze použitá v projektu | Licence | Zdroj |
 | --- | --- | --- | --- |
-| Arduino core for ESP32 | 3.0.7 | LGPL-2.1 | https://github.com/espressif/arduino-esp32 |
+| Arduino core pro ESP32 | 3.0.7 | LGPL-2.1 | https://github.com/espressif/arduino-esp32 |
 | LVGL | 8.3.10 | MIT | https://github.com/lvgl/lvgl |
 | PNGdec | 1.0.1 | Apache-2.0 | https://github.com/bitbank2/PNGdec |
-| Improv Wi-Fi C++ SDK | commit `17898613a1c17062ca5af295ceb639b16b4930bf` | Apache-2.0 | https://github.com/improv-wifi/sdk-cpp |
+| Improv Wi-Fi C++ SDK | revize `17898613a1c17062ca5af295ceb639b16b4930bf` | Apache-2.0 | https://github.com/improv-wifi/sdk-cpp |
 | ESP Web Tools | 10.4.0 | Apache-2.0 | https://github.com/esphome/esp-web-tools |
 
-The Improv Wi-Fi sources embedded in `WaveshareHodiny/improv.cpp` and
-`WaveshareHodiny/improv.h` are derived from the upstream C++ SDK identified
-above.
+Zdrojové soubory Improv Wi-Fi vložené v `WaveshareHodiny/improv.cpp` a
+`WaveshareHodiny/improv.h` jsou odvozené z výše uvedeného původního C++ SDK.
 
-The minified ESP Web Tools browser bundle used by the GitHub Pages installer is
-self-hosted in `docs/vendor/esp-web-tools/`. Its upstream Apache-2.0 license is
-preserved as `docs/vendor/esp-web-tools/LICENSE`.
+Minifikovaný prohlížečový balíček ESP Web Tools používaný instalátorem na
+GitHub Pages je hostovaný přímo v `docs/vendor/esp-web-tools/`. Jeho původní
+licence Apache-2.0 je zachována v `docs/vendor/esp-web-tools/LICENSE`.
 
-## MeteoPlaneRadar by Chiptron.cz
+## MeteoPlaneRadar od Chiptron.cz
 
 Část implementace meteoradaru a mapových podkladů byla převzata a upravena z
-open-source projektu MeteoPlaneRadar:
+projektu MeteoPlaneRadar s otevřeným zdrojovým kódem:
 
 - autor: Petr / Chiptron.cz,
 - zdroj: https://github.com/petus/MeteoPlaneRadar,
@@ -35,7 +34,7 @@ open-source projektu MeteoPlaneRadar:
 Copyright (c) 2026 Petr / chiptron.cz
 
 Na převzaté a odvozené části se vztahují podmínky MIT licence. Její úplné
-znění je součástí souboru `LICENSE` v kořeni tohoto repozitáře. Děkujeme
+znění je součástí souboru `LICENSE` v kořeni tohoto repozitáře. Děkuji
 autorovi za zveřejnění zdrojového kódu a inspiraci pro integraci radaru ČHMÚ.
 
 ## Meteorologická data ČHMÚ
@@ -48,40 +47,46 @@ Zdroj: https://opendata.chmi.cz/meteorology/weather/radar/composite/maxz/png/
 
 ## Mapový podklad meteoradaru
 
-Obrys České republiky vychází z dat Natural Earth 1:10m (public domain),
+Obrys České republiky vychází z volně použitelných dat Natural Earth 1:10m,
 zjednodušených v projektu MeteoPlaneRadar. Souřadnice měst pocházejí z
 GeoNames a podléhají licenci CC BY 4.0.
 
 Zdroje: https://www.naturalearthdata.com/ · https://www.geonames.org/ ·
 https://github.com/petus/MeteoPlaneRadar
 
-## Fonts and icons
+## Písma a ikony
 
-| Asset | License | Source |
+| Podklad | Licence | Zdroj |
 | --- | --- | --- |
 | Montserrat | SIL Open Font License 1.1 | https://github.com/JulietaUla/Montserrat |
 | Barlow | SIL Open Font License 1.1 | https://github.com/jpt/barlow |
 | Liberation Sans | SIL Open Font License 1.1 | https://github.com/liberationfonts/liberation-fonts |
 | DSEG | SIL Open Font License 1.1 | https://github.com/keshikan/DSEG |
 | Doto | SIL Open Font License 1.1 | https://github.com/google/fonts/tree/main/ofl/doto |
-| Font Awesome Free | Icons: CC BY 4.0; fonts: SIL OFL 1.1; code: MIT | https://fontawesome.com/license/free |
+| Font Awesome Free | ikony: CC BY 4.0; písma: SIL OFL 1.1; kód: MIT | https://fontawesome.com/license/free |
 
-Generated LVGL font data in `ClockCzechFont*.c` uses Montserrat glyphs.
-The selectable clock fonts use glyphs generated from Barlow Bold 1.408,
-Liberation Sans Bold 2.1.5, DSEG7 Modern Bold 0.46 and Doto Bold. The exact
-source fonts and their licenses are included below `assets/fonts/`.
-`ClockIconsFont42.c` uses selected Font Awesome Free glyphs.
+Vygenerovaná data písem LVGL v `ClockCzechFont*.c` používají znaky písma
+Montserrat. Volitelná písma hodin používají znaky vygenerované z Barlow Bold
+1.408, Liberation Sans Bold 2.1.5, DSEG7 Modern Bold 0.46 a Doto Bold. Přesné
+zdrojové soubory písem a jejich licence jsou uložené v `assets/fonts/`.
+`ClockIconsFont42.c` používá vybrané znaky Font Awesome Free.
 
 ## Meteocons
 
-The weather icons embedded in the firmware are derived from Meteocons
-version `3.0.0-next.10` by Bas Milius.
+Ikony počasí vložené ve firmware jsou odvozené z Meteocons ve verzi
+`3.0.0-next.10` od Base Miliuse.
 
-The 45 animated GIFs published in `docs/assets/weather-icons/` are generated
-from the same upstream package. Their MIT license is also preserved next to
-the published assets as `docs/assets/weather-icons/LICENSE.txt`.
+Všech 45 animovaných obrázků GIF publikovaných v
+`docs/assets/weather-icons/` je vygenerováno ze stejného původního balíčku.
+Jejich licence MIT je zachována také vedle publikovaných podkladů v
+`docs/assets/weather-icons/LICENSE.txt`.
 
-Source: https://github.com/basmilius/weather-icons
+Zdroj: https://github.com/basmilius/weather-icons
+
+### Původní znění licence MIT
+
+Následující právně závazné znění licence je záměrně ponecháno v původní
+angličtině:
 
 MIT License
 

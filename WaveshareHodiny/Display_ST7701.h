@@ -33,9 +33,7 @@
 #define ESP_PANEL_LCD_COLOR_BITS                  (16)
 #define ESP_PANEL_LCD_RGB_PIXEL_BITS              (16)    // 24 | 16
 #define ESP_PANEL_LCD_RGB_DATA_WIDTH              (16)
-#define ESP_PANEL_LCD_RGB_NORMAL_FREQ_HZ          (14 * 1000 * 1000)
-#define ESP_PANEL_LCD_RGB_RADAR_FREQ_HZ           (8 * 1000 * 1000)
-#define ESP_PANEL_LCD_RGB_TIMING_FREQ_HZ          ESP_PANEL_LCD_RGB_NORMAL_FREQ_HZ
+#define ESP_PANEL_LCD_RGB_TIMING_FREQ_HZ          (10 * 1000 * 1000)
 #define ESP_PANEL_LCD_RGB_TIMING_HPW              (8)
 #define ESP_PANEL_LCD_RGB_TIMING_HBP              (10)
 #define ESP_PANEL_LCD_RGB_TIMING_HFP              (50)

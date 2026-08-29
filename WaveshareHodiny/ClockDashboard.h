@@ -48,6 +48,7 @@ void clockDashboardShowSettings();
 void clockDashboardShowSettingsPage(uint8_t page);
 void clockDashboardSetNightMode(bool enabled);
 bool clockDashboardNightModeEnabled();
+void clockDashboardHandleShortClick();
 bool clockDashboardRadarVisible();
 void clockDashboardSetRadarVisible(bool visible);
 bool clockDashboardAutomaticRotationAllowed();

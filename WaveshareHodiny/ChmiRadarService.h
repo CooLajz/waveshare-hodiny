@@ -46,5 +46,6 @@ struct ChmiRadarDiagnostics {
 void chmiRadarServiceBegin();
 void chmiRadarServiceSetActive(bool active, float latitude, float longitude,
                                uint16_t radiusKm, uint8_t frameCount);
+void chmiRadarServiceSetRedNightMode(bool enabled);
 void chmiRadarServiceSnapshot(ChmiRadarSnapshot &snapshot);
 void chmiRadarServiceDiagnostics(ChmiRadarDiagnostics &diagnostics);

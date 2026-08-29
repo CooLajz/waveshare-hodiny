@@ -93,10 +93,10 @@ char displayedRadarTime[6] = "";
 uint16_t displayedRadarRadiusKm = 50;
 bool radarRadiusApplyPending = false;
 unsigned long radarRadiusApplyAt = 0;
-bool radarNormalPixelClockPending = false;
 bool automaticRadarRotationPaused = true;
 unsigned long displayModeStartedAt = 0;
 uint32_t radarRotationCycleBaseline = 0;
+bool radarRedNightModeApplied = false;
 
 constexpr uint32_t LOOP_WATCHDOG_TIMEOUT_MS = 20UL * 1000UL;
 constexpr uint32_t NTP_SYNC_INTERVAL_MS = 60UL * 60UL * 1000UL;
@@ -255,14 +255,11 @@ void handleRadarVisibility(bool visible) {
     ChmiRadarSnapshot snapshot;
     chmiRadarServiceSnapshot(snapshot);
     radarRotationCycleBaseline = snapshot.completedAnimationCycles;
-    radarNormalPixelClockPending = false;
-    LCD_SetPixelClock(ESP_PANEL_LCD_RGB_RADAR_FREQ_HZ);
   }
   const ClockConfig config = runtimeConfigSnapshot();
   chmiRadarServiceSetActive(visible, config.openMeteoLatitude,
                             config.openMeteoLongitude, config.radarRadiusKm,
                             config.radarFrameCount);
-  if (!visible) radarNormalPixelClockPending = true;
 }
 
 void handleRadarRangeChange(int8_t direction) {
@@ -360,13 +357,22 @@ void maintainAutomaticRadarRotation() {
   clockDashboardSetRadarVisible(!radarVisible);
 }
 
+void maintainDisplayGestures() {
+  if (displayDriverTakeHorizontalSwipe() &&
+      clockDashboardAutomaticRotationAllowed()) {
+    clockDashboardSetRadarVisible(!clockDashboardRadarVisible());
+  }
+  const int8_t verticalSwipeDirection = displayDriverTakeVerticalSwipe();
+  if (verticalSwipeDirection != 0 && clockDashboardRadarVisible() &&
+      clockDashboardAutomaticRotationAllowed()) {
+    handleRadarRangeChange(verticalSwipeDirection);
+  }
+  if (displayDriverTakeSingleClick()) clockDashboardHandleShortClick();
+}
+
 void maintainRadarDisplay() {
   ChmiRadarSnapshot snapshot;
   chmiRadarServiceSnapshot(snapshot);
-  if (radarNormalPixelClockPending && !snapshot.loading) {
-    if (LCD_SetPixelClock(ESP_PANEL_LCD_RGB_NORMAL_FREQ_HZ))
-      radarNormalPixelClockPending = false;
-  }
   if (snapshot.generation == displayedRadarGeneration &&
       strcmp(snapshot.frameTime, displayedRadarTime) == 0)
     return;
@@ -378,6 +384,16 @@ void maintainRadarDisplay() {
                                  displayedRadarRadiusKm,
                                  snapshot.message, snapshot.loading,
                                  snapshot.latestFrame);
+}
+
+void maintainRadarNightVisual() {
+  const ClockConfig config = runtimeConfigSnapshot();
+  const bool enabled =
+      clockDashboardNightModeEnabled() &&
+      config.nightVisualMode == CLOCK_NIGHT_VISUAL_RED;
+  if (radarRedNightModeApplied == enabled) return;
+  radarRedNightModeApplied = enabled;
+  chmiRadarServiceSetRedNightMode(enabled);
 }
 
 void handleConfigurationWebStatus(bool active) {
@@ -1331,6 +1347,8 @@ void loop() {
                                           "weather") == 0));
   configurationWebLoop();
   applyPendingRuntimeConfiguration();
+  maintainDisplayGestures();
+  maintainRadarNightVisual();
   maintainRadarRangeChange();
   maintainRadarDisplay();
   maintainAutomaticRadarRotation();

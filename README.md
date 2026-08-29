@@ -231,22 +231,20 @@ nemaže.
 
 ## Nastavení na displeji
 
-Nastavení už neotevírá dlouhý stisk libovolného místa dashboardu. Dlouze
-stiskni spodní oblast se stavovými ikonami Wi-Fi, Home Assistantu a webového
-nastavení. Dlouhý stisk mimo tuto oblast přepne z hodin na meteoradar. Na
-radarové obrazovce vrátí dlouhý stisk kdekoliv zpět hodiny.
+Nastavení otevře dlouhý stisk kdekoliv na hodinách i meteoradaru. Mezi hodinami
+a meteoradarem přepne vodorovné gesto swipe doleva nebo doprava. Protože jsou
+obrazovky pouze dvě, oba směry vždy zobrazí druhou obrazovku.
 
-Na radaru krátké klepnutí do levého okraje oddálí pohled a klepnutí do pravého
-okraje jej přiblíží. Oblast uprostřed rozsah nemění. Změna provedená na
-displeji je dočasná a nezapisuje se do flash.
+Na radaru swipe nahoru pohled přiblíží a swipe dolů jej oddálí. Změna provedená
+na displeji je dočasná a nezapisuje se do flash.
 
 | Obrazovka a gesto | Výsledek |
 | --- | --- |
-| Hodiny: dlouhý stisk spodní oblasti stavových ikon | Otevře nastavení |
-| Hodiny: dlouhý stisk mimo stavové ikony | Otevře meteoradar |
-| Meteoradar: dlouhý stisk kdekoliv | Vrátí hodiny |
-| Meteoradar: krátké klepnutí na levý okraj | Oddálí rozsah |
-| Meteoradar: krátké klepnutí na pravý okraj | Přiblíží rozsah |
+| Hodiny: swipe doleva nebo doprava | Otevře meteoradar |
+| Meteoradar: swipe doleva nebo doprava | Vrátí hodiny |
+| Hodiny nebo meteoradar: dlouhý stisk kdekoliv | Otevře nastavení |
+| Meteoradar: swipe nahoru | Přiblíží rozsah |
+| Meteoradar: swipe dolů | Oddálí rozsah |
 
 Nastavení má tři stránky. Velká tlačítka se šipkami je přepínají; gesto swipe
 se nepoužívá.
@@ -443,7 +441,7 @@ upload.sh               USB upload vývojového buildu
 - ověř ikonu Wi-Fi na displeji,
 - použij IP adresu z nastavení zařízení,
 - pokud je zvolený časově omezený nebo vypnutý režim webu, otevři nastavení
-  dlouhým stiskem spodní oblasti stavových ikon,
+  dlouhým stiskem kdekoliv na hodinách nebo meteoradaru,
 - zkontroluj, že klient i zařízení jsou ve stejné dosažitelné síti.
 
 Samostatná stránka `http://<IP-adresa>/diagnostics` zůstává dostupná i při
@@ -490,12 +488,12 @@ ani ovládací URL v issue.
 
 ## Poděkování
 
-Při implementaci meteoradaru jsme využili a pro potřeby tohoto firmware
-přizpůsobili část kódu z open-source projektu
+Při implementaci meteoradaru jsem využil a pro potřeby tohoto firmware
+přizpůsobil část kódu z open-source projektu
 [MeteoPlaneRadar](https://github.com/petus/MeteoPlaneRadar), který vyvíjí
-Petr z [Chiptron.cz](https://chiptron.cz/). Děkujeme za zveřejnění projektu,
+Petr z [Chiptron.cz](https://chiptron.cz/). Děkuji za zveřejnění projektu,
 praktickou ukázku práce s radarovými daty ČHMÚ a mapové podklady, na kterých
-jsme mohli naši integraci postavit.
+jsem mohl tuto integraci postavit.
 
 ## Licence
 

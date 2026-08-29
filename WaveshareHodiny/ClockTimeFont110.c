@@ -2641,7 +2641,8 @@ static const lv_font_fmt_txt_glyph_dsc_t glyph_dsc[] = {
     {.bitmap_index = 13912, .adv_w = 873, .box_w = 52, .box_h = 79, .ofs_x = 2, .ofs_y = -1},
     {.bitmap_index = 15966, .adv_w = 952, .box_w = 52, .box_h = 80, .ofs_x = 4, .ofs_y = -1},
     {.bitmap_index = 18046, .adv_w = 935, .box_w = 52, .box_h = 80, .ofs_x = 2, .ofs_y = -1},
-    {.bitmap_index = 20126, .adv_w = 641, .box_w = 18, .box_h = 54, .ofs_x = 11, .ofs_y = 1}
+    /* Barlow's text baseline places ':' below the vertical center of digits. */
+    {.bitmap_index = 20126, .adv_w = 641, .box_w = 18, .box_h = 54, .ofs_x = 11, .ofs_y = 10}
 };
 
 /*---------------------

@@ -28,9 +28,9 @@ constexpr unsigned long SECOND_LINE_FADE_TOTAL_MS = 4000;
 constexpr unsigned long SECOND_FADE_DOT_MS = 200;
 constexpr unsigned long SECOND_FADE_START_SPAN_MS =
     SECOND_DOT_FADE_TOTAL_MS - SECOND_FADE_DOT_MS;
-constexpr unsigned long SECOND_FADE_FRAME_MS = 25;
-constexpr unsigned long TIME_COLON_FADE_FRAME_MS = 25;
-constexpr unsigned long SECOND_COMET_FRAME_MS = 16;
+// Plynulé efekty držíme pod fyzickou obnovovací frekvencí panelu, aby se do
+// jednoho snímku zbytečně neposílalo více různých stavů.
+constexpr unsigned long SMOOTH_EFFECT_FRAME_MS = 40;
 constexpr float SECOND_COMET_TRAIL_SECONDS = 12.0f;
 constexpr unsigned long WEATHER_ANIMATION_REVEAL_DELAY_MS = 100;
 
@@ -816,6 +816,7 @@ void renderSecondRing(unsigned long now) {
 }
 
 void setTextColor(lv_obj_t *object, lv_color_t color) {
+  if (object == nullptr) return;
   lv_obj_set_style_text_color(object, color, 0);
 }
 
@@ -840,7 +841,9 @@ void renderTimeColon(unsigned long now, bool force = false) {
                         elapsedWithinSecond;
     intensity = 0.5f - 0.5f * std::cos(phase * PI_VALUE);
   }
-  const uint32_t baseColor = redNightVisualEnabled() ? 0xFF0000 : timeColor;
+  // Inline barva dvojtečky musí na maximu přesně odpovídat barvě celého
+  // časového labelu v červeném nočním režimu (COLOR_ERROR).
+  const uint32_t baseColor = redNightVisualEnabled() ? 0xFF4848 : timeColor;
   const uint8_t red = static_cast<uint8_t>(
       std::round(((baseColor >> 16) & 0xFF) * intensity));
   const uint8_t green = static_cast<uint8_t>(
@@ -875,6 +878,8 @@ void applyDashboardColors() {
         humidityValueLabel, humidityUnitLabel,
     };
     for (lv_obj_t *label : coloredLabels) setTextColor(label, COLOR_ERROR);
+    setTextColor(radarTitleLabel, COLOR_ERROR);
+    setTextColor(radarStatusLabel, COLOR_ERROR);
     lv_obj_set_style_img_recolor(weatherImage, COLOR_ERROR, 0);
     lv_obj_set_style_img_recolor_opa(weatherImage, LV_OPA_COVER, 0);
     lv_obj_set_style_img_recolor(roomWeatherImage, COLOR_ERROR, 0);
@@ -887,6 +892,8 @@ void applyDashboardColors() {
     const lv_color_t configuredOutsideColor = configuredColor(outsideColor);
     const lv_color_t configuredRoomColor = configuredColor(roomColor);
     setTextColor(timeLabel, configuredColor(timeColor));
+    setTextColor(radarTitleLabel, COLOR_TEXT);
+    setTextColor(radarStatusLabel, COLOR_OUTSIDE);
     setTextColor(dateLabel, configuredColor(dateColor));
     setTextColor(outsideTitleLabel, configuredOutsideColor);
     setTextColor(outsideIntegerLabel, configuredOutsideColor);
@@ -940,13 +947,6 @@ void applyDashboardColors() {
   renderTimeColon(millis(), true);
 }
 
-void toggleNightModeEvent(lv_event_t *event) {
-  if (lv_event_get_code(event) != LV_EVENT_SHORT_CLICKED || settingsVisible ||
-      automaticDayNightEnabled)
-    return;
-  clockDashboardSetNightMode(!nightModeEnabled);
-}
-
 void updateBrightnessLabel(lv_obj_t *label, int brightness, int x, int y) {
   char text[8];
   snprintf(text, sizeof(text), "%d %%", brightness);
@@ -981,34 +981,7 @@ void showSettings() {
 }
 
 void openSettingsEvent(lv_event_t *event) {
-  if (lv_event_get_code(event) != LV_EVENT_LONG_PRESSED) return;
-  lv_indev_t *input = lv_indev_get_act();
-  lv_point_t point = {};
-  if (input != nullptr) lv_indev_get_point(input, &point);
-  const bool statusArea = point.x >= 145 && point.x <= 335 && point.y >= 390;
-  if (statusArea)
-    showSettings();
-  else
-    setRadarVisible(true);
-}
-
-void closeRadarEvent(lv_event_t *event) {
-  if (lv_event_get_code(event) == LV_EVENT_LONG_PRESSED)
-    setRadarVisible(false);
-}
-
-void changeRadarRangeEvent(lv_event_t *event) {
-  if (lv_event_get_code(event) != LV_EVENT_SHORT_CLICKED ||
-      radarRangeCallback == nullptr)
-    return;
-  lv_indev_t *input = lv_indev_get_act();
-  if (input == nullptr) return;
-  lv_point_t point = {};
-  lv_indev_get_point(input, &point);
-  if (point.x < 160)
-    radarRangeCallback(1);
-  else if (point.x > 320)
-    radarRangeCallback(-1);
+  if (lv_event_get_code(event) == LV_EVENT_LONG_PRESSED) showSettings();
 }
 
 void createRadarPage(lv_obj_t *screen) {
@@ -1050,9 +1023,7 @@ void createRadarPage(lv_obj_t *screen) {
 
   makeChildrenTapThrough(radarPage);
   lv_obj_add_flag(radarPage, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(radarPage, closeRadarEvent, LV_EVENT_LONG_PRESSED,
-                      nullptr);
-  lv_obj_add_event_cb(radarPage, changeRadarRangeEvent, LV_EVENT_SHORT_CLICKED,
+  lv_obj_add_event_cb(radarPage, openSettingsEvent, LV_EVENT_LONG_PRESSED,
                       nullptr);
   lv_obj_add_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
 }
@@ -1549,8 +1520,6 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
   makeChildrenTapThrough(dashboardContent);
   lv_obj_add_event_cb(dashboardContent, openSettingsEvent, LV_EVENT_LONG_PRESSED,
                       nullptr);
-  lv_obj_add_event_cb(dashboardContent, toggleNightModeEvent,
-                      LV_EVENT_SHORT_CLICKED, nullptr);
   createRadarPage(screen);
   createSettingsPage(screen);
 
@@ -1927,10 +1896,7 @@ void clockDashboardLoop() {
       !smoothTimeColonActive)
     return;
   const unsigned long frameInterval =
-      secondRingEnabled && secondEffect == CLOCK_SECOND_EFFECT_COMET
-          ? SECOND_COMET_FRAME_MS
-          : (smoothTimeColonActive ? TIME_COLON_FADE_FRAME_MS
-                               : SECOND_FADE_FRAME_MS);
+      SMOOTH_EFFECT_FRAME_MS;
   if (now - lastSecondFadeFrameAt < frameInterval) return;
   lastSecondFadeFrameAt = now;
   if (secondFadeActive || smoothSecondEffectActive) renderSecondRing(now);
@@ -1962,6 +1928,12 @@ void clockDashboardSetNightMode(bool enabled) {
 
 bool clockDashboardNightModeEnabled() { return nightModeEnabled; }
 
+void clockDashboardHandleShortClick() {
+  if (settingsVisible || firmwareUpdateActive || automaticDayNightEnabled)
+    return;
+  clockDashboardSetNightMode(!nightModeEnabled);
+}
+
 bool clockDashboardRadarVisible() { return radarVisible; }
 
 void clockDashboardSetRadarVisible(bool visible) { setRadarVisible(visible); }
@@ -1984,7 +1956,8 @@ void clockDashboardSetRadarSnapshot(const uint16_t *pixels,
     lv_obj_invalidate(radarCanvas);
   }
   char title[96];
-  const char *timePrefix = latestFrame ? "#65FF45 " : "";
+  const char *timePrefix =
+      latestFrame ? (redNightVisualEnabled() ? "#FF9090 " : "#65FF45 ") : "";
   const char *timeSuffix = latestFrame ? "#" : "";
   if (radiusKm == 0 && frameTime != nullptr && frameTime[0] != '\0')
     snprintf(title, sizeof(title), "ČHMÚ - ČR - %s%s%s", timePrefix,

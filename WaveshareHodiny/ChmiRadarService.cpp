@@ -67,6 +67,8 @@ bool rebuildFromCacheRequested = false;
 bool reloadRequested = false;
 bool showBaseMapRequested = false;
 bool restartAnimationRequested = false;
+bool redNightMode = false;
+bool nightVisualRedrawRequested = false;
 size_t animationFrameCount = 0;
 int displayedFrame = -1;
 uint32_t generation = 0;
@@ -121,6 +123,9 @@ bool decodedLinesSequential = true;
 void advanceAnimation(unsigned long now);
 bool showPreparedFrame(size_t index, unsigned long now);
 int firstPreparedFrame();
+uint8_t rgb565ToRgb332(uint16_t color);
+uint16_t nightRadarColor(uint8_t color);
+void applyNightRadarPalette(uint16_t *buffer);
 
 unsigned long millisecondsUntilNextRefreshSlot() {
   const time_t now = time(nullptr);
@@ -725,6 +730,10 @@ bool showBaseMap(float latitude, float longitude, uint16_t radiusKm,
                  cropY2);
   drawDisplayRing(target);
   portENTER_CRITICAL(&stateMux);
+  const bool nightVisual = redNightMode;
+  portEXIT_CRITICAL(&stateMux);
+  if (nightVisual) applyNightRadarPalette(target);
+  portENTER_CRITICAL(&stateMux);
   if (!active || revision != requestRevision) {
     portEXIT_CRITICAL(&stateMux);
     return false;
@@ -867,6 +876,57 @@ uint16_t rgb332ToRgb565(uint8_t color) {
   const uint16_t green6 = (green3 << 3) | green3;
   const uint16_t blue5 = (blue2 << 3) | (blue2 << 1) | (blue2 >> 1);
   return static_cast<uint16_t>((red5 << 11) | (green6 << 5) | blue5);
+}
+
+uint16_t nightRadarColor(uint8_t color) {
+  uint8_t level = 0;
+  switch (color) {
+    case 0x00:
+      return 0;
+    // Stupně odrazivosti ČHMÚ od nejsilnějších po nejslabší. Po převodu
+    // zdrojové palety do RGB332 zachováme jejich pořadí pomocí jasu červené.
+    case 0xa0: level = 255; break;
+    case 0xe0: level = 248; break;
+    case 0xe8: level = 236; break;
+    case 0xf0: level = 224; break;
+    case 0xf4: level = 210; break;
+    case 0xf8: level = 196; break;
+    case 0x98: level = 180; break;
+    case 0x38: level = 165; break;
+    case 0x14: level = 150; break;
+    case 0x0f: level = 132; break;
+    case 0x03: level = 114; break;
+    case 0x22: level = 96; break;
+    case 0x21: level = 82; break;
+    // Vlastní mapová vrstva a doplňkové barvy zdrojového PNG.
+    case 0xff: level = 255; break;  // poloha a nejsilnější odraz
+    case 0x1f: level = 210; break;  // města
+    case 0xb6: level = 82; break;   // hranice ČR
+    case 0x49: level = 48; break;   // okraj displeje
+    case 0xdb: level = 64; break;   // pomocná kresba v PNG ČHMÚ
+    default: {
+      const uint8_t red = static_cast<uint8_t>(((color >> 5) & 0x07) * 255 / 7);
+      const uint8_t green =
+          static_cast<uint8_t>(((color >> 2) & 0x07) * 255 / 7);
+      const uint8_t blue = static_cast<uint8_t>((color & 0x03) * 255 / 3);
+      const uint16_t luminance =
+          (static_cast<uint16_t>(red) * 54 +
+           static_cast<uint16_t>(green) * 183 +
+           static_cast<uint16_t>(blue) * 19) >> 8;
+      level = constrain(static_cast<int>(luminance), 48, 170);
+      break;
+    }
+  }
+  // Maximum odpovídá stejné červené RGB(255,72,72), jakou používá noční UI.
+  const uint8_t accent =
+      static_cast<uint8_t>((static_cast<uint16_t>(level) * 72) / 255);
+  return static_cast<uint16_t>(((level >> 3) << 11) |
+                               ((accent >> 2) << 5) | (accent >> 3));
+}
+
+void applyNightRadarPalette(uint16_t *buffer) {
+  for (size_t pixel = 0; pixel < RADAR_PIXEL_COUNT; ++pixel)
+    buffer[pixel] = nightRadarColor(rgb565ToRgb332(buffer[pixel]));
 }
 
 bool packDecodedFrame(size_t index) {
@@ -1080,8 +1140,27 @@ bool loadAnimation(float latitude, float longitude, uint16_t radiusKm,
   }
 
   const auto prepareMissingFrame = [&](size_t index) {
-    if (preparedFrameReady[index]) return true;
     const char *fileName = latestNames[selectedStart + index];
+    if (preparedFrameReady[index] &&
+        preparedFrameRevisions[index] == revision)
+      return true;
+
+    // Rychlé zavření radaru zneplatní rozpracovanou revizi, ale již stažené
+    // PNG ponecháváme v cache. Po návratu je musíme znovu promítnout do
+    // aktuálního výřezu a označit novou revizí; jinak showPreparedFrame()
+    // starý snímek odmítne a na displeji zůstane pouze podkladová mapa.
+    if (index < cachedPngCount && cachedPngFrames[index] != nullptr &&
+        cachedPngSizes[index] > 0 &&
+        strcmp(cachedPngNames[index], fileName) == 0) {
+      if (!prepareFrame(index, cachedPngFrames[index], cachedPngSizes[index],
+                        cachedPngNames[index], latitude, longitude, radiusKm,
+                        revision)) {
+        setStatus(false, "Snimek CHMU se nepodarilo pripravit");
+        return false;
+      }
+      return true;
+    }
+
     size_t pngSize = 0;
     if (!downloadPngWithRetry(fileName, pngSize, revision)) {
       setStatus(false, "Snimek CHMU se nepodarilo stahnout");
@@ -1281,13 +1360,15 @@ bool showPreparedFrame(size_t index, unsigned long now) {
                      preparedFrameReady[index] &&
                      preparedFrames[index] != nullptr &&
                      preparedFrameRevisions[index] == requestRevision;
+  const bool nightVisual = redNightMode;
   portEXIT_CRITICAL(&stateMux);
   if (!valid) return false;
   const uint8_t targetBuffer = 1 - activeDisplayBuffer;
   uint16_t *target = displayBuffers[targetBuffer];
   const uint8_t *source = preparedFrames[index];
   for (size_t pixel = 0; pixel < RADAR_PIXEL_COUNT; ++pixel)
-    target[pixel] = rgb332ToRgb565(source[pixel]);
+    target[pixel] = nightVisual ? nightRadarColor(source[pixel])
+                                : rgb332ToRgb565(source[pixel]);
   portENTER_CRITICAL(&stateMux);
   if (!active || index >= animationFrameCount || !preparedFrameReady[index] ||
       preparedFrameRevisions[index] != requestRevision) {
@@ -1365,19 +1446,37 @@ void radarTask(void *) {
     bool reloadNow = false;
     bool showBase = false;
     bool restartAnimation = false;
+    bool redrawNightVisual = false;
+    int frameToRedraw = -1;
     portENTER_CRITICAL(&stateMux);
     haveFrames = ready && displayedFrame >= 0;
     rebuildRequested = rebuildFromCacheRequested;
     reloadNow = reloadRequested;
     showBase = showBaseMapRequested;
     restartAnimation = restartAnimationRequested;
+    redrawNightVisual = nightVisualRedrawRequested;
+    frameToRedraw = displayedFrame;
     portEXIT_CRITICAL(&stateMux);
     if (showBase) {
       showBaseMap(latitude, longitude, radiusKm, revision);
       portENTER_CRITICAL(&stateMux);
-      if (revision == requestRevision) showBaseMapRequested = false;
+      if (revision == requestRevision) {
+        showBaseMapRequested = false;
+        nightVisualRedrawRequested = false;
+      }
       portEXIT_CRITICAL(&stateMux);
       haveFrames = false;
+    }
+    if (redrawNightVisual && !showBase) {
+      bool redrawn = false;
+      if (frameToRedraw >= 0)
+        redrawn = showPreparedFrame(static_cast<size_t>(frameToRedraw), now);
+      else if (frameToRedraw == -2)
+        redrawn = showBaseMap(latitude, longitude, radiusKm, revision);
+      portENTER_CRITICAL(&stateMux);
+      if (revision == requestRevision) nightVisualRedrawRequested = false;
+      portEXIT_CRITICAL(&stateMux);
+      if (redrawn) continue;
     }
     if (restartAnimation) {
       const int first = firstPreparedFrame();
@@ -1520,6 +1619,19 @@ void chmiRadarServiceSetActive(bool requested, float latitude, float longitude,
   }
   portEXIT_CRITICAL(&stateMux);
   if (requested && taskHandle != nullptr) xTaskNotifyGive(taskHandle);
+}
+
+void chmiRadarServiceSetRedNightMode(bool enabled) {
+  portENTER_CRITICAL(&stateMux);
+  if (redNightMode == enabled) {
+    portEXIT_CRITICAL(&stateMux);
+    return;
+  }
+  redNightMode = enabled;
+  nightVisualRedrawRequested = active && displayedFrame != -1;
+  const bool notify = nightVisualRedrawRequested;
+  portEXIT_CRITICAL(&stateMux);
+  if (notify && taskHandle != nullptr) xTaskNotifyGive(taskHandle);
 }
 
 void chmiRadarServiceSnapshot(ChmiRadarSnapshot &snapshot) {
