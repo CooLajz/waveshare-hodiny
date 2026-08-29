@@ -4,6 +4,8 @@
 #include <Update.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_heap_caps.h>
+#include <freertos/idf_additions.h>
 #include <mbedtls/sha256.h>
 #include <time.h>
 
@@ -402,9 +404,14 @@ bool firmwareUpdateServiceRequestCheck(bool installWhenAvailable) {
   strlcpy(status.message, "Kontroluji novou verzi…",
           sizeof(status.message));
   unlockStatus();
-  const BaseType_t created = xTaskCreatePinnedToCore(
+  // TLS handshake potřebuje velký souvislý blok interní RAM. Zásobník OTA
+  // úlohy proto stejně jako u ostatních síťových workerů držíme v PSRAM;
+  // jinak jeho 12 kB může těsně před navázáním HTTPS způsobit chybu
+  // MBEDTLS_ERR_SSL_ALLOC_FAILED.
+  const BaseType_t created = xTaskCreatePinnedToCoreWithCaps(
       updateTask, "firmware-update", 12288,
-      reinterpret_cast<void *>(installWhenAvailable ? 1 : 0), 1, nullptr, 0);
+      reinterpret_cast<void *>(installWhenAvailable ? 1 : 0), 1, nullptr, 0,
+      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (created != pdPASS) {
     setMessage(FirmwareUpdateState::Failed,
                "OTA úlohu se nepodařilo spustit.", false);
