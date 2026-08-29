@@ -221,6 +221,9 @@ void setRadarVisible(bool visible) {
   if (radarVisible == visible || settingsVisible) return;
   radarVisible = visible;
   if (visible) {
+    // Při návratu na radar neodkrývej snímek, který zůstal v canvasu z
+    // předchozího cyklu. Canvas znovu zobrazí až první snapshot nové animace.
+    lv_obj_add_flag(radarCanvas, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(radarPage);
@@ -1956,9 +1959,9 @@ void clockDashboardSetRadarSnapshot(const uint16_t *pixels,
     lv_obj_invalidate(radarCanvas);
   }
   char title[96];
-  const char *timePrefix =
-      latestFrame ? (redNightVisualEnabled() ? "#FF9090 " : "#65FF45 ") : "";
-  const char *timeSuffix = latestFrame ? "#" : "";
+  const bool highlightLatestFrame = latestFrame && !redNightVisualEnabled();
+  const char *timePrefix = highlightLatestFrame ? "#65FF45 " : "";
+  const char *timeSuffix = highlightLatestFrame ? "#" : "";
   if (radiusKm == 0 && frameTime != nullptr && frameTime[0] != '\0')
     snprintf(title, sizeof(title), "ČHMÚ - ČR - %s%s%s", timePrefix,
              frameTime, timeSuffix);

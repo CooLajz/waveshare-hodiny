@@ -13,8 +13,8 @@ i aktualizace se nastavují z webového rozhraní bez úpravy zdrojového kódu.
 </p>
 
 V denním režimu mají místnosti a hodnoty vlastní barvy. Volitelný červený
-noční vzhled sjednotí celý dashboard do odstínů červené a sníží jas, aby
-displej v noci nerušil.
+noční vzhled sjednotí dashboard i meteoradar do odstínů červené a sníží jas,
+aby displej v noci nerušil.
 
 ## Co firmware umí
 
@@ -24,11 +24,12 @@ displej v noci nerušil.
 - dvě místnosti s vlastním názvem, teplotou, ikonou a barvou,
 - animované i statické ikony počasí založené na Meteocons,
 - srážkový radar ČHMÚ s mapou České republiky, městy a 1 až 15 snímky,
-- rozsahy 25, 50, 100 a 200 km nebo celou ČR; levý okraj oddaluje a pravý přibližuje,
+- rozsahy 25, 50, 100 a 200 km nebo celou ČR ovládané svislým gestem swipe,
+- červenou noční paletu radaru se zachováním rozlišení intenzity srážek,
 - volitelné automatické střídání hodin a radaru se samostatnou dobou zobrazení,
 - dvě další měřené veličiny, například CO₂, VOC, vlhkost, tlak nebo baterii,
 - vlastní jednotky, počet desetinných míst a plynulé barevné škály,
-- denní a noční jas s automatickým přepínáním podle Open-Meteo nebo entity slunce,
+- denní a noční jas s ručním přepínáním nebo automatikou podle Open-Meteo či entity slunce,
 - tři efekty vteřin: klasické tečky, plynulou čáru a kometu,
 - webovou konfiguraci s volitelným heslem, export a import zálohy a bezpečný restart,
 - samostatnou živou diagnostiku hardwaru, paměti, sítě, Home Assistantu a radaru,
@@ -149,7 +150,7 @@ Web umožňuje nastavit:
 - meteoradar ČHMÚ s obrysem ČR, městy, pohledy 25, 50, 100, 200 km nebo celá ČR a volbou 1 až 15 snímků,
 - měřené hodnoty A a B, jednotky, přesnost a barevné škály,
 - barvu hodin, data a obou částí vteřinového efektu,
-- denní/noční jas, automatický režim a automatické střídání hodin s radarem,
+- denní/noční jas, ruční nebo automatický režim a automatické střídání hodin s radarem,
 - automatické OTA aktualizace a režim webového serveru,
 - volitelné heslo webového nastavení,
 - export/import zálohy, restart, ovládání podsvícení a živou diagnostiku.
@@ -164,8 +165,15 @@ obrys státu a města přizpůsobená jednotlivým rozsahům.
 Počet snímků lze nastavit od 1 do 15. Jeden snímek znamená statický radar;
 vyšší počet vytvoří animaci od nejstaršího snímku k nejnovějšímu. Po posledním
 snímku následuje pětisekundová pauza. Čas posledního, tedy nejaktuálnějšího
-snímku je na displeji zvýrazněný jasně zeleně. Nová data se kontrolují v
+snímku je v denním režimu zvýrazněný jasně zeleně. Nová data se kontrolují v
 pevných pětiminutových slotech přibližně minutu po čase publikace ČHMÚ.
+
+Při červeném nočním vzhledu se mapový podklad, města, poloha, čas i jednotlivé
+stupně odrazivosti převedou do odstínů červené. Jas jednotlivých stupňů dál
+vyjadřuje intenzitu srážek a nejslabší odrazy mají zachované čitelné minimum.
+Čas nejaktuálnějšího snímku má stejnou červenou jako ostatní text. Převod
+probíhá z připravené cache, takže přepnutí vzhledu nevyvolá nové stahování ani
+přípravu animace.
 
 Tlačítka rozsahů na webu mění právě zobrazený pohled okamžitě. Modrá označuje
 aktuální rozsah na hodinách a žlutá uložený výchozí rozsah. Do trvalé
@@ -194,9 +202,11 @@ používat jiné hranice než CO₂.
 
 Denní i noční jas se nastavují samostatně. Automatika používá východ a západ
 slunce s volitelným ranním a večerním offsetem. Volitelná entita světla může v
-nočním čase dočasně aktivovat denní vzhled. Samostatně lze nastavit také barvu
-hodin, data, typ vteřinového efektu, velikost a jas jeho aktivní i neaktivní
-části.
+nočním čase dočasně aktivovat denní vzhled. Volba **Vzhled nočního režimu** je
+dostupná i při vypnuté automatice, protože stejný červený vzhled lze zapnout
+ručně krátkým dotykem na hodinách i meteoradaru. Samostatně lze nastavit také
+barvu hodin, data, typ vteřinového efektu, velikost a jas jeho aktivní i
+neaktivní části.
 
 <p align="center">
   <img src="screenshots/web-display-settings.png" alt="Nastavení jasu, denního a nočního režimu a vteřin" width="920">
@@ -243,6 +253,7 @@ na displeji je dočasná a nezapisuje se do flash.
 | Hodiny: swipe doleva nebo doprava | Otevře meteoradar |
 | Meteoradar: swipe doleva nebo doprava | Vrátí hodiny |
 | Hodiny nebo meteoradar: dlouhý stisk kdekoliv | Otevře nastavení |
+| Hodiny nebo meteoradar: krátký dotyk při vypnuté automatice den/noc | Přepne denní a noční režim |
 | Meteoradar: swipe nahoru | Přiblíží rozsah |
 | Meteoradar: swipe dolů | Oddálí rozsah |
 
@@ -258,7 +269,7 @@ se nepoužívá.
 První stránka ovládá denní a noční jas a automatický režim. Druhá přepíná
 vteřiny, jejich efekt a animované ikony. Třetí řídí režim webového serveru a
 ruční kontrolu OTA. IP adresa je na veřejném snímku záměrně skrytá. Krátký
-dotyk dashboardu při vypnuté automatice přepíná denní a noční režim.
+dotyk hodin i meteoradaru při vypnuté automatice přepíná denní a noční režim.
 
 ## Animované Meteocons
 
@@ -295,7 +306,9 @@ Verze 1.6.0 podporuje jedinou historickou migraci konfigurace z veřejné verze
 1.5.5. Zachová dosavadní zdroj dat, Home Assistant, entity, vzhled a další
 uložené hodnoty a doplní nové radarové volby. U migrovaného zařízení se radar
 nastaví na 50 km, 6 snímků a automatické střídání zůstane vypnuté. Starší
-vývojové meziverze nejsou samostatně podporované migračními kroky.
+vývojové meziverze nejsou samostatně podporované migračními kroky. Přechod z
+1.5.5 na 1.6.0 byl ověřen skutečnou A/B OTA aktualizací včetně zachování
+uložené konfigurace.
 
 Automatické OTA aktualizace jsou po čisté instalaci vypnuté. Po zapnutí ve
 webu firmware nejvýše jednou denně po 4:10 lokálního času zkontroluje novou
