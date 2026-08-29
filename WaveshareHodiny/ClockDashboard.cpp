@@ -114,6 +114,7 @@ unsigned long secondFadeStartedAt = 0;
 unsigned long lastSecondFadeFrameAt = 0;
 bool settingsVisible = false;
 bool radarVisible = false;
+bool radarFeatureAvailable = true;
 bool nightModeEnabled = false;
 uint8_t nightVisualMode = CLOCK_NIGHT_VISUAL_RED;
 bool automaticDayNightEnabled = true;
@@ -300,6 +301,7 @@ void applyDashboardLanguage() {
 }
 
 void setRadarVisible(bool visible) {
+  if (visible && !radarFeatureAvailable) return;
   if (radarVisible == visible || settingsVisible) return;
   radarVisible = visible;
   if (visible) {
@@ -1673,6 +1675,16 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
 }
 
 void clockDashboardApplyConfiguration(const ClockConfig &config) {
+  radarFeatureAvailable = clockConfigRadarAvailable(config);
+  if (!radarFeatureAvailable && radarVisible) {
+    radarVisible = false;
+    lv_obj_add_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
+    if (!settingsVisible && !firmwareUpdateActive) {
+      lv_obj_clear_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_move_foreground(dashboardContent);
+    }
+    if (radarVisibilityCallback != nullptr) radarVisibilityCallback(false);
+  }
   language = constrain(config.language,
                        static_cast<uint8_t>(CLOCK_LANGUAGE_UNSET),
                        static_cast<uint8_t>(CLOCK_LANGUAGE_ENGLISH));

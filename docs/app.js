@@ -16,7 +16,7 @@ const translations = {
   "Čas a senzory": "Time and sensors",
   "Počasí a hodnoty z Open-Meteo nebo Home Assistantu doplňují tři efekty vteřin.": "Weather and values from Open-Meteo or Home Assistant are complemented by three seconds effects.",
   "Meteoradar ČHMÚ": "Czech precipitation radar",
-  "Animace srážek, mapa ČR, města a pět volitelných rozsahů.": "Animated precipitation, a Czech map, cities and five selectable ranges.",
+  "Animace srážek, mapa ČR, města a pět volitelných rozsahů pro lokality v Česku.": "Animated precipitation, a Czech map, cities and five selectable ranges for locations in Czechia.",
   "Den a noc": "Day and night", "Ruční i automatický noční režim včetně červeného meteoradaru.": "Manual and automatic night mode, including a red radar view.",
   "Aktualizace": "Updates", "Bezpečné veřejné OTA z GitHub Pages s kontrolou velikosti a SHA-256.": "Secure public OTA from GitHub Pages with size and SHA-256 verification.",
   "Potřebný hardware": "Required hardware", "Kde koupit podporovanou desku": "Where to buy the supported board",

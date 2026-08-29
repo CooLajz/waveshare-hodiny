@@ -181,9 +181,11 @@ void applyPendingRuntimeConfiguration() {
   dashboardConfigBuffer = runtimeConfig;
   xSemaphoreGive(runtimeConfigMutex);
   clockDashboardApplyConfiguration(dashboardConfigBuffer);
+  const bool radarAvailable =
+      clockConfigRadarAvailable(dashboardConfigBuffer);
   chmiRadarServiceSetActive(
-      clockDashboardRadarVisible(),
-      dashboardConfigBuffer.automaticRadarRotation,
+      radarAvailable && clockDashboardRadarVisible(),
+      radarAvailable && dashboardConfigBuffer.automaticRadarRotation,
       dashboardConfigBuffer.openMeteoLatitude,
       dashboardConfigBuffer.openMeteoLongitude,
       dashboardConfigBuffer.radarRadiusKm,
@@ -266,7 +268,9 @@ void handleRadarVisibility(bool visible) {
   automaticRadarRotationPaused = false;
   radarRotationWaitingForCycle = false;
   const ClockConfig config = runtimeConfigSnapshot();
-  chmiRadarServiceSetActive(visible, config.automaticRadarRotation,
+  const bool radarAvailable = clockConfigRadarAvailable(config);
+  chmiRadarServiceSetActive(radarAvailable && visible,
+                            radarAvailable && config.automaticRadarRotation,
                             config.openMeteoLatitude,
                             config.openMeteoLongitude, config.radarRadiusKm,
                             config.radarFrameCount, config.radarMapOpacity,
@@ -276,6 +280,7 @@ void handleRadarVisibility(bool visible) {
 void handleRadarRangeChange(int8_t direction) {
   static constexpr uint16_t RADAR_RADII[] = {25, 50, 100, 200, 0};
   ClockConfig config = runtimeConfigSnapshot();
+  if (!clockConfigRadarAvailable(config)) return;
   size_t index = 1;
   for (size_t candidate = 0; candidate < 5; ++candidate) {
     if (RADAR_RADII[candidate] == config.radarRadiusKm) {
@@ -304,7 +309,8 @@ void maintainRadarRangeChange() {
     radarRadiusApplyPending = false;
     radarRadiusApplyAt = 0;
     const ClockConfig config = runtimeConfigSnapshot();
-    if (clockDashboardRadarVisible() || config.automaticRadarRotation) {
+    if (clockConfigRadarAvailable(config) &&
+        (clockDashboardRadarVisible() || config.automaticRadarRotation)) {
       chmiRadarServiceSetActive(clockDashboardRadarVisible(),
                                 config.automaticRadarRotation,
                                 config.openMeteoLatitude,
@@ -325,6 +331,10 @@ void loadRadarRangeStateForWeb(uint16_t &savedRadiusKm,
 
 bool previewRadarRangeFromWeb(uint16_t radiusKm) {
   xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
+  if (!clockConfigRadarAvailable(runtimeConfig)) {
+    xSemaphoreGive(runtimeConfigMutex);
+    return false;
+  }
   runtimeConfig.radarRadiusKm = radiusKm;
   const ClockConfig config = runtimeConfig;
   xSemaphoreGive(runtimeConfigMutex);
@@ -348,7 +358,8 @@ bool previewRadarRangeFromWeb(uint16_t radiusKm) {
 void maintainAutomaticRadarRotation() {
   const ClockConfig config = runtimeConfigSnapshot();
   const bool allowed =
-      config.automaticRadarRotation && !displayForcedOff &&
+      clockConfigRadarAvailable(config) && config.automaticRadarRotation &&
+      !displayForcedOff &&
       clockDashboardAutomaticRotationAllowed();
   if (!allowed) {
     automaticRadarRotationPaused = true;
@@ -389,12 +400,15 @@ void maintainAutomaticRadarRotation() {
 }
 
 void maintainDisplayGestures() {
+  const bool radarAvailable =
+      clockConfigRadarAvailable(runtimeConfigSnapshot());
   if (displayDriverTakeHorizontalSwipe() &&
-      clockDashboardAutomaticRotationAllowed()) {
+      radarAvailable && clockDashboardAutomaticRotationAllowed()) {
     clockDashboardSetRadarVisible(!clockDashboardRadarVisible());
   }
   const int8_t verticalSwipeDirection = displayDriverTakeVerticalSwipe();
-  if (verticalSwipeDirection != 0 && clockDashboardRadarVisible() &&
+  if (verticalSwipeDirection != 0 && radarAvailable &&
+      clockDashboardRadarVisible() &&
       clockDashboardAutomaticRotationAllowed()) {
     handleRadarRangeChange(verticalSwipeDirection);
   }
@@ -1353,8 +1367,9 @@ void setup() {
                        handleRadarRangeChange);
   clockDashboardApplyConfiguration(runtimeConfig);
   chmiRadarServiceBegin();
+  const bool radarAvailable = clockConfigRadarAvailable(runtimeConfig);
   chmiRadarServiceSetActive(
-      false, runtimeConfig.automaticRadarRotation,
+      false, radarAvailable && runtimeConfig.automaticRadarRotation,
       runtimeConfig.openMeteoLatitude, runtimeConfig.openMeteoLongitude,
       runtimeConfig.radarRadiusKm, runtimeConfig.radarFrameCount,
       runtimeConfig.radarMapOpacity, runtimeConfig.radarPauseSeconds);

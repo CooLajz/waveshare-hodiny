@@ -39,6 +39,7 @@ void applyOpenMeteoDefaults(ClockConfig &config) {
   clockConfigCopy(config.openMeteoCity, sizeof(config.openMeteoCity), "Brno");
   config.openMeteoLatitude = 49.1951f;
   config.openMeteoLongitude = 16.6068f;
+  config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_CZECHIA;
   static const char *values[] = {"temperature_2m", "apparent_temperature",
                                  "relative_humidity_2m", "pressure_msl"};
   static const char *names[] = {"TEPLOTA", "POCITOVÁ", "VLHKOST", "TLAK"};
@@ -111,6 +112,15 @@ void normalizeConfig(ClockConfig &config) {
   config.language = constrain(
       config.language, static_cast<uint8_t>(CLOCK_LANGUAGE_UNSET),
       static_cast<uint8_t>(CLOCK_LANGUAGE_ENGLISH));
+  if (config.openMeteoCountry < CLOCK_LOCATION_COUNTRY_CZECHIA ||
+      config.openMeteoCountry > CLOCK_LOCATION_COUNTRY_OTHER) {
+    // Verze 1.5.5 i všechna dosavadní vývojová schémata byla určená české
+    // komunitě. Konfigurace bez uložené země proto při migraci dostane CZ.
+    // Každé nové vyhledání už ukládá výslovný country_code z Open-Meteo.
+    config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_CZECHIA;
+  }
+  if (config.openMeteoCountry != CLOCK_LOCATION_COUNTRY_CZECHIA)
+    config.automaticRadarRotation = false;
   if (config.radarRadiusKm != 0 && config.radarRadiusKm != 25 &&
       config.radarRadiusKm != 50 &&
       config.radarRadiusKm != 100 && config.radarRadiusKm != 200) {
@@ -162,6 +172,10 @@ void normalizeConfig(ClockConfig &config) {
   }
 }
 }  // namespace
+
+bool clockConfigRadarAvailable(const ClockConfig &config) {
+  return config.openMeteoCountry == CLOCK_LOCATION_COUNTRY_CZECHIA;
+}
 
 void clockConfigCopy(char *destination, size_t destinationSize,
                      const String &value) {
@@ -249,6 +263,7 @@ bool clockConfigLoad(ClockConfig &config) {
     config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
     config.language = legacyLanguage == 1 ? CLOCK_LANGUAGE_ENGLISH
                                           : CLOCK_LANGUAGE_CZECH;
+    config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_CZECHIA;
     normalizeConfig(config);
     return clockConfigSave(config);
   }
@@ -265,6 +280,7 @@ bool clockConfigLoad(ClockConfig &config) {
     config = record.config;
     config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
     config.language = CLOCK_LANGUAGE_UNSET;
+    config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_CZECHIA;
     normalizeConfig(config);
     return clockConfigSave(config);
   }
@@ -294,6 +310,7 @@ bool clockConfigLoad(ClockConfig &config) {
   config.radarMapOpacity = 100;
   config.radarPauseSeconds = 5;
   config.language = CLOCK_LANGUAGE_UNSET;
+  config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_CZECHIA;
   normalizeConfig(config);
   return clockConfigSave(config);
 }

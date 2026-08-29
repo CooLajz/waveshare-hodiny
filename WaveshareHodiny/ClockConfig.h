@@ -14,7 +14,8 @@ constexpr size_t CLOCK_OPEN_METEO_VALUE_LENGTH = 32;
 constexpr size_t CLOCK_METRIC_COLOR_POINT_COUNT = 10;
 // Schema 20 is the public 1.5.5 baseline. Schema 24 added CHMI radar settings
 // plus automatic clock/radar rotation. Schema 25 added the persistent UI
-// language and schema 26 distinguishes an as-yet unselected language.
+// language; schema 26 distinguishes an as-yet unselected language and uses
+// the remaining byte for CHMI radar country availability.
 // Intermediate development schemas were never released.
 constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 26;
 
@@ -27,6 +28,12 @@ enum ClockLanguage : uint8_t {
 enum ClockDataSource : uint8_t {
   CLOCK_DATA_SOURCE_OPEN_METEO = 0,
   CLOCK_DATA_SOURCE_HOME_ASSISTANT = 1,
+};
+
+enum ClockLocationCountry : uint8_t {
+  CLOCK_LOCATION_COUNTRY_UNKNOWN = 0,
+  CLOCK_LOCATION_COUNTRY_CZECHIA = 1,
+  CLOCK_LOCATION_COUNTRY_OTHER = 2,
 };
 
 enum ClockSecondEffect : uint8_t {
@@ -150,16 +157,19 @@ struct ClockConfig {
   uint8_t radarMapOpacity = 100;
   uint8_t radarPauseSeconds = 5;
   uint8_t language = CLOCK_LANGUAGE_UNSET;
+  uint8_t openMeteoCountry = CLOCK_LOCATION_COUNTRY_CZECHIA;
 };
 
 static_assert(offsetof(ClockConfig, language) == 2106 &&
+                  offsetof(ClockConfig, openMeteoCountry) == 2107 &&
                   sizeof(ClockConfig) == 2108,
-              "Schema 26 must preserve the schema 24 binary record size.");
+              "Schema 26 must preserve the released binary record size.");
 
 bool clockConfigBegin();
 bool clockConfigLoad(ClockConfig &config);
 bool clockConfigSave(const ClockConfig &config);
 void clockConfigApplyDefaults(ClockConfig &config);
+bool clockConfigRadarAvailable(const ClockConfig &config);
 
 void clockConfigCopy(char *destination, size_t destinationSize,
                      const String &value);

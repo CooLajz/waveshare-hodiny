@@ -167,6 +167,12 @@ hydrometeorologického ústavu. Nabízí pohledy 25, 50, 100 a 200 km kolem
 uložené GPS polohy a přehled celé České republiky. Mapový podklad obsahuje
 obrys státu a města přizpůsobená jednotlivým rozsahům.
 
+Meteoradar je dostupný pouze pro polohy, které vyhledávání Open-Meteo označí
+kódem země `CZ`. U lokality mimo Českou republiku firmware radar nespouští,
+nestahuje jeho data na pozadí, nereaguje na radarová gesta a automatické
+střídání obrazovek vypne. Počasí Open-Meteo i Home Assistant zůstávají bez
+tohoto omezení.
+
 Počet snímků lze nastavit od 1 do 15. Jeden snímek znamená statický radar;
 vyšší počet vytvoří animaci od nejstaršího snímku k nejnovějšímu. Po posledním
 snímku následuje pětisekundová pauza. Čas posledního, tedy nejaktuálnějšího

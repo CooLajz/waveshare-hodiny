@@ -953,6 +953,10 @@ void handleGetConfig() {
   result += String(config.openMeteoLatitude, 5);
   result += F(",\"openMeteoLongitude\":");
   result += String(config.openMeteoLongitude, 5);
+  result += F(",\"openMeteoCountry\":\"");
+  result += clockConfigRadarAvailable(config) ? F("CZ") : F("OTHER");
+  result += F("\",\"radarAvailable\":");
+  result += clockConfigRadarAvailable(config) ? F("true") : F("false");
   result += F(",\"radarRadiusKm\":");
   result += savedRadarRadiusKm;
   result += F(",\"radarActiveRadiusKm\":");
@@ -1145,6 +1149,17 @@ void handleSaveConfig() {
                   openMeteoCity);
   config.openMeteoLatitude = openMeteoLatitude;
   config.openMeteoLongitude = openMeteoLongitude;
+  String openMeteoCountry = server.arg("openMeteoCountry");
+  openMeteoCountry.trim();
+  openMeteoCountry.toUpperCase();
+  if (openMeteoCountry == "CZ")
+    config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_CZECHIA;
+  else if (openMeteoCountry == "OTHER" || openMeteoCountry.length() == 2)
+    config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_OTHER;
+  else {
+    sendError(400, F("Nejprve vyhledej platnou polohu zařízení."));
+    return;
+  }
   const int radarRadiusKm = server.arg("radarRadiusKm").toInt();
   if (!validRadarRadius(radarRadiusKm)) {
     sendError(400, F("Rozsah meteoradaru není platný."));
@@ -1177,6 +1192,7 @@ void handleSaveConfig() {
     return;
   }
   config.automaticRadarRotation =
+      clockConfigRadarAvailable(config) &&
       server.arg("automaticRadarRotation") == "1";
   config.clockDisplaySeconds =
       static_cast<uint16_t>(clockDisplaySeconds);
@@ -1401,12 +1417,19 @@ void handleRadarRangeState() {
   result += savedRadiusKm;
   result += F(",\"activeRadiusKm\":");
   result += activeRadiusKm;
+  result += F(",\"available\":");
+  result += clockConfigRadarAvailable(currentConfig()) ? F("true")
+                                                        : F("false");
   result += '}';
   sendJson(200, result);
 }
 
 void handleRadarRangePreview() {
   extendWebAvailability();
+  if (!clockConfigRadarAvailable(currentConfig())) {
+    sendError(409, F("Meteoradar ČHMÚ je dostupný pouze pro lokality v České republice."));
+    return;
+  }
   const int radiusKm = server.arg("radiusKm").toInt();
   if (!validRadarRadius(radiusKm)) {
     sendError(400, F("Rozsah meteoradaru není platný."));
@@ -1622,6 +1645,8 @@ void handleDiagnostics() {
   result += radar.ready ? F("true") : F("false");
   result += F(",\"preparationInProgress\":");
   result += radar.preparationInProgress ? F("true") : F("false");
+  result += F(",\"available\":");
+  result += clockConfigRadarAvailable(config) ? F("true") : F("false");
   result += F(",\"location\":\"");
   result += jsonEscape(config.openMeteoCity);
   result += F("\",\"latitude\":");
