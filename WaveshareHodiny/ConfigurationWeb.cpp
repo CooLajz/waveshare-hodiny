@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <Preferences.h>
+#include <esp_heap_caps.h>
 #include <esp_system.h>
 #include <mbedtls/md.h>
 #include <mbedtls/pkcs5.h>
@@ -13,16 +14,144 @@
 #include <cctype>
 
 #include "ConfigurationPage.h"
+#include "ChmiRadarService.h"
 #include "DiagnosticPage.h"
+#include "Display_ST7701.h"
 #include "FirmwareBuild.h"
 #include "FirmwareHubCa.h"
 #include "FirmwareUpdateService.h"
 #include "HomeAssistantConnectionPolicy.h"
 #include "LoginPage.h"
+#include "NetworkCoordinator.h"
 #include "NetworkDiagnostics.h"
 
 namespace {
-WebServer server(80);
+constexpr size_t MAX_POST_BODY_BYTES = 16 * 1024;
+constexpr size_t MAX_POST_KEY_BYTES = 64;
+constexpr size_t MAX_POST_VALUE_BYTES = 1024;
+
+class BoundedWebServer : public WebServer {
+ public:
+  using WebServer::WebServer;
+  using WebServer::arg;
+  using WebServer::hasArg;
+
+  void beginBoundedPostSupport() {
+    if (postBody_ == nullptr) {
+      postBody_ = static_cast<char *>(heap_caps_malloc(
+          MAX_POST_BODY_BYTES + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    }
+  }
+
+  void captureRawPost(HTTPRaw &raw) {
+    if (raw.status == RAW_START) {
+      // WebServer čte každý raw blok do celé velikosti HTTP_RAW_BUFLEN a u
+      // posledního kratšího bloku by jinak čekal výchozích pět sekund.
+      // Lokální prohlížeč už v této fázi tělo odesílá, krátký timeout proto
+      // odstraní prodlevu a současně omezuje pomalé POST požadavky.
+      client().setTimeout(100);
+      rawPostActive_ = true;
+      postBodyLength_ = 0;
+      postBodyReady_ = false;
+      postBodyTooLarge_ = clientContentLength() > MAX_POST_BODY_BYTES;
+      postBodyMalformed_ = false;
+      if (postBody_ != nullptr) postBody_[0] = '\0';
+      return;
+    }
+    if (raw.status == RAW_WRITE) {
+      if (postBodyTooLarge_ || postBody_ == nullptr) return;
+      if (raw.currentSize > MAX_POST_BODY_BYTES - postBodyLength_) {
+        postBodyTooLarge_ = true;
+        return;
+      }
+      memcpy(postBody_ + postBodyLength_, raw.buf, raw.currentSize);
+      postBodyLength_ += raw.currentSize;
+      return;
+    }
+    if (raw.status == RAW_END) {
+      if (!postBodyTooLarge_ && postBody_ != nullptr) {
+        postBody_[postBodyLength_] = '\0';
+        postBodyMalformed_ = !validRawBodyShape();
+        postBodyReady_ = !postBodyMalformed_;
+      }
+      return;
+    }
+    postBodyReady_ = false;
+  }
+
+  bool postBodyAccepted() const {
+    return rawPostActive_ && postBodyReady_ && !postBodyTooLarge_;
+  }
+
+  bool postBodyTooLarge() const { return postBodyTooLarge_; }
+  bool postBodyMalformed() const { return postBodyMalformed_; }
+
+  String arg(const String &name) {
+    if (!rawPostActive_) return WebServer::arg(name);
+    size_t valueStart = 0;
+    size_t valueLength = 0;
+    if (!findRawArgument(name, valueStart, valueLength)) return String();
+    return WebServer::urlDecode(String(postBody_ + valueStart, valueLength));
+  }
+
+  bool hasArg(const String &name) {
+    if (!rawPostActive_) return WebServer::hasArg(name);
+    size_t valueStart = 0;
+    size_t valueLength = 0;
+    return findRawArgument(name, valueStart, valueLength);
+  }
+
+ private:
+  bool validRawBodyShape() const {
+    size_t fieldStart = 0;
+    while (fieldStart < postBodyLength_) {
+      size_t fieldEnd = fieldStart;
+      while (fieldEnd < postBodyLength_ && postBody_[fieldEnd] != '&')
+        ++fieldEnd;
+      size_t equalsAt = fieldStart;
+      while (equalsAt < fieldEnd && postBody_[equalsAt] != '=') ++equalsAt;
+      if (equalsAt == fieldEnd || equalsAt - fieldStart > MAX_POST_KEY_BYTES ||
+          fieldEnd - equalsAt - 1 > MAX_POST_VALUE_BYTES) {
+        return false;
+      }
+      fieldStart = fieldEnd + 1;
+    }
+    return true;
+  }
+
+  bool findRawArgument(const String &name, size_t &valueStart,
+                       size_t &valueLength) const {
+    if (!postBodyAccepted()) return false;
+    size_t fieldStart = 0;
+    while (fieldStart <= postBodyLength_) {
+      size_t fieldEnd = fieldStart;
+      while (fieldEnd < postBodyLength_ && postBody_[fieldEnd] != '&')
+        ++fieldEnd;
+      size_t equalsAt = fieldStart;
+      while (equalsAt < fieldEnd && postBody_[equalsAt] != '=') ++equalsAt;
+      if (equalsAt < fieldEnd) {
+        const String encodedName(postBody_ + fieldStart, equalsAt - fieldStart);
+        if (WebServer::urlDecode(encodedName) == name) {
+          valueStart = equalsAt + 1;
+          valueLength = fieldEnd - valueStart;
+          return true;
+        }
+      }
+      if (fieldEnd == postBodyLength_) break;
+      fieldStart = fieldEnd + 1;
+    }
+    return false;
+  }
+
+  char *postBody_ = nullptr;
+  size_t postBodyLength_ = 0;
+  bool rawPostActive_ = false;
+  bool postBodyReady_ = false;
+  bool postBodyTooLarge_ = false;
+  bool postBodyMalformed_ = false;
+};
+
+BoundedWebServer server(80);
 ClockConfigLoadCallback configLoadCallback = nullptr;
 ClockConfigSaveCallback configSaveCallback = nullptr;
 ConfigurationWebStatusCallback webStatusCallback = nullptr;
@@ -31,11 +160,13 @@ HomeAssistantRefreshCallback homeAssistantRefreshCallback = nullptr;
 DayNightStatusCallback currentDayNightStatusCallback = nullptr;
 DisplayPowerCallback currentDisplayPowerCallback = nullptr;
 DisplayPowerStatusCallback currentDisplayPowerStatusCallback = nullptr;
+RadarRangeStateCallback currentRadarRangeStateCallback = nullptr;
+RadarRangePreviewCallback currentRadarRangePreviewCallback = nullptr;
 ClockConfig configBuffer;
 constexpr unsigned long WEB_AVAILABILITY_MS = 10UL * 60UL * 1000UL;
 bool webActive = false;
 unsigned long webAvailableUntil = 0;
-ConfigurationWebMode selectedWebMode = CONFIGURATION_WEB_TIMED;
+ConfigurationWebMode selectedWebMode = CONFIGURATION_WEB_ALWAYS;
 constexpr char WEB_PREFS_NAMESPACE[] = "web-mode";
 constexpr char WEB_PREFS_KEY[] = "mode";
 constexpr char CONTROL_PREFS_NAMESPACE[] = "control-api";
@@ -473,6 +604,18 @@ ClockConfig &currentConfig() {
   return configBuffer;
 }
 
+bool validRadarRadius(int radiusKm) {
+  return radiusKm == 0 || radiusKm == 25 || radiusKm == 50 ||
+         radiusKm == 100 || radiusKm == 200;
+}
+
+void radarRangeState(uint16_t &savedRadiusKm, uint16_t &activeRadiusKm) {
+  savedRadiusKm = currentConfig().radarRadiusKm;
+  activeRadiusKm = savedRadiusKm;
+  if (currentRadarRangeStateCallback != nullptr)
+    currentRadarRangeStateCallback(savedRadiusKm, activeRadiusKm);
+}
+
 String normalizedUrl(String url) {
   url.trim();
   while (url.endsWith("/")) url.remove(url.length() - 1);
@@ -654,6 +797,11 @@ void handleRoot() {
   }
 }
 
+void handleDiagnosticPage() {
+  addSecurityHeaders();
+  server.send_P(200, PSTR("text/html; charset=utf-8"), DIAGNOSTIC_PAGE);
+}
+
 bool requestOriginAllowed() {
   const String origin = server.header("Origin");
   if (origin.isEmpty()) return true;
@@ -753,6 +901,9 @@ void handleWebPassword() {
 void handleGetConfig() {
   extendWebAvailability();
   const ClockConfig &config = currentConfig();
+  uint16_t savedRadarRadiusKm = config.radarRadiusKm;
+  uint16_t activeRadarRadiusKm = config.radarRadiusKm;
+  radarRangeState(savedRadarRadiusKm, activeRadarRadiusKm);
   String result;
   result.reserve(3000);
   result = F("{\"ok\":true,\"homeAssistantUrl\":\"");
@@ -771,6 +922,18 @@ void handleGetConfig() {
   result += String(config.openMeteoLatitude, 5);
   result += F(",\"openMeteoLongitude\":");
   result += String(config.openMeteoLongitude, 5);
+  result += F(",\"radarRadiusKm\":");
+  result += savedRadarRadiusKm;
+  result += F(",\"radarActiveRadiusKm\":");
+  result += activeRadarRadiusKm;
+  result += F(",\"radarFrameCount\":");
+  result += config.radarFrameCount;
+  result += F(",\"automaticRadarRotation\":");
+  result += config.automaticRadarRotation ? F("true") : F("false");
+  result += F(",\"clockDisplaySeconds\":");
+  result += config.clockDisplaySeconds;
+  result += F(",\"radarDisplaySeconds\":");
+  result += config.radarDisplaySeconds;
   result += F(",\"openMeteoSlots\":[");
   for (size_t index = 0; index < 4; ++index) {
     if (index > 0) result += ',';
@@ -931,13 +1094,38 @@ void handleSaveConfig() {
       !parseFiniteFloat(server.arg("openMeteoLongitude"), openMeteoLongitude) ||
       openMeteoLatitude < -90 || openMeteoLatitude > 90 ||
       openMeteoLongitude < -180 || openMeteoLongitude > 180) {
-    sendError(400, F("Nejprve vyhledej platné město pro Open-Meteo."));
+    sendError(400, F("Nejprve vyhledej platnou polohu zařízení."));
     return;
   }
   clockConfigCopy(config.openMeteoCity, sizeof(config.openMeteoCity),
                   openMeteoCity);
   config.openMeteoLatitude = openMeteoLatitude;
   config.openMeteoLongitude = openMeteoLongitude;
+  const int radarRadiusKm = server.arg("radarRadiusKm").toInt();
+  if (!validRadarRadius(radarRadiusKm)) {
+    sendError(400, F("Rozsah meteoradaru není platný."));
+    return;
+  }
+  config.radarRadiusKm = static_cast<uint16_t>(radarRadiusKm);
+  const int radarFrameCount = server.arg("radarFrameCount").toInt();
+  if (radarFrameCount < 1 || radarFrameCount > 15) {
+    sendError(400, F("Počet snímků meteoradaru musí být od 1 do 15."));
+    return;
+  }
+  config.radarFrameCount = static_cast<uint8_t>(radarFrameCount);
+  const int clockDisplaySeconds = server.arg("clockDisplaySeconds").toInt();
+  const int radarDisplaySeconds = server.arg("radarDisplaySeconds").toInt();
+  if (clockDisplaySeconds < 10 || clockDisplaySeconds > 3600 ||
+      radarDisplaySeconds < 10 || radarDisplaySeconds > 3600) {
+    sendError(400, F("Časy automatického střídání musí být od 10 do 3600 sekund."));
+    return;
+  }
+  config.automaticRadarRotation =
+      server.arg("automaticRadarRotation") == "1";
+  config.clockDisplaySeconds =
+      static_cast<uint16_t>(clockDisplaySeconds);
+  config.radarDisplaySeconds =
+      static_cast<uint16_t>(radarDisplaySeconds);
   for (size_t index = 0; index < 4; ++index) {
     const String prefix = String(F("openMeteoSlot")) + index;
     const String value = server.arg(prefix + F("Value"));
@@ -1148,6 +1336,34 @@ void handleSaveConfig() {
   applyWebMode(requestedWebMode);
 }
 
+void handleRadarRangeState() {
+  extendWebAvailability();
+  uint16_t savedRadiusKm = 0;
+  uint16_t activeRadiusKm = 0;
+  radarRangeState(savedRadiusKm, activeRadiusKm);
+  String result = F("{\"ok\":true,\"savedRadiusKm\":");
+  result += savedRadiusKm;
+  result += F(",\"activeRadiusKm\":");
+  result += activeRadiusKm;
+  result += '}';
+  sendJson(200, result);
+}
+
+void handleRadarRangePreview() {
+  extendWebAvailability();
+  const int radiusKm = server.arg("radiusKm").toInt();
+  if (!validRadarRadius(radiusKm)) {
+    sendError(400, F("Rozsah meteoradaru není platný."));
+    return;
+  }
+  if (currentRadarRangePreviewCallback == nullptr ||
+      !currentRadarRangePreviewCallback(static_cast<uint16_t>(radiusKm))) {
+    sendError(503, F("Rozsah meteoradaru se nepodařilo změnit."));
+    return;
+  }
+  handleRadarRangeState();
+}
+
 void handleOpenMeteoLocation() {
   String city = server.arg("city");
   city.trim();
@@ -1156,6 +1372,13 @@ void handleOpenMeteoLocation() {
     return;
   }
   networkDiagnosticsBegin(NetworkDiagnosticKind::OpenMeteoTest);
+  NetworkOperationGuard networkGuard(8000);
+  if (!networkGuard) {
+    networkDiagnosticsEnd(NetworkDiagnosticKind::OpenMeteoTest, false,
+                          HTTPC_ERROR_CONNECTION_REFUSED);
+    sendError(503, F("Síť je právě vytížená jinou operací."));
+    return;
+  }
   WiFiClientSecure client;
   client.setCACert(FIRMWARE_RELEASE_ROOT_CA);
   HTTPClient http;
@@ -1194,6 +1417,13 @@ void handleTestConnection() {
   entityId.trim();
   if (entityId.isEmpty()) entityId = currentConfig().weatherEntityId;
   networkDiagnosticsBegin(NetworkDiagnosticKind::HomeAssistantTest);
+  NetworkOperationGuard networkGuard(8000);
+  if (!networkGuard) {
+    networkDiagnosticsEnd(NetworkDiagnosticKind::HomeAssistantTest, false,
+                          HTTPC_ERROR_CONNECTION_REFUSED);
+    sendError(503, F("Síť je právě vytížená jinou operací."));
+    return;
+  }
   if (url.startsWith("https://")) {
     WiFiClientSecure client;
     client.setInsecure();
@@ -1251,6 +1481,9 @@ void appendDiagnosticJson(String &result,
 
 void handleDiagnostics() {
   const FirmwareUpdateSnapshot firmware = firmwareUpdateServiceSnapshot();
+  ChmiRadarDiagnostics radar;
+  chmiRadarServiceDiagnostics(radar);
+  const ClockConfig &config = currentConfig();
   bool sunAvailable = false;
   bool sunIsDay = true;
   bool lightAvailable = false;
@@ -1261,7 +1494,7 @@ void handleDiagnostics() {
                                   lightOn, nightMode);
   }
   String result;
-  result.reserve(1800);
+  result.reserve(2400);
   result = F("{\"ok\":true,\"configurationAvailable\":");
   result += webActive ? F("true") : F("false");
   result += F(",\"webMode\":\"");
@@ -1279,6 +1512,10 @@ void handleDiagnostics() {
   result += ESP.getChipRevision();
   result += F(",\"cpuFrequencyMHz\":");
   result += ESP.getCpuFreqMHz();
+  result += F(",\"displayPixelClockHz\":");
+  result += LCD_GetPixelClock();
+  result += F(",\"resetReason\":");
+  result += static_cast<int>(esp_reset_reason());
   result += F(",\"flashSize\":");
   result += ESP.getFlashChipSize();
   result += F(",\"psramSize\":");
@@ -1312,6 +1549,64 @@ void handleDiagnostics() {
   result += millis();
   result += F(",\"currentMemory\":");
   appendMemoryJson(result, networkDiagnosticsCurrentMemory());
+  result += F(",\"minimumMemory\":{\"internalFree\":");
+  result += static_cast<unsigned long>(heap_caps_get_minimum_free_size(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  result += F(",\"psramFree\":");
+  result += static_cast<unsigned long>(
+      heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  result += '}';
+  result += F(",\"chmiRadar\":{\"active\":");
+  result += radar.active ? F("true") : F("false");
+  result += F(",\"loading\":");
+  result += radar.loading ? F("true") : F("false");
+  result += F(",\"ready\":");
+  result += radar.ready ? F("true") : F("false");
+  result += F(",\"preparationInProgress\":");
+  result += radar.preparationInProgress ? F("true") : F("false");
+  result += F(",\"location\":\"");
+  result += jsonEscape(config.openMeteoCity);
+  result += F("\",\"latitude\":");
+  result += String(config.openMeteoLatitude, 5);
+  result += F(",\"longitude\":");
+  result += String(config.openMeteoLongitude, 5);
+  result += F(",\"radiusKm\":");
+  result += radar.radiusKm;
+  result += F(",\"requestedFrameCount\":");
+  result += radar.requestedFrameCount;
+  result += F(",\"preparedFrameCount\":");
+  result += radar.preparedFrameCount;
+  result += F(",\"animationFrameCount\":");
+  result += radar.animationFrameCount;
+  result += F(",\"pendingRefreshCount\":");
+  result += radar.pendingRefreshCount;
+  result += F(",\"lastSuccessfulRefreshAvailable\":");
+  result += radar.lastSuccessfulRefreshAvailable ? F("true") : F("false");
+  result += F(",\"lastSuccessfulRefreshAgeMs\":");
+  result += radar.lastSuccessfulRefreshAgeMs;
+  result += F(",\"nextRefreshInMs\":");
+  result += radar.nextRefreshInMs;
+  result += F(",\"lastHttpStatus\":");
+  result += radar.lastHttpStatus;
+  result += F(",\"lastDownloadedBytes\":");
+  result += static_cast<unsigned long>(radar.lastDownloadedBytes);
+  result += F(",\"lastDecodeResult\":");
+  result += radar.lastDecodeResult;
+  result += F(",\"lastDecodedLineCount\":");
+  result += radar.lastDecodedLineCount;
+  result += F(",\"acceptedCompleteDecodeError\":");
+  result += radar.acceptedCompleteDecodeError ? F("true") : F("false");
+  result += F(",\"latestIndexFile\":\"");
+  result += jsonEscape(radar.latestIndexFile);
+  result += F("\",\"currentFile\":\"");
+  result += jsonEscape(radar.currentFile);
+  result += F("\",\"oldestFrameTime\":\"");
+  result += jsonEscape(radar.oldestFrameTime);
+  result += F("\",\"newestFrameTime\":\"");
+  result += jsonEscape(radar.newestFrameTime);
+  result += F("\",\"message\":\"");
+  result += jsonEscape(radar.message);
+  result += F("\"}");
   result += F(",\"homeAssistantRuntime\":");
   appendDiagnosticJson(
       result, networkDiagnosticsSnapshot(
@@ -1437,6 +1732,73 @@ void handleFirmwareInstall() {
   sendJson(202,
            F("{\"ok\":true,\"message\":\"Kontrola a aktualizace byly spuštěny.\"}"));
 }
+
+bool requireAcceptedPostBody() {
+  if (server.header("Content-Type").startsWith("multipart/")) {
+    sendError(415, F("Formát multipart není podporovaný."));
+    return false;
+  }
+  if (server.postBodyAccepted()) return true;
+  if (server.postBodyTooLarge()) {
+    sendError(413, F("Požadavek je příliš velký."));
+  } else if (server.postBodyMalformed()) {
+    sendError(400, F("Formulář obsahuje příliš dlouhé nebo neplatné pole."));
+  } else {
+    sendError(503, F("Pro zpracování požadavku není dost paměti."));
+  }
+  return false;
+}
+
+class BoundedPostRequestHandler final : public RequestHandler {
+ public:
+  BoundedPostRequestHandler(const char *uri,
+                            WebServer::THandlerFunction handler)
+      : uri_(uri), handler_(handler) {}
+
+  bool canHandle(WebServer &, HTTPMethod method, const String &uri) override {
+    return method == HTTP_POST && uri == uri_;
+  }
+
+  bool canRaw(WebServer &, const String &uri) override { return uri == uri_; }
+
+  bool handle(WebServer &, HTTPMethod, const String &) override {
+    if (requireAcceptedPostBody()) handler_();
+    return true;
+  }
+
+  void raw(WebServer &, const String &, HTTPRaw &raw) override {
+    server.captureRawPost(raw);
+  }
+
+ private:
+  String uri_;
+  WebServer::THandlerFunction handler_;
+};
+
+void registerBoundedPost(const char *uri,
+                         WebServer::THandlerFunction handler) {
+  server.addHandler(new BoundedPostRequestHandler(uri, handler));
+}
+
+class ControlRequestHandler final : public RequestHandler {
+ public:
+  bool canHandle(WebServer &, HTTPMethod method, const String &uri) override {
+    return method == HTTP_POST && uri.startsWith("/api/control/");
+  }
+
+  bool canRaw(WebServer &, const String &uri) override {
+    return uri.startsWith("/api/control/");
+  }
+
+  bool handle(WebServer &, HTTPMethod, const String &) override {
+    if (requireAcceptedPostBody()) handleControlRequest();
+    return true;
+  }
+
+  void raw(WebServer &, const String &, HTTPRaw &raw) override {
+    server.captureRawPost(raw);
+  }
+};
 }  // namespace
 
 void configurationWebBegin(ClockConfigLoadCallback loadCallback,
@@ -1446,7 +1808,9 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
                            HomeAssistantRefreshCallback refreshCallback,
                            DayNightStatusCallback dayNightStatusCallback,
                            DisplayPowerCallback displayPowerCallback,
-                           DisplayPowerStatusCallback displayPowerStatusCallback) {
+                           DisplayPowerStatusCallback displayPowerStatusCallback,
+                           RadarRangeStateCallback radarRangeStateCallback,
+                           RadarRangePreviewCallback radarRangePreviewCallback) {
   configLoadCallback = loadCallback;
   configSaveCallback = saveCallback;
   webStatusCallback = statusCallback;
@@ -1455,59 +1819,70 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
   currentDayNightStatusCallback = dayNightStatusCallback;
   currentDisplayPowerCallback = displayPowerCallback;
   currentDisplayPowerStatusCallback = displayPowerStatusCallback;
+  currentRadarRangeStateCallback = radarRangeStateCallback;
+  currentRadarRangePreviewCallback = radarRangePreviewCallback;
   initializeControlSecret();
   initializeWebPassword();
+  server.beginBoundedPostSupport();
   Preferences preferences;
   if (preferences.begin(WEB_PREFS_NAMESPACE, true, "clockcfg")) {
     selectedWebMode = static_cast<ConfigurationWebMode>(constrain(
-        preferences.getUChar(WEB_PREFS_KEY, CONFIGURATION_WEB_TIMED),
+        preferences.getUChar(WEB_PREFS_KEY, CONFIGURATION_WEB_ALWAYS),
         static_cast<uint8_t>(CONFIGURATION_WEB_TIMED),
         static_cast<uint8_t>(CONFIGURATION_WEB_DISABLED)));
     preferences.end();
   }
-  const char *collectedHeaders[] = {"Cookie", "Origin"};
-  server.collectHeaders(collectedHeaders, 2);
+  const char *collectedHeaders[] = {"Cookie", "Origin", "Content-Type"};
+  server.collectHeaders(collectedHeaders, 3);
   server.on("/", HTTP_GET, handleRoot);
-  server.on("/api/auth/login", HTTP_POST, handleWebLogin);
-  server.on("/api/web-password", HTTP_POST, []() {
+  server.on("/diagnostics", HTTP_GET, handleDiagnosticPage);
+  registerBoundedPost("/api/auth/login", handleWebLogin);
+  registerBoundedPost("/api/web-password", []() {
     if (requireConfigurationAccess()) handleWebPassword();
   });
   server.on("/api/config", HTTP_GET, []() {
     if (requireConfigurationAccess()) handleGetConfig();
   });
-  server.on("/api/config", HTTP_POST, []() {
+  registerBoundedPost("/api/config", []() {
     if (requireConfigurationAccess()) handleSaveConfig();
   });
-  server.on("/api/ha/test", HTTP_POST, []() {
+  registerBoundedPost("/api/ha/test", []() {
     if (requireConfigurationAccess()) handleTestConnection();
   });
-  server.on("/api/open-meteo/location", HTTP_POST, []() {
+  registerBoundedPost("/api/open-meteo/location", []() {
     if (requireConfigurationAccess()) handleOpenMeteoLocation();
   });
-  server.on("/api/restart", HTTP_POST, []() {
+  server.on("/api/radar/state", HTTP_GET, []() {
+    if (requireConfigurationAccess()) handleRadarRangeState();
+  });
+  registerBoundedPost("/api/radar/preview", []() {
+    if (requireConfigurationAccess()) handleRadarRangePreview();
+  });
+  registerBoundedPost("/api/restart", []() {
     if (requireConfigurationAccess()) handleRestart();
   });
   server.on("/api/firmware", HTTP_GET, []() {
     if (requireConfigurationAccess()) handleFirmwareStatus();
   });
-  server.on("/api/firmware/check", HTTP_POST, []() {
+  registerBoundedPost("/api/firmware/check", []() {
     if (requireConfigurationAccess()) handleFirmwareCheck();
   });
-  server.on("/api/firmware/install", HTTP_POST, []() {
+  registerBoundedPost("/api/firmware/install", []() {
     if (requireConfigurationAccess()) handleFirmwareInstall();
   });
   server.on("/api/update-status", HTTP_GET, []() {
     if (requireConfigurationAccess()) handleFirmwareStatus();
   });
-  server.on("/api/check-update", HTTP_POST, []() {
+  registerBoundedPost("/api/check-update", []() {
     if (requireConfigurationAccess()) handleFirmwareCheck();
   });
-  server.on("/api/install-update", HTTP_POST, []() {
+  registerBoundedPost("/api/install-update", []() {
     if (requireConfigurationAccess()) handleFirmwareInstall();
   });
   server.on("/api/diagnostics", HTTP_GET, handleDiagnostics);
   server.on("/api/status", HTTP_GET, handleDiagnostics);
   server.on("/api/runtime", HTTP_GET, handleDiagnostics);
+  server.addHandler(new ControlRequestHandler());
   server.onNotFound(handleControlRequest);
   server.begin();
   if (selectedWebMode != CONFIGURATION_WEB_DISABLED) {

@@ -2,6 +2,8 @@
 
 spi_device_handle_t SPI_handle = NULL;
 esp_lcd_panel_handle_t panel_handle = NULL;
+static uint32_t currentPixelClockFrequencyHz =
+    ESP_PANEL_LCD_RGB_TIMING_FREQ_HZ;
 void ST7701_WriteCommand(uint8_t cmd)
 {
   spi_transaction_t spi_tran = {
@@ -398,6 +400,17 @@ void LCD_Resync() {
     esp_lcd_rgb_panel_restart(panel_handle);
   }
 }
+
+bool LCD_SetPixelClock(uint32_t frequencyHz) {
+  if (panel_handle == nullptr) return false;
+  if (frequencyHz == currentPixelClockFrequencyHz) return true;
+  if (esp_lcd_rgb_panel_set_pclk(panel_handle, frequencyHz) != ESP_OK)
+    return false;
+  currentPixelClockFrequencyHz = frequencyHz;
+  return true;
+}
+
+uint32_t LCD_GetPixelClock() { return currentPixelClockFrequencyHz; }
 
 void LCD_Sleep() {
   ST7701_CS_EN();

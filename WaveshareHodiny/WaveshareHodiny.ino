@@ -9,6 +9,7 @@
 
 #include "ClockDashboard.h"
 #include "ClockConfig.h"
+#include "ChmiRadarService.h"
 #include "ConfigurationWeb.h"
 #include "DayNightLogic.h"
 #include "DisplayDriver.h"
@@ -19,9 +20,15 @@
 #include "I2C_Driver.h"
 #include "ImprovSerialService.h"
 #include "NetworkDiagnostics.h"
+#include "NetworkCoordinator.h"
 #include "TCA9554PWR.h"
 #include "WifiProvisioning.h"
 #include "WeatherAnimationService.h"
+
+// ClockConfig is intentionally copied under a mutex so the web server and
+// background data task always see a consistent snapshot. Keep enough room for
+// that snapshot and the display/network calls made from Arduino's loop task.
+SET_LOOP_TASK_STACK_SIZE(16 * 1024);
 
 #if !FIRMWARE_RELEASE && __has_include("local/secrets.h")
 #include "local/secrets.h"
@@ -81,6 +88,15 @@ volatile bool firmwareUpdateCountdownStarted = false;
 volatile unsigned long firmwareUpdateCountdownStartedAt = 0;
 uint8_t firmwareUpdateCountdownDisplayed = 0;
 bool firmwareUpdateDisplayActive = false;
+uint32_t displayedRadarGeneration = UINT32_MAX;
+char displayedRadarTime[6] = "";
+uint16_t displayedRadarRadiusKm = 50;
+bool radarRadiusApplyPending = false;
+unsigned long radarRadiusApplyAt = 0;
+bool radarNormalPixelClockPending = false;
+bool automaticRadarRotationPaused = true;
+unsigned long displayModeStartedAt = 0;
+uint32_t radarRotationCycleBaseline = 0;
 
 constexpr uint32_t LOOP_WATCHDOG_TIMEOUT_MS = 20UL * 1000UL;
 constexpr uint32_t NTP_SYNC_INTERVAL_MS = 60UL * 60UL * 1000UL;
@@ -131,6 +147,7 @@ bool saveRuntimeConfig(const ClockConfig &config, bool tokenWasSubmitted) {
                     persistedConfig.homeAssistantToken);
   }
   if (!clockConfigSave(configSaveBuffer)) return false;
+  radarRadiusApplyPending = false;
   xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
   persistedConfig = configSaveBuffer;
   runtimeConfig = configSaveBuffer;
@@ -149,10 +166,17 @@ void applyPendingRuntimeConfiguration() {
   }
   runtimeConfigurationApplyPending = false;
   runtimeConfigurationApplyAt = 0;
+  automaticRadarRotationPaused = true;
   xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
   dashboardConfigBuffer = runtimeConfig;
   xSemaphoreGive(runtimeConfigMutex);
   clockDashboardApplyConfiguration(dashboardConfigBuffer);
+  if (clockDashboardRadarVisible()) {
+    chmiRadarServiceSetActive(true, dashboardConfigBuffer.openMeteoLatitude,
+                              dashboardConfigBuffer.openMeteoLongitude,
+                              dashboardConfigBuffer.radarRadiusKm,
+                              dashboardConfigBuffer.radarFrameCount);
+  }
   // Zápis do flash může na ESP32-S3 rozhodit vertikální synchronizaci RGB
   // panelu. Provádíme ji až po dokončení obsluhy HTTP požadavku.
   LCD_Resync();
@@ -222,6 +246,138 @@ bool displayPowerForcedOff() {
 void handleSettingsOpen() {
   configurationWebEnsureActive();
   clockDashboardSetWebMode(configurationWebMode());
+}
+
+void handleRadarVisibility(bool visible) {
+  displayModeStartedAt = millis();
+  automaticRadarRotationPaused = false;
+  if (visible) {
+    ChmiRadarSnapshot snapshot;
+    chmiRadarServiceSnapshot(snapshot);
+    radarRotationCycleBaseline = snapshot.completedAnimationCycles;
+    radarNormalPixelClockPending = false;
+    LCD_SetPixelClock(ESP_PANEL_LCD_RGB_RADAR_FREQ_HZ);
+  }
+  const ClockConfig config = runtimeConfigSnapshot();
+  chmiRadarServiceSetActive(visible, config.openMeteoLatitude,
+                            config.openMeteoLongitude, config.radarRadiusKm,
+                            config.radarFrameCount);
+  if (!visible) radarNormalPixelClockPending = true;
+}
+
+void handleRadarRangeChange(int8_t direction) {
+  static constexpr uint16_t RADAR_RADII[] = {25, 50, 100, 200, 0};
+  ClockConfig config = runtimeConfigSnapshot();
+  size_t index = 1;
+  for (size_t candidate = 0; candidate < 5; ++candidate) {
+    if (RADAR_RADII[candidate] == config.radarRadiusKm) {
+      index = candidate;
+      break;
+    }
+  }
+  if (direction > 0 && index + 1 < 5)
+    ++index;
+  else if (direction < 0 && index > 0)
+    --index;
+  else
+    return;
+  xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
+  runtimeConfig.radarRadiusKm = RADAR_RADII[index];
+  xSemaphoreGive(runtimeConfigMutex);
+  radarRadiusApplyPending = true;
+  radarRadiusApplyAt = millis() + 350;
+  displayModeStartedAt = millis();
+}
+
+void maintainRadarRangeChange() {
+  if (radarRadiusApplyPending &&
+      static_cast<long>(millis() - radarRadiusApplyAt) >= 0) {
+    radarRadiusApplyPending = false;
+    radarRadiusApplyAt = 0;
+    if (clockDashboardRadarVisible()) {
+      const ClockConfig config = runtimeConfigSnapshot();
+      chmiRadarServiceSetActive(true, config.openMeteoLatitude,
+                                config.openMeteoLongitude,
+                                config.radarRadiusKm,
+                                config.radarFrameCount);
+    }
+  }
+}
+
+void loadRadarRangeStateForWeb(uint16_t &savedRadiusKm,
+                               uint16_t &activeRadiusKm) {
+  savedRadiusKm = persistedConfig.radarRadiusKm;
+  activeRadiusKm = runtimeConfigSnapshot().radarRadiusKm;
+}
+
+bool previewRadarRangeFromWeb(uint16_t radiusKm) {
+  xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
+  runtimeConfig.radarRadiusKm = radiusKm;
+  const ClockConfig config = runtimeConfig;
+  xSemaphoreGive(runtimeConfigMutex);
+  radarRadiusApplyPending = false;
+  radarRadiusApplyAt = 0;
+  displayModeStartedAt = millis();
+  if (clockDashboardRadarVisible()) {
+    chmiRadarServiceSetActive(true, config.openMeteoLatitude,
+                              config.openMeteoLongitude,
+                              config.radarRadiusKm,
+                              config.radarFrameCount);
+  }
+  return true;
+}
+
+void maintainAutomaticRadarRotation() {
+  const ClockConfig config = runtimeConfigSnapshot();
+  const bool allowed =
+      config.automaticRadarRotation && !displayForcedOff &&
+      clockDashboardAutomaticRotationAllowed();
+  if (!allowed) {
+    automaticRadarRotationPaused = true;
+    return;
+  }
+  const unsigned long now = millis();
+  if (automaticRadarRotationPaused) {
+    automaticRadarRotationPaused = false;
+    displayModeStartedAt = now;
+    return;
+  }
+  const bool radarVisible = clockDashboardRadarVisible();
+  const unsigned long durationMs =
+      static_cast<unsigned long>(radarVisible ? config.radarDisplaySeconds
+                                              : config.clockDisplaySeconds) *
+      1000UL;
+  if (now - displayModeStartedAt < durationMs) return;
+  if (radarVisible) {
+    ChmiRadarSnapshot snapshot;
+    chmiRadarServiceSnapshot(snapshot);
+    const bool staticRadarReady =
+        snapshot.ready && snapshot.animationFrameCount <= 1;
+    const bool completeCycleFinished =
+        snapshot.completedAnimationCycles != radarRotationCycleBaseline;
+    if (!staticRadarReady && !completeCycleFinished) return;
+  }
+  clockDashboardSetRadarVisible(!radarVisible);
+}
+
+void maintainRadarDisplay() {
+  ChmiRadarSnapshot snapshot;
+  chmiRadarServiceSnapshot(snapshot);
+  if (radarNormalPixelClockPending && !snapshot.loading) {
+    if (LCD_SetPixelClock(ESP_PANEL_LCD_RGB_NORMAL_FREQ_HZ))
+      radarNormalPixelClockPending = false;
+  }
+  if (snapshot.generation == displayedRadarGeneration &&
+      strcmp(snapshot.frameTime, displayedRadarTime) == 0)
+    return;
+  displayedRadarGeneration = snapshot.generation;
+  displayedRadarRadiusKm = snapshot.radiusKm;
+  strlcpy(displayedRadarTime, snapshot.frameTime,
+          sizeof(displayedRadarTime));
+  clockDashboardSetRadarSnapshot(snapshot.pixels, snapshot.frameTime,
+                                 displayedRadarRadiusKm,
+                                 snapshot.message, snapshot.loading,
+                                 snapshot.latestFrame);
 }
 
 void handleConfigurationWebStatus(bool active) {
@@ -624,6 +780,12 @@ int openMeteoWeatherCode(int wmoCode) {
 
 bool fetchOpenMeteo(const ClockConfig &config, ClockValues &values) {
   networkDiagnosticsBegin(NetworkDiagnosticKind::OpenMeteoRuntime);
+  NetworkOperationGuard networkGuard(HOME_ASSISTANT_RESPONSE_TIMEOUT_MS);
+  if (!networkGuard) {
+    networkDiagnosticsEnd(NetworkDiagnosticKind::OpenMeteoRuntime, false,
+                          HTTPC_ERROR_CONNECTION_REFUSED);
+    return false;
+  }
   String url = F("https://api.open-meteo.com/v1/forecast?latitude=");
   url += String(config.openMeteoLatitude, 5);
   url += F("&longitude=");
@@ -727,6 +889,11 @@ bool requestHomeAssistantState(NetworkClient &client,
                                const char *entityId, String &payload,
                                int &lastStatus) {
   if (entityId[0] == '\0') return false;
+  NetworkOperationGuard networkGuard(HOME_ASSISTANT_RESPONSE_TIMEOUT_MS);
+  if (!networkGuard) {
+    lastStatus = HTTPC_ERROR_CONNECTION_REFUSED;
+    return false;
+  }
   const String url = String(config.homeAssistantUrl) + "/api/states/" + entityId;
   for (uint8_t attempt = 0; attempt < HOME_ASSISTANT_REQUEST_ATTEMPTS;
        ++attempt) {
@@ -1093,6 +1260,7 @@ void setup() {
   }
   runtimeConfig = persistedConfig;
   applyDevelopmentDefaults(runtimeConfig);
+  networkCoordinatorBegin();
   LCD_Init();
   currentDisplayBrightness = runtimeConfig.dayBrightness;
   Set_Backlight(currentDisplayBrightness);
@@ -1102,8 +1270,10 @@ void setup() {
                        runtimeConfig.automaticDayNight,
                        handleBrightnessPreview, handleSettingsOpen,
                        handleSettingsSave, handleSettingsFirmwareCheck,
-                       handleSettingsFirmwareInstall);
+                       handleSettingsFirmwareInstall, handleRadarVisibility,
+                       handleRadarRangeChange);
   clockDashboardApplyConfiguration(runtimeConfig);
+  chmiRadarServiceBegin();
   clockDashboardSetSecond(60);
   displayResyncAt = millis() + 2000;
 #if FIRMWARE_RELEASE
@@ -1119,7 +1289,8 @@ void setup() {
                         loadSunTransitionTimesForWeb,
                         requestHomeAssistantRefreshFromWeb,
                         loadDayNightStatusForWeb, handleDisplayPower,
-                        displayPowerForcedOff);
+                        displayPowerForcedOff, loadRadarRangeStateForWeb,
+                        previewRadarRangeFromWeb);
   clockDashboardSetWebMode(configurationWebMode());
 
   const esp_task_wdt_config_t watchdogConfig = {
@@ -1150,7 +1321,8 @@ void loop() {
   weatherAnimationServiceLoop(sampleValues.weatherCode,
                               sampleValues.weatherIsDay,
                               weatherIconStyle,
-                              animationConfig.animatedWeatherIcons &&
+                              !clockDashboardRadarVisible() &&
+                                  animationConfig.animatedWeatherIcons &&
                                   (animationConfig.dataSource ==
                                        CLOCK_DATA_SOURCE_OPEN_METEO ||
                                    strcmp(animationConfig.leftSide.icon,
@@ -1159,6 +1331,9 @@ void loop() {
                                           "weather") == 0));
   configurationWebLoop();
   applyPendingRuntimeConfiguration();
+  maintainRadarRangeChange();
+  maintainRadarDisplay();
+  maintainAutomaticRadarRotation();
   clockDashboardLoop();
   displayDriverLoop();
   if (firmwareUpdateDisplayRequested && firmwareUpdateDisplayActive) {

@@ -31,6 +31,8 @@ using SettingsSaveCallback = void (*)(uint8_t dayBrightness,
                                       bool automaticFirmwareUpdate,
                                       uint8_t webMode);
 using SettingsActionCallback = void (*)();
+using RadarVisibilityCallback = void (*)(bool visible);
+using RadarRangeCallback = void (*)(int8_t direction);
 
 void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
                         uint8_t nightBrightness, bool automaticDayNight,
@@ -38,12 +40,17 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
                         SettingsOpenCallback settingsOpen,
                         SettingsSaveCallback settingsSave,
                         SettingsActionCallback firmwareCheck,
-                        SettingsActionCallback firmwareInstall);
+                        SettingsActionCallback firmwareInstall,
+                        RadarVisibilityCallback radarVisibility,
+                        RadarRangeCallback radarRange);
 void clockDashboardLoop();
 void clockDashboardShowSettings();
 void clockDashboardShowSettingsPage(uint8_t page);
 void clockDashboardSetNightMode(bool enabled);
 bool clockDashboardNightModeEnabled();
+bool clockDashboardRadarVisible();
+void clockDashboardSetRadarVisible(bool visible);
+bool clockDashboardAutomaticRotationAllowed();
 void clockDashboardSetWifiAddress(const char *ipAddress);
 void clockDashboardSetFirmwareVersion(const char *version,
                                       bool updateAvailable);
@@ -60,3 +67,7 @@ void clockDashboardSetSecond(uint8_t second);
 void clockDashboardSetTime(const char *timeText);
 void clockDashboardSetWeatherAnimation(const uint8_t *gifData, size_t size,
                                        const char *iconKey);
+void clockDashboardSetRadarSnapshot(const uint16_t *pixels,
+                                    const char *frameTime, uint16_t radiusKm,
+                                    const char *message, bool loading,
+                                    bool latestFrame);

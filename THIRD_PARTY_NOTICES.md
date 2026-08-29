@@ -8,8 +8,9 @@ notices.
 
 | Component | Version used by the project | License | Source |
 | --- | --- | --- | --- |
-| Arduino core for ESP32 | 3.0.2 | LGPL-2.1 | https://github.com/espressif/arduino-esp32 |
+| Arduino core for ESP32 | 3.0.7 | LGPL-2.1 | https://github.com/espressif/arduino-esp32 |
 | LVGL | 8.3.10 | MIT | https://github.com/lvgl/lvgl |
+| PNGdec | 1.0.1 | Apache-2.0 | https://github.com/bitbank2/PNGdec |
 | Improv Wi-Fi C++ SDK | commit `17898613a1c17062ca5af295ceb639b16b4930bf` | Apache-2.0 | https://github.com/improv-wifi/sdk-cpp |
 | ESP Web Tools | 10.4.0 | Apache-2.0 | https://github.com/esphome/esp-web-tools |
 
@@ -20,6 +21,39 @@ above.
 The minified ESP Web Tools browser bundle used by the GitHub Pages installer is
 self-hosted in `docs/vendor/esp-web-tools/`. Its upstream Apache-2.0 license is
 preserved as `docs/vendor/esp-web-tools/LICENSE`.
+
+## MeteoPlaneRadar by Chiptron.cz
+
+Část implementace meteoradaru a mapových podkladů byla převzata a upravena z
+open-source projektu MeteoPlaneRadar:
+
+- autor: Petr / Chiptron.cz,
+- zdroj: https://github.com/petus/MeteoPlaneRadar,
+- web autora: https://chiptron.cz/,
+- licence: MIT.
+
+Copyright (c) 2026 Petr / chiptron.cz
+
+Na převzaté a odvozené části se vztahují podmínky MIT licence. Její úplné
+znění je součástí souboru `LICENSE` v kořeni tohoto repozitáře. Děkujeme
+autorovi za zveřejnění zdrojového kódu a inspiraci pro integraci radaru ČHMÚ.
+
+## Meteorologická data ČHMÚ
+
+Meteoradar používá radarový kompozit MAX_Z poskytovaný Českým
+hydrometeorologickým ústavem. Data nejsou součástí licence zdrojového kódu a
+vyžadují uvedení zdroje.
+
+Zdroj: https://opendata.chmi.cz/meteorology/weather/radar/composite/maxz/png/
+
+## Mapový podklad meteoradaru
+
+Obrys České republiky vychází z dat Natural Earth 1:10m (public domain),
+zjednodušených v projektu MeteoPlaneRadar. Souřadnice měst pocházejí z
+GeoNames a podléhají licenci CC BY 4.0.
+
+Zdroje: https://www.naturalearthdata.com/ · https://www.geonames.org/ ·
+https://github.com/petus/MeteoPlaneRadar
 
 ## Fonts and icons
 
@@ -43,7 +77,7 @@ source fonts and their licenses are included below `assets/fonts/`.
 The weather icons embedded in the firmware are derived from Meteocons
 version `3.0.0-next.10` by Bas Milius.
 
-The 42 animated GIFs published in `docs/assets/weather-icons/` are generated
+The 45 animated GIFs published in `docs/assets/weather-icons/` are generated
 from the same upstream package. Their MIT license is also preserved next to
 the published assets as `docs/assets/weather-icons/LICENSE.txt`.
 

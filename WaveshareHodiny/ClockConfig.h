@@ -12,11 +12,10 @@ constexpr size_t CLOCK_ROOM_ICON_LENGTH = 16;
 constexpr size_t CLOCK_OPEN_METEO_CITY_LENGTH = 64;
 constexpr size_t CLOCK_OPEN_METEO_VALUE_LENGTH = 32;
 constexpr size_t CLOCK_METRIC_COLOR_POINT_COUNT = 10;
-// Schema 16 is the public 1.4.0 baseline. Schema 17 adds Open-Meteo and
-// schema 18 adds the clock colon animation and leading-zero preferences;
-// schema 19 expands the colon animation from a switch to three modes and
-// schema 20 adds the selectable date format.
-constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 20;
+// Schema 20 is the public 1.5.5 baseline. Schema 23 is the 1.6.0 format and
+// adds CHMI radar settings plus automatic clock/radar rotation. Intermediate
+// development schemas were never released and are intentionally unsupported.
+constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 23;
 
 enum ClockDataSource : uint8_t {
   CLOCK_DATA_SOURCE_OPEN_METEO = 0,
@@ -136,6 +135,11 @@ struct ClockConfig {
   uint8_t timeColonEffect = CLOCK_TIME_COLON_STEADY;
   bool showLeadingHourZero = true;
   uint8_t dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;
+  uint16_t radarRadiusKm = 0;
+  uint8_t radarFrameCount = 6;
+  bool automaticRadarRotation = false;
+  uint16_t clockDisplaySeconds = 120;
+  uint16_t radarDisplaySeconds = 20;
 };
 
 bool clockConfigBegin();

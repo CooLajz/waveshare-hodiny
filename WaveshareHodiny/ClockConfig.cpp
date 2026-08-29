@@ -18,44 +18,17 @@ struct ConfigRecord {
   uint32_t checksum;
 };
 
-constexpr uint32_t PUBLIC_1_4_SCHEMA_VERSION = 16;
-constexpr uint32_t OPEN_METEO_SCHEMA_VERSION = 17;
-constexpr uint32_t BOOLEAN_COLON_SCHEMA_VERSION = 18;
-constexpr uint32_t COLON_EFFECT_SCHEMA_VERSION = 19;
-constexpr size_t SCHEMA_16_PAYLOAD_SIZE = offsetof(ClockConfig, timeFont);
-constexpr size_t SCHEMA_16_CONFIG_SIZE =
-    (SCHEMA_16_PAYLOAD_SIZE + alignof(ClockConfig) - 1) &
-    ~(alignof(ClockConfig) - 1);
+constexpr uint32_t PUBLIC_1_5_5_SCHEMA_VERSION = 20;
 
-struct ConfigRecordV16 {
+// Firmware 1.5.5 stored the same prefix as ClockConfig up to dateFormat.
+// Keeping the payload as bytes preserves its exact released NVS layout and
+// checksum without retaining every unreleased development migration.
+constexpr size_t PUBLIC_1_5_5_CONFIG_SIZE = offsetof(ClockConfig, radarRadiusKm);
+
+struct ConfigRecordV155 {
   uint32_t magic;
   uint32_t schemaVersion;
-  uint8_t config[SCHEMA_16_CONFIG_SIZE];
-  uint32_t checksum;
-};
-
-constexpr size_t SCHEMA_17_PAYLOAD_SIZE =
-    offsetof(ClockConfig, timeColonEffect);
-constexpr size_t SCHEMA_17_CONFIG_SIZE =
-    (SCHEMA_17_PAYLOAD_SIZE + alignof(ClockConfig) - 1) &
-    ~(alignof(ClockConfig) - 1);
-
-struct ConfigRecordV17 {
-  uint32_t magic;
-  uint32_t schemaVersion;
-  uint8_t config[SCHEMA_17_CONFIG_SIZE];
-  uint32_t checksum;
-};
-
-constexpr size_t SCHEMA_19_PAYLOAD_SIZE = offsetof(ClockConfig, dateFormat);
-constexpr size_t SCHEMA_19_CONFIG_SIZE =
-    (SCHEMA_19_PAYLOAD_SIZE + alignof(ClockConfig) - 1) &
-    ~(alignof(ClockConfig) - 1);
-
-struct ConfigRecordV19 {
-  uint32_t magic;
-  uint32_t schemaVersion;
-  uint8_t config[SCHEMA_19_CONFIG_SIZE];
+  uint8_t config[PUBLIC_1_5_5_CONFIG_SIZE];
   uint32_t checksum;
 };
 
@@ -77,12 +50,13 @@ void applyOpenMeteoDefaults(ClockConfig &config) {
   }
 }
 
-static_assert(SCHEMA_16_CONFIG_SIZE % alignof(ClockConfig) == 0,
-              "Záznam veřejné verze 1.4.0 musí zahrnout koncový padding.");
-static_assert(SCHEMA_17_CONFIG_SIZE % alignof(ClockConfig) == 0,
-              "Záznam schema 17 musí zahrnout koncový padding.");
-static_assert(SCHEMA_19_CONFIG_SIZE % alignof(ClockConfig) == 0,
-              "Záznam schema 19 musí zahrnout koncový padding.");
+static_assert(PUBLIC_1_5_5_CONFIG_SIZE % alignof(ClockConfig) == 0,
+              "Záznam veřejné verze 1.5.5 musí zahrnout koncový padding.");
+static_assert(PUBLIC_1_5_5_CONFIG_SIZE == 2096 &&
+                  sizeof(ConfigRecordV155) == 2108,
+              "NVS formát veřejné verze 1.5.5 se nesmí změnit.");
+static_assert(sizeof(ConfigRecordV155) <= sizeof(ConfigRecord),
+              "Migrační záznam se musí vejít do společného pracovního bufferu.");
 
 uint32_t bytesChecksum(const uint8_t *bytes, size_t size) {
   uint32_t hash = 2166136261u;
@@ -132,6 +106,16 @@ void normalizeConfig(ClockConfig &config) {
   config.dataSource = constrain(
       config.dataSource, static_cast<uint8_t>(CLOCK_DATA_SOURCE_OPEN_METEO),
       static_cast<uint8_t>(CLOCK_DATA_SOURCE_HOME_ASSISTANT));
+  if (config.radarRadiusKm != 0 && config.radarRadiusKm != 25 &&
+      config.radarRadiusKm != 50 &&
+      config.radarRadiusKm != 100 && config.radarRadiusKm != 200) {
+    config.radarRadiusKm = 50;
+  }
+  config.radarFrameCount = constrain(config.radarFrameCount, 1, 15);
+  config.clockDisplaySeconds =
+      constrain(config.clockDisplaySeconds, 10, 3600);
+  config.radarDisplaySeconds =
+      constrain(config.radarDisplaySeconds, 10, 3600);
   if (!std::isfinite(config.openMeteoLatitude) ||
       config.openMeteoLatitude < -90.0f || config.openMeteoLatitude > 90.0f ||
       !std::isfinite(config.openMeteoLongitude) ||
@@ -220,119 +204,54 @@ bool clockConfigLoad(ClockConfig &config) {
   Preferences preferences;
   if (!preferences.begin(CONFIG_NAMESPACE, false, CONFIG_PARTITION)) return false;
 
-  // Záznamy jsou velké (obsahují celé ClockConfig), proto neleží na malém
-  // zásobníku Arduino loopTask.
+  // Aktuální i jediný podporovaný migrační záznam sdílejí jeden statický
+  // buffer. Konfigurace je velká a nemá ležet na zásobníku loopTask.
   static ConfigRecord record;
   record = ConfigRecord{};
   const size_t storedSize = preferences.getBytesLength(CONFIG_KEY);
-  const bool readComplete = storedSize == sizeof(record) &&
-                            preferences.getBytes(CONFIG_KEY, &record,
-                                                 sizeof(record)) == sizeof(record);
-  static ConfigRecordV16 schema16Record;
-  schema16Record = ConfigRecordV16{};
-  const bool schema16ReadComplete =
-      storedSize == sizeof(schema16Record) &&
-      preferences.getBytes(CONFIG_KEY, &schema16Record,
-                           sizeof(schema16Record)) == sizeof(schema16Record);
-  static ConfigRecordV17 schema17Record;
-  schema17Record = ConfigRecordV17{};
-  const bool schema17ReadComplete =
-      storedSize == sizeof(schema17Record) &&
-      preferences.getBytes(CONFIG_KEY, &schema17Record,
-                           sizeof(schema17Record)) == sizeof(schema17Record);
-  static ConfigRecordV19 schema19Record;
-  schema19Record = ConfigRecordV19{};
-  const bool schema19ReadComplete =
-      storedSize == sizeof(schema19Record) &&
-      preferences.getBytes(CONFIG_KEY, &schema19Record,
-                           sizeof(schema19Record)) == sizeof(schema19Record);
+  const bool supportedSize =
+      storedSize == sizeof(record) || storedSize == sizeof(ConfigRecordV155);
+  const bool readComplete =
+      supportedSize && preferences.getBytes(CONFIG_KEY, &record, storedSize) ==
+                           storedSize;
   preferences.end();
 
   const bool currentRecord =
-      readComplete && record.magic == CONFIG_MAGIC &&
+      readComplete && storedSize == sizeof(record) &&
+      record.magic == CONFIG_MAGIC &&
       record.schemaVersion == CLOCK_CONFIG_SCHEMA_VERSION &&
       record.config.schemaVersion == CLOCK_CONFIG_SCHEMA_VERSION &&
       record.checksum == configChecksum(record.config);
-  if (!currentRecord) {
-    uint32_t schema19EmbeddedVersion = 0;
-    memcpy(&schema19EmbeddedVersion, schema19Record.config,
-           sizeof(schema19EmbeddedVersion));
-    const bool validSchema19Record =
-        schema19ReadComplete && schema19Record.magic == CONFIG_MAGIC &&
-        schema19Record.schemaVersion == COLON_EFFECT_SCHEMA_VERSION &&
-        schema19EmbeddedVersion == COLON_EFFECT_SCHEMA_VERSION &&
-        schema19Record.checksum ==
-            bytesChecksum(schema19Record.config, sizeof(schema19Record.config));
-    if (validSchema19Record) {
-      memcpy(&config, schema19Record.config, SCHEMA_19_PAYLOAD_SIZE);
-      config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
-      config.dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;
-      normalizeConfig(config);
-      return clockConfigSave(config);
-    }
-
-    const bool validSchema18Record =
-        schema19ReadComplete && schema19Record.magic == CONFIG_MAGIC &&
-        schema19Record.schemaVersion == BOOLEAN_COLON_SCHEMA_VERSION &&
-        schema19EmbeddedVersion == BOOLEAN_COLON_SCHEMA_VERSION &&
-        schema19Record.checksum ==
-            bytesChecksum(schema19Record.config, sizeof(schema19Record.config));
-    if (validSchema18Record) {
-      memcpy(&config, schema19Record.config, SCHEMA_19_PAYLOAD_SIZE);
-      config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
-      config.timeColonEffect = config.timeColonEffect
-                                   ? CLOCK_TIME_COLON_FADE
-                                   : CLOCK_TIME_COLON_STEADY;
-      config.dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;
-      normalizeConfig(config);
-      return clockConfigSave(config);
-    }
-
-    uint32_t schema17EmbeddedVersion = 0;
-    memcpy(&schema17EmbeddedVersion, schema17Record.config,
-           sizeof(schema17EmbeddedVersion));
-    const bool validSchema17Record =
-        schema17ReadComplete && schema17Record.magic == CONFIG_MAGIC &&
-        schema17Record.schemaVersion == OPEN_METEO_SCHEMA_VERSION &&
-        schema17EmbeddedVersion == OPEN_METEO_SCHEMA_VERSION &&
-        schema17Record.checksum ==
-            bytesChecksum(schema17Record.config, sizeof(schema17Record.config));
-    if (validSchema17Record) {
-      memcpy(&config, schema17Record.config, SCHEMA_17_PAYLOAD_SIZE);
-      config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
-      config.timeColonEffect = CLOCK_TIME_COLON_STEADY;
-      config.showLeadingHourZero = true;
-      config.dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;
-      normalizeConfig(config);
-      return clockConfigSave(config);
-    }
-
-    uint32_t embeddedSchemaVersion = 0;
-    memcpy(&embeddedSchemaVersion, schema16Record.config,
-           sizeof(embeddedSchemaVersion));
-    const bool validPublic14Record =
-        schema16ReadComplete && schema16Record.magic == CONFIG_MAGIC &&
-        schema16Record.schemaVersion == PUBLIC_1_4_SCHEMA_VERSION &&
-        embeddedSchemaVersion == PUBLIC_1_4_SCHEMA_VERSION &&
-        schema16Record.checksum == bytesChecksum(schema16Record.config,
-                                                 sizeof(schema16Record.config));
-    if (!validPublic14Record) return clockConfigSave(config);
-
-    memcpy(&config, schema16Record.config, SCHEMA_16_PAYLOAD_SIZE);
-    config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
-    config.timeFont = CLOCK_TIME_FONT_BARLOW;
-    applyOpenMeteoDefaults(config);
-    if (config.homeAssistantUrl[0] != '\0' &&
-        config.homeAssistantToken[0] != '\0') {
-      config.dataSource = CLOCK_DATA_SOURCE_HOME_ASSISTANT;
-    }
+  if (currentRecord) {
+    config = record.config;
     normalizeConfig(config);
-    return clockConfigSave(config);
+    return true;
   }
 
-  config = record.config;
+  const ConfigRecordV155 &legacy =
+      *reinterpret_cast<const ConfigRecordV155 *>(&record);
+  uint32_t embeddedSchemaVersion = 0;
+  if (readComplete && storedSize == sizeof(legacy)) {
+    memcpy(&embeddedSchemaVersion, legacy.config,
+           sizeof(embeddedSchemaVersion));
+  }
+  const bool validPublic155Record =
+      readComplete && storedSize == sizeof(legacy) &&
+      legacy.magic == CONFIG_MAGIC &&
+      legacy.schemaVersion == PUBLIC_1_5_5_SCHEMA_VERSION &&
+      embeddedSchemaVersion == PUBLIC_1_5_5_SCHEMA_VERSION &&
+      legacy.checksum == bytesChecksum(legacy.config, sizeof(legacy.config));
+  if (!validPublic155Record) return clockConfigSave(config);
+
+  memcpy(&config, legacy.config, sizeof(legacy.config));
+  config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+  config.radarRadiusKm = 50;
+  config.radarFrameCount = 6;
+  config.automaticRadarRotation = false;
+  config.clockDisplaySeconds = 120;
+  config.radarDisplaySeconds = 20;
   normalizeConfig(config);
-  return true;
+  return clockConfigSave(config);
 }
 
 bool clockConfigSave(const ClockConfig &config) {
@@ -346,8 +265,18 @@ bool clockConfigSave(const ClockConfig &config) {
 
   Preferences preferences;
   if (!preferences.begin(CONFIG_NAMESPACE, false, CONFIG_PARTITION)) return false;
-  const bool ok =
+  bool ok =
       preferences.putBytes(CONFIG_KEY, &record, sizeof(record)) == sizeof(record);
+  if (!ok && preferences.remove(CONFIG_KEY)) {
+    // Velký konfigurační blob při mnoha změnách schématu může zaplnit NVS
+    // historickými verzemi. Odstranění pouze tohoto klíče umožní NVS staré
+    // blobové stránky zkompaktovat; ostatní namespace v clockcfg zůstávají.
+    preferences.end();
+    if (!preferences.begin(CONFIG_NAMESPACE, false, CONFIG_PARTITION))
+      return false;
+    ok = preferences.putBytes(CONFIG_KEY, &record, sizeof(record)) ==
+         sizeof(record);
+  }
   preferences.end();
   return ok;
 }

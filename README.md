@@ -2,9 +2,10 @@
 
 Český informační dashboard pro kulatý dotykový displej
 [Waveshare ESP32-S3-Touch-LCD-2.1](https://www.waveshare.com/esp32-s3-touch-lcd-2.1.htm)
-s rozlišením 480 × 480 px. Zobrazuje čas, datum, počasí, teploty a další
-hodnoty z Home Assistantu. Vzhled, entity, jas, animace i aktualizace se
-nastavují z webového rozhraní bez úpravy zdrojového kódu.
+s rozlišením 480 × 480 px. Zobrazuje čas, datum, počasí, teploty, další
+měřené hodnoty a srážkový radar ČHMÚ. Jako zdroj hodnot lze použít Open-Meteo
+bez účtu nebo Home Assistant. Vzhled, zdroje dat, poloha, radar, jas, animace
+i aktualizace se nastavují z webového rozhraní bez úpravy zdrojového kódu.
 
 <p align="center">
   <img src="screenshots/dashboard.png" alt="Hlavní obrazovka Waveshare Hodiny v denním režimu" width="46%">
@@ -17,15 +18,20 @@ displej v noci nerušil.
 
 ## Co firmware umí
 
-- velké digitální hodiny s volitelným běžným nebo LCD fontem, české datum a vteřinový prstenec,
+- velké digitální hodiny s fonty Barlow, Liberation Sans, LCD DSEG nebo Doto,
+  české datum v několika formátech a volitelný vteřinový prstenec,
 - synchronizaci času přes NTP a české časové pásmo včetně letního času,
 - dvě místnosti s vlastním názvem, teplotou, ikonou a barvou,
 - animované i statické ikony počasí založené na Meteocons,
+- srážkový radar ČHMÚ s mapou České republiky, městy a 1 až 15 snímky,
+- rozsahy 25, 50, 100 a 200 km nebo celou ČR; levý okraj oddaluje a pravý přibližuje,
+- volitelné automatické střídání hodin a radaru se samostatnou dobou zobrazení,
 - dvě další měřené veličiny, například CO₂, VOC, vlhkost, tlak nebo baterii,
 - vlastní jednotky, počet desetinných míst a plynulé barevné škály,
-- denní a noční jas s automatickým přepínáním podle entity slunce,
+- denní a noční jas s automatickým přepínáním podle Open-Meteo nebo entity slunce,
 - tři efekty vteřin: klasické tečky, plynulou čáru a kometu,
-- webovou konfiguraci, export a import zálohy a bezpečný restart,
+- webovou konfiguraci s volitelným heslem, export a import zálohy a bezpečný restart,
+- samostatnou živou diagnostiku hardwaru, paměti, sítě, Home Assistantu a radaru,
 - prvotní nastavení Wi-Fi přes Improv Serial,
 - A/B OTA aktualizace se zachováním Wi-Fi a konfigurace,
 - ovládací API pro Home Assistant chráněné náhodným secretem,
@@ -77,11 +83,24 @@ Produkční firmware obsluhuje Improv Serial na obou konektorech.
 2. Počkej na připojení; na displeji se zobrazí IP adresa a stavové ikony.
 3. Otevři `http://waveshare-hodiny.local/`. Pokud mDNS v síti nefunguje,
    použij IP adresu z nastavení na displeji.
-4. Zadej adresu Home Assistantu a long-lived access token.
-5. Tlačítkem **Otestovat připojení** ověř spojení.
-6. Vyplň entity, vzhled a jas a zvol **Uložit nastavení**.
+4. V záložce **Zdroj a poloha** vyber Open-Meteo nebo Home Assistant a vyhledej
+   město. Poloha je společná pro počasí Open-Meteo i meteoradar.
+5. Při použití Home Assistantu zadej jeho adresu a long-lived access token a
+   tlačítkem **Otestovat připojení** ověř spojení.
+6. Uprav vzhled, radar a jas a zvol **Uložit změny**.
 
-## Home Assistant
+Nová konfigurace používá Open-Meteo, polohu Brno a pohled meteoradaru na celou
+Českou republiku. Home Assistant není pro základní provoz povinný.
+
+## Zdroje dat
+
+### Open-Meteo
+
+Open-Meteo je výchozí zdroj a nevyžaduje účet ani token. Poskytuje aktuální
+počasí a čtyři konfigurovatelné hodnoty. Vybrané město a jeho GPS souřadnice
+současně určují střed lokálních pohledů meteoradaru ČHMÚ.
+
+### Home Assistant
 
 Firmware čte jednotlivé entity přes REST API Home Assistantu. Nepotřebuje
 MQTT, vlastní integraci ani administrátorský účet.
@@ -123,14 +142,41 @@ zobrazí jako `--`.
 
 Web umožňuje nastavit:
 
+- zdroj dat Open-Meteo nebo Home Assistant a společnou polohu zařízení,
 - Home Assistant URL, token, entitu počasí a entitu slunce,
 - levou a pravou místnost včetně názvu, teploty, ikony a barev,
 - styl animovaných ikon `Monochrome`, `Flat` nebo `Line`,
+- meteoradar ČHMÚ s obrysem ČR, městy, pohledy 25, 50, 100, 200 km nebo celá ČR a volbou 1 až 15 snímků,
 - měřené hodnoty A a B, jednotky, přesnost a barevné škály,
 - barvu hodin, data a obou částí vteřinového efektu,
-- denní/noční jas a automatický režim,
+- denní/noční jas, automatický režim a automatické střídání hodin s radarem,
 - automatické OTA aktualizace a režim webového serveru,
-- export/import zálohy, restart a ovládání podsvícení.
+- volitelné heslo webového nastavení,
+- export/import zálohy, restart, ovládání podsvícení a živou diagnostiku.
+
+### Meteoradar ČHMÚ
+
+Radar používá výhradně otevřená data radarového kompozitu MAX_Z Českého
+hydrometeorologického ústavu. Nabízí pohledy 25, 50, 100 a 200 km kolem
+uložené GPS polohy a přehled celé České republiky. Mapový podklad obsahuje
+obrys státu a města přizpůsobená jednotlivým rozsahům.
+
+Počet snímků lze nastavit od 1 do 15. Jeden snímek znamená statický radar;
+vyšší počet vytvoří animaci od nejstaršího snímku k nejnovějšímu. Po posledním
+snímku následuje pětisekundová pauza. Čas posledního, tedy nejaktuálnějšího
+snímku je na displeji zvýrazněný jasně zeleně. Nová data se kontrolují v
+pevných pětiminutových slotech přibližně minutu po čase publikace ČHMÚ.
+
+Tlačítka rozsahů na webu mění právě zobrazený pohled okamžitě. Modrá označuje
+aktuální rozsah na hodinách a žlutá uložený výchozí rozsah. Do trvalé
+konfigurace se změna zapíše až tlačítkem **Uložit změny**. Rozsah zvolený
+dotykem na displeji zůstává pouze do restartu; po něm se obnoví hodnota
+naposledy uložená přes web.
+
+Automatické střídání hodin a radaru je ve výchozím stavu vypnuté. Po zapnutí
+lze nastavit samostatnou dobu zobrazení hodin a radaru. Nastavený čas radaru
+je minimální: rozběhnutý animační cyklus se vždy dokončí včetně závěrečné
+pauzy, takže přechod zpět na hodiny nepřeruší animaci uprostřed.
 
 ### Barevné prahy měřených hodnot
 
@@ -156,22 +202,54 @@ hodin, data, typ vteřinového efektu, velikost a jas jeho aktivní i neaktivní
   <img src="screenshots/web-display-settings.png" alt="Nastavení jasu, denního a nočního režimu a vteřin" width="920">
 </p>
 
-Konfigurační web zatím nemá vlastní heslo. Ve výchozím režimu běží deset minut
-po startu a aktivita interval obnovuje. Otevření nastavení na hodinách jej znovu
-aktivuje. Lze jej přepnout na **Vždy zapnutý** nebo **Vypnutý**. Provozuj jej
-jen v důvěryhodné síti; aktivní web signalizuje ikona ozubeného kola na
-dashboardu.
+Konfigurační web je ve výchozím režimu **Vždy zapnutý**. Lze jej přepnout na
+deset minut po startu nebo aktivaci z displeje, případně jej úplně vypnout.
+Provozuj jej jen v důvěryhodné síti; aktivní web signalizuje ikona ozubeného
+kola na dashboardu.
+
+Webové nastavení lze chránit heslem o délce 6 až 20 znaků. Stav bez hesla je
+v záložce **Systém** označený červeně, aktivní ochrana zeleně. Heslo je uložené
+v zařízení jako odvozený hash, nelze je zpětně zobrazit a není součástí
+exportované zálohy.
+
+### Diagnostika
+
+V záložce **Systém** je odkaz na samostatnou stránku `/diagnostics`, která se
+otevře v novém panelu. Bez dalších měření na pozadí zobrazuje aktuální a
+minimální volnou interní RAM a PSRAM, procesor, velikost flash, důvod restartu,
+Wi-Fi, IP adresu a skutečnou frekvenci pixel clocku displeje. Dále ukazuje stav
+Home Assistantu a Open-Meteo a u radaru vybrané město, GPS, rozsah, počet
+připravených snímků, jejich časové rozpětí, poslední úspěšnou aktualizaci,
+další plánovanou kontrolu, HTTP stav a právě zpracovávaný soubor.
 
 ### Záloha konfigurace
 
 Exportovaná JSON záloha obsahuje vzhled a ID entit, ale neobsahuje Home
-Assistant token ani secret ovládacího API. Po importu proto může být nutné
-citlivé hodnoty zadat znovu. Restart zařízení uložené nastavení nemaže.
+Assistant token, heslo webu ani secret ovládacího API. Po importu proto může
+být nutné citlivé hodnoty zadat znovu. Restart zařízení uložené nastavení
+nemaže.
 
 ## Nastavení na displeji
 
-Dlouhým stiskem dashboardu otevřeš tři stránky nastavení. Velká tlačítka se
-šipkami přepínají stránky; gesto swipe se nepoužívá.
+Nastavení už neotevírá dlouhý stisk libovolného místa dashboardu. Dlouze
+stiskni spodní oblast se stavovými ikonami Wi-Fi, Home Assistantu a webového
+nastavení. Dlouhý stisk mimo tuto oblast přepne z hodin na meteoradar. Na
+radarové obrazovce vrátí dlouhý stisk kdekoliv zpět hodiny.
+
+Na radaru krátké klepnutí do levého okraje oddálí pohled a klepnutí do pravého
+okraje jej přiblíží. Oblast uprostřed rozsah nemění. Změna provedená na
+displeji je dočasná a nezapisuje se do flash.
+
+| Obrazovka a gesto | Výsledek |
+| --- | --- |
+| Hodiny: dlouhý stisk spodní oblasti stavových ikon | Otevře nastavení |
+| Hodiny: dlouhý stisk mimo stavové ikony | Otevře meteoradar |
+| Meteoradar: dlouhý stisk kdekoliv | Vrátí hodiny |
+| Meteoradar: krátké klepnutí na levý okraj | Oddálí rozsah |
+| Meteoradar: krátké klepnutí na pravý okraj | Přiblíží rozsah |
+
+Nastavení má tři stránky. Velká tlačítka se šipkami je přepínají; gesto swipe
+se nepoužívá.
 
 <p align="center">
   <img src="screenshots/device-settings.png" alt="První stránka nastavení denního a nočního jasu" width="31%">
@@ -215,6 +293,12 @@ Při chybě zůstane aktivní stávající firmware. Wi-Fi a konfigurace v NVS a
 `clockcfg` se při běžné OTA aktualizaci zachovají. Factory instalace nebo
 vymazání celé flash je jiná operace a může uživatelská data odstranit.
 
+Verze 1.6.0 podporuje jedinou historickou migraci konfigurace z veřejné verze
+1.5.5. Zachová dosavadní zdroj dat, Home Assistant, entity, vzhled a další
+uložené hodnoty a doplní nové radarové volby. U migrovaného zařízení se radar
+nastaví na 50 km, 6 snímků a automatické střídání zůstane vypnuté. Starší
+vývojové meziverze nejsou samostatně podporované migračními kroky.
+
 Automatické OTA aktualizace jsou po čisté instalaci vypnuté. Po zapnutí ve
 webu firmware nejvýše jednou denně po 4:10 lokálního času zkontroluje novou
 SemVer a případně ji nainstaluje. Stejnou cestu používá ruční aktualizace.
@@ -237,15 +321,17 @@ přímo v aktuálním webovém rozhraní firmware.
 Ověřený toolchain používá:
 
 - Arduino CLI,
-- Arduino ESP32 core `3.0.2`,
+- Arduino ESP32 core `3.0.7`,
 - LVGL `8.3.10`,
+- PNGdec `1.0.1`,
 - Python 3 pro generátory a release balíček.
 
 Na macOS lze závislosti nainstalovat například takto:
 
 ```sh
-arduino-cli core install esp32:esp32@3.0.2 --config-file arduino-cli.yaml
+arduino-cli core install esp32:esp32@3.0.7 --config-file arduino-cli.yaml
 arduino-cli lib install lvgl@8.3.10 --config-file arduino-cli.yaml
+arduino-cli lib install PNGdec@1.0.1 --config-file arduino-cli.yaml
 ```
 
 Přenositelná konfigurace Arduino CLI je v `arduino-cli.yaml`. Lokální
@@ -356,8 +442,12 @@ upload.sh               USB upload vývojového buildu
 
 - ověř ikonu Wi-Fi na displeji,
 - použij IP adresu z nastavení zařízení,
-- otevřením nastavení znovu aktivuj desetiminutové webové okno,
+- pokud je zvolený časově omezený nebo vypnutý režim webu, otevři nastavení
+  dlouhým stiskem spodní oblasti stavových ikon,
 - zkontroluj, že klient i zařízení jsou ve stejné dosažitelné síti.
+
+Samostatná stránka `http://<IP-adresa>/diagnostics` zůstává dostupná i při
+zamčeném konfiguračním webu.
 
 ### Home Assistant test selže
 
@@ -388,13 +478,24 @@ být nutné uvést ESP32-S3 do bootloaderu podle dokumentace Waveshare.
 - žádné Wi-Fi heslo ani HA token není součástí veřejného release,
 - secrets, lokální buildy a generované headery jsou ignorované Gitem,
 - HA token se po uložení neposílá zpět do prohlížeče,
-- konfigurační web není autentizovaný a patří pouze do důvěryhodné LAN,
+- konfigurační web lze chránit heslem; bez nastaveného hesla patří pouze do
+  důvěryhodné LAN,
+- veřejná diagnostika nezobrazuje hesla, tokeny ani secret ovládacího API,
 - HA HTTPS aktuálně toleruje neověřený/self-signed certifikát,
 - OTA používá samostatná přísnější ověření TLS, originu, velikosti a SHA-256,
 - ovládací API URL obsahuje secret a nesmí se zveřejňovat.
 
 Před nahlášením bezpečnostního problému nezveřejňuj funkční token, Wi-Fi heslo
 ani ovládací URL v issue.
+
+## Poděkování
+
+Při implementaci meteoradaru jsme využili a pro potřeby tohoto firmware
+přizpůsobili část kódu z open-source projektu
+[MeteoPlaneRadar](https://github.com/petus/MeteoPlaneRadar), který vyvíjí
+Petr z [Chiptron.cz](https://chiptron.cz/). Děkujeme za zveřejnění projektu,
+praktickou ukázku práce s radarovými daty ČHMÚ a mapové podklady, na kterých
+jsme mohli naši integraci postavit.
 
 ## Licence
 

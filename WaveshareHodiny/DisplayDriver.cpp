@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "Display_ST7701.h"
+#include "FirmwareBuild.h"
 #include "Touch_CST820.h"
 
 namespace {
@@ -50,8 +51,10 @@ void displayDriverInit() {
 
   ESP_ERROR_CHECK(esp_lcd_rgb_panel_get_frame_buffer(
       panel_handle, 2, &frameBuffer1, &frameBuffer2));
+#if !FIRMWARE_RELEASE
   screenshotBuffer = static_cast<uint8_t *>(heap_caps_malloc(
       FRAMEBUFFER_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+#endif
   lv_disp_draw_buf_init(&drawBuffer, frameBuffer1, frameBuffer2, 480 * 480);
 
   lv_disp_drv_init(&displayDriver);

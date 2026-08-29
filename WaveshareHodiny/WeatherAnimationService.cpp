@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_heap_caps.h>
+#include <freertos/idf_additions.h>
 #include <mbedtls/sha256.h>
 #include <time.h>
 
@@ -11,6 +12,7 @@
 #include "FirmwareBuild.h"
 #include "FirmwareHubCa.h"
 #include "NetworkDiagnostics.h"
+#include "NetworkCoordinator.h"
 #include "WeatherIconMapping.h"
 
 namespace {
@@ -132,6 +134,13 @@ void performDownload() {
   uint8_t *data = nullptr;
   int result = 0;
   networkDiagnosticsBegin(NetworkDiagnosticKind::WeatherAnimation);
+  NetworkOperationGuard networkGuard(NETWORK_TIMEOUT_MS);
+  if (!networkGuard) {
+    networkDiagnosticsEnd(NetworkDiagnosticKind::WeatherAnimation, false,
+                          HTTPC_ERROR_CONNECTION_REFUSED);
+    setFailed();
+    return;
+  }
   String url = String(FIRMWARE_SERVER_URL);
   if (FIRMWARE_WEATHER_ASSET_PATH[0] != '\0') {
     url += FIRMWARE_WEATHER_ASSET_PATH;
@@ -205,7 +214,7 @@ void downloadTask(void *) {
   // vTaskDelete() directly from performDownload() would skip stack unwinding
   // and leak the HTTP/TLS objects after every animation change.
   performDownload();
-  vTaskDelete(nullptr);
+  vTaskDeleteWithCaps(nullptr);
 }
 }  // namespace
 
@@ -253,8 +262,9 @@ void weatherAnimationServiceLoop(int weatherCode, bool isDay, uint8_t style,
   }
   requestedAsset = desired;
   setState(DownloadState::Downloading);
-  if (xTaskCreatePinnedToCore(downloadTask, "weather-animation", 8192, nullptr,
-                              1, nullptr, 0) != pdPASS) {
+  if (xTaskCreatePinnedToCoreWithCaps(
+          downloadTask, "weather-animation", 8192, nullptr, 1, nullptr, 0,
+          MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) != pdPASS) {
     setFailed();
   }
 }

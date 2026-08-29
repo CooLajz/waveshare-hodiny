@@ -33,7 +33,9 @@
 #define ESP_PANEL_LCD_COLOR_BITS                  (16)
 #define ESP_PANEL_LCD_RGB_PIXEL_BITS              (16)    // 24 | 16
 #define ESP_PANEL_LCD_RGB_DATA_WIDTH              (16)
-#define ESP_PANEL_LCD_RGB_TIMING_FREQ_HZ          (14 * 1000 * 1000)
+#define ESP_PANEL_LCD_RGB_NORMAL_FREQ_HZ          (14 * 1000 * 1000)
+#define ESP_PANEL_LCD_RGB_RADAR_FREQ_HZ           (8 * 1000 * 1000)
+#define ESP_PANEL_LCD_RGB_TIMING_FREQ_HZ          ESP_PANEL_LCD_RGB_NORMAL_FREQ_HZ
 #define ESP_PANEL_LCD_RGB_TIMING_HPW              (8)
 #define ESP_PANEL_LCD_RGB_TIMING_HBP              (10)
 #define ESP_PANEL_LCD_RGB_TIMING_HFP              (50)
@@ -82,6 +84,8 @@ void ST7701_Init();
 
 void LCD_Init();
 void LCD_Resync();
+bool LCD_SetPixelClock(uint32_t frequencyHz);
+uint32_t LCD_GetPixelClock();
 void LCD_Sleep();
 void LCD_Wake();
 void LCD_addWindow(uint16_t Xstart, uint16_t Ystart, uint16_t Xend, uint16_t Yend,uint8_t* color);

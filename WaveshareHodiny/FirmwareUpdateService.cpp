@@ -9,6 +9,7 @@
 
 #include "FirmwareBuild.h"
 #include "FirmwareHubCa.h"
+#include "NetworkCoordinator.h"
 #include "SemVer.h"
 
 namespace {
@@ -248,6 +249,13 @@ void checkFirmware(bool installWhenAvailable) {
   if (time(nullptr) < VALID_TIME_THRESHOLD) {
     setMessage(FirmwareUpdateState::Failed,
                "Čas ještě není synchronizovaný pro bezpečné HTTPS.", false);
+    return;
+  }
+
+  NetworkOperationGuard networkGuard(NETWORK_TIMEOUT_MS);
+  if (!networkGuard) {
+    setMessage(FirmwareUpdateState::Failed,
+               "Síť je právě vytížená jinou operací.", false);
     return;
   }
 

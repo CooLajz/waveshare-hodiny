@@ -60,6 +60,10 @@ lv_obj_t *wifiStatusLabel = nullptr;
 lv_obj_t *statusLabel = nullptr;
 lv_obj_t *webStatusLabel = nullptr;
 lv_obj_t *dashboardContent = nullptr;
+lv_obj_t *radarPage = nullptr;
+lv_obj_t *radarCanvas = nullptr;
+lv_obj_t *radarTitleLabel = nullptr;
+lv_obj_t *radarStatusLabel = nullptr;
 lv_obj_t *settingsPage = nullptr;
 lv_obj_t *dayBrightnessSlider = nullptr;
 lv_obj_t *nightBrightnessSlider = nullptr;
@@ -98,6 +102,7 @@ bool secondFadeActive = false;
 unsigned long secondFadeStartedAt = 0;
 unsigned long lastSecondFadeFrameAt = 0;
 bool settingsVisible = false;
+bool radarVisible = false;
 bool nightModeEnabled = false;
 uint8_t nightVisualMode = CLOCK_NIGHT_VISUAL_RED;
 bool automaticDayNightEnabled = true;
@@ -194,6 +199,8 @@ SettingsOpenCallback settingsOpenCallback = nullptr;
 SettingsSaveCallback settingsSaveCallback = nullptr;
 SettingsActionCallback firmwareCheckCallback = nullptr;
 SettingsActionCallback firmwareInstallCallback = nullptr;
+RadarVisibilityCallback radarVisibilityCallback = nullptr;
+RadarRangeCallback radarRangeCallback = nullptr;
 
 bool redNightVisualEnabled() {
   return nightModeEnabled && nightVisualMode == CLOCK_NIGHT_VISUAL_RED;
@@ -208,6 +215,22 @@ const lv_font_t *configuredTimeFont() {
 }
 
 void showSettingsSubpage(uint8_t page);
+void alignCenter(lv_obj_t *object, int x, int y);
+
+void setRadarVisible(bool visible) {
+  if (radarVisible == visible || settingsVisible) return;
+  radarVisible = visible;
+  if (visible) {
+    lv_obj_add_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(radarPage);
+  } else {
+    lv_obj_add_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(dashboardContent);
+  }
+  if (radarVisibilityCallback != nullptr) radarVisibilityCallback(visible);
+}
 
 void setObjectVisible(lv_obj_t *object, bool visible) {
   if (visible) {
@@ -244,18 +267,31 @@ void ensureWeatherAnimationDecoders() {
       weatherAnimationKey[0] == '\0') {
     return;
   }
-  if (outsideUsesWeatherIcon &&
-      strcmp(leftWeatherDecoderKey, weatherAnimationKey) != 0) {
-    lv_gif_set_src(weatherAnimation, &weatherAnimationSource);
-    strlcpy(leftWeatherDecoderKey, weatherAnimationKey,
-            sizeof(leftWeatherDecoderKey));
-  }
-  if (roomUsesWeatherIcon &&
-      strcmp(rightWeatherDecoderKey, weatherAnimationKey) != 0) {
-    lv_gif_set_src(roomWeatherAnimation, &weatherAnimationSource);
-    strlcpy(rightWeatherDecoderKey, weatherAnimationKey,
-            sizeof(rightWeatherDecoderKey));
-  }
+  auto updateDecoder = [](lv_obj_t *&decoder, char *decoderKey,
+                          size_t decoderKeySize, bool used, lv_coord_t x) {
+    if (used) {
+      if (strcmp(decoderKey, weatherAnimationKey) != 0) {
+        lv_gif_set_src(decoder, &weatherAnimationSource);
+        strlcpy(decoderKey, weatherAnimationKey, decoderKeySize);
+      }
+      return;
+    }
+    if (decoderKey[0] == '\0') return;
+
+    // Skrytí LVGL GIF objektu nezastaví jeho timer. Objekt proto před
+    // uvolněním starého assetu zrušíme a vytvoříme znovu bez zdroje.
+    lv_obj_t *parent = lv_obj_get_parent(decoder);
+    lv_obj_del(decoder);
+    decoder = lv_gif_create(parent);
+    alignCenter(decoder, x, 107);
+    lv_obj_add_flag(decoder, LV_OBJ_FLAG_HIDDEN);
+    decoderKey[0] = '\0';
+  };
+
+  updateDecoder(weatherAnimation, leftWeatherDecoderKey,
+                sizeof(leftWeatherDecoderKey), outsideUsesWeatherIcon, -142);
+  updateDecoder(roomWeatherAnimation, rightWeatherDecoderKey,
+                sizeof(rightWeatherDecoderKey), roomUsesWeatherIcon, 142);
 }
 
 lv_color_t configuredColor(uint32_t color) {
@@ -945,7 +981,80 @@ void showSettings() {
 }
 
 void openSettingsEvent(lv_event_t *event) {
-  if (lv_event_get_code(event) == LV_EVENT_LONG_PRESSED) showSettings();
+  if (lv_event_get_code(event) != LV_EVENT_LONG_PRESSED) return;
+  lv_indev_t *input = lv_indev_get_act();
+  lv_point_t point = {};
+  if (input != nullptr) lv_indev_get_point(input, &point);
+  const bool statusArea = point.x >= 145 && point.x <= 335 && point.y >= 390;
+  if (statusArea)
+    showSettings();
+  else
+    setRadarVisible(true);
+}
+
+void closeRadarEvent(lv_event_t *event) {
+  if (lv_event_get_code(event) == LV_EVENT_LONG_PRESSED)
+    setRadarVisible(false);
+}
+
+void changeRadarRangeEvent(lv_event_t *event) {
+  if (lv_event_get_code(event) != LV_EVENT_SHORT_CLICKED ||
+      radarRangeCallback == nullptr)
+    return;
+  lv_indev_t *input = lv_indev_get_act();
+  if (input == nullptr) return;
+  lv_point_t point = {};
+  lv_indev_get_point(input, &point);
+  if (point.x < 160)
+    radarRangeCallback(1);
+  else if (point.x > 320)
+    radarRangeCallback(-1);
+}
+
+void createRadarPage(lv_obj_t *screen) {
+  radarPage = lv_obj_create(screen);
+  lv_obj_set_size(radarPage, 480, 480);
+  lv_obj_center(radarPage);
+  lv_obj_set_style_bg_color(radarPage, COLOR_BACKGROUND, 0);
+  lv_obj_set_style_bg_opa(radarPage, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(radarPage, 0, 0);
+  lv_obj_set_style_pad_all(radarPage, 0, 0);
+  lv_obj_set_style_radius(radarPage, 0, 0);
+  lv_obj_clear_flag(radarPage, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(radarPage, LV_OBJ_FLAG_CLICKABLE);
+
+  radarCanvas = lv_canvas_create(radarPage);
+  lv_obj_center(radarCanvas);
+  lv_obj_add_flag(radarCanvas, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(radarCanvas, LV_OBJ_FLAG_CLICKABLE);
+
+  radarTitleLabel = makeLabel(radarPage, &clock_czech_16, COLOR_TEXT);
+  lv_label_set_recolor(radarTitleLabel, true);
+  lv_label_set_text(radarTitleLabel, "ČHMÚ - 50 km");
+  lv_obj_set_style_bg_color(radarTitleLabel, COLOR_BACKGROUND, 0);
+  lv_obj_set_style_bg_opa(radarTitleLabel, LV_OPA_80, 0);
+  lv_obj_set_style_pad_hor(radarTitleLabel, 8, 0);
+  lv_obj_set_style_pad_ver(radarTitleLabel, 4, 0);
+  alignCenter(radarTitleLabel, 0, -205);
+
+  radarStatusLabel = makeLabel(radarPage, &clock_czech_16, COLOR_OUTSIDE);
+  lv_label_set_long_mode(radarStatusLabel, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(radarStatusLabel, 340);
+  lv_obj_set_style_text_align(radarStatusLabel, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_text(radarStatusLabel, "Načítám radar ČHMÚ...");
+  lv_obj_set_style_bg_color(radarStatusLabel, COLOR_BACKGROUND, 0);
+  lv_obj_set_style_bg_opa(radarStatusLabel, LV_OPA_80, 0);
+  lv_obj_set_style_pad_all(radarStatusLabel, 6, 0);
+  alignCenter(radarStatusLabel, 0, 205);
+  lv_obj_add_flag(radarStatusLabel, LV_OBJ_FLAG_HIDDEN);
+
+  makeChildrenTapThrough(radarPage);
+  lv_obj_add_flag(radarPage, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(radarPage, closeRadarEvent, LV_EVENT_LONG_PRESSED,
+                      nullptr);
+  lv_obj_add_event_cb(radarPage, changeRadarRangeEvent, LV_EVENT_SHORT_CLICKED,
+                      nullptr);
+  lv_obj_add_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
 }
 
 void closeSettings(bool saveChanges) {
@@ -1296,7 +1405,9 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
                         SettingsOpenCallback settingsOpen,
                         SettingsSaveCallback settingsSave,
                         SettingsActionCallback firmwareCheck,
-                        SettingsActionCallback firmwareInstall) {
+                        SettingsActionCallback firmwareInstall,
+                        RadarVisibilityCallback radarVisibility,
+                        RadarRangeCallback radarRange) {
   savedDayBrightness = constrain(dayBrightness, 1, 100);
   savedNightBrightness = constrain(nightBrightness, 1, 100);
   automaticDayNightEnabled = automaticDayNight;
@@ -1305,6 +1416,8 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
   settingsSaveCallback = settingsSave;
   firmwareCheckCallback = firmwareCheck;
   firmwareInstallCallback = firmwareInstall;
+  radarVisibilityCallback = radarVisibility;
+  radarRangeCallback = radarRange;
   lv_obj_t *screen = lv_scr_act();
   lv_obj_set_style_bg_color(screen, COLOR_BACKGROUND, 0);
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
@@ -1438,6 +1551,7 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
                       nullptr);
   lv_obj_add_event_cb(dashboardContent, toggleNightModeEvent,
                       LV_EVENT_SHORT_CLICKED, nullptr);
+  createRadarPage(screen);
   createSettingsPage(screen);
 
   firmwareUpdateOverlay = lv_obj_create(screen);
@@ -1848,6 +1962,45 @@ void clockDashboardSetNightMode(bool enabled) {
 
 bool clockDashboardNightModeEnabled() { return nightModeEnabled; }
 
+bool clockDashboardRadarVisible() { return radarVisible; }
+
+void clockDashboardSetRadarVisible(bool visible) { setRadarVisible(visible); }
+
+bool clockDashboardAutomaticRotationAllowed() {
+  return !settingsVisible && !firmwareUpdateActive;
+}
+
+void clockDashboardSetRadarSnapshot(const uint16_t *pixels,
+                                    const char *frameTime, uint16_t radiusKm,
+                                    const char *message, bool loading,
+                                    bool latestFrame) {
+  if (radarCanvas == nullptr || radarStatusLabel == nullptr ||
+      radarTitleLabel == nullptr)
+    return;
+  if (pixels != nullptr) {
+    lv_canvas_set_buffer(radarCanvas, const_cast<uint16_t *>(pixels), 480, 480,
+                         LV_IMG_CF_TRUE_COLOR);
+    lv_obj_clear_flag(radarCanvas, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_invalidate(radarCanvas);
+  }
+  char title[96];
+  const char *timePrefix = latestFrame ? "#65FF45 " : "";
+  const char *timeSuffix = latestFrame ? "#" : "";
+  if (radiusKm == 0 && frameTime != nullptr && frameTime[0] != '\0')
+    snprintf(title, sizeof(title), "ČHMÚ - ČR - %s%s%s", timePrefix,
+             frameTime, timeSuffix);
+  else if (radiusKm == 0)
+    snprintf(title, sizeof(title), "ČHMÚ - ČR");
+  else if (frameTime != nullptr && frameTime[0] != '\0')
+    snprintf(title, sizeof(title), "ČHMÚ - %u km - %s%s%s", radiusKm,
+             timePrefix, frameTime, timeSuffix);
+  else
+    snprintf(title, sizeof(title), "ČHMÚ - %u km", radiusKm);
+  lv_label_set_text(radarTitleLabel, title);
+  lv_label_set_text(radarStatusLabel, "");
+  alignCenter(radarTitleLabel, 0, -205);
+}
+
 void clockDashboardSetWifiAddress(const char *ipAddress) {
   if (firmwareUpdateActive) return;
   if (wifiAddressLabel == nullptr) return;
@@ -1883,13 +2036,19 @@ void clockDashboardSetFirmwareUpdateActive(bool active) {
   if (active) {
     clockDashboardSetFirmwareUpdateBlack(false);
     lv_obj_add_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(settingsPage, LV_OBJ_FLAG_HIDDEN);
+    if (radarVisible && radarVisibilityCallback != nullptr)
+      radarVisibilityCallback(false);
     lv_obj_clear_flag(firmwareUpdateOverlay, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(firmwareUpdateOverlay);
   } else {
     lv_obj_add_flag(firmwareUpdateOverlay, LV_OBJ_FLAG_HIDDEN);
     if (settingsVisible) {
       lv_obj_clear_flag(settingsPage, LV_OBJ_FLAG_HIDDEN);
+    } else if (radarVisible) {
+      lv_obj_clear_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
+      if (radarVisibilityCallback != nullptr) radarVisibilityCallback(true);
     } else {
       lv_obj_clear_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
     }
