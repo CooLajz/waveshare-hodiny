@@ -3,8 +3,10 @@
 #include <ESPmDNS.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_heap_caps.h>
 #include <esp_sntp.h>
 #include <esp_task_wdt.h>
+#include <freertos/idf_additions.h>
 #include <time.h>
 
 #include "ClockDashboard.h"
@@ -1379,8 +1381,10 @@ void setup() {
   improvSerialServiceInit(wifiProvisioningStart);
 #endif
   initializeNetworkTime();
-  xTaskCreatePinnedToCore(homeAssistantTask, "home-assistant", 12288, nullptr, 1,
-                          &homeAssistantTaskHandle, 0);
+  xTaskCreatePinnedToCoreWithCaps(
+      homeAssistantTask, "home-assistant", 12288, nullptr, 1,
+      &homeAssistantTaskHandle, 0,
+      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   firmwareUpdateServiceBegin(handleFirmwareUpdateLifecycle);
   maintainFirmwareDisplayStatus();
   configurationWebBegin(loadRuntimeConfigForWeb, saveRuntimeConfig,
