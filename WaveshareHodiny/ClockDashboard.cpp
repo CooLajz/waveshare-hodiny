@@ -232,17 +232,6 @@ void alignCenter(lv_obj_t *object, int x, int y);
 
 bool englishLanguage() { return language == CLOCK_LANGUAGE_ENGLISH; }
 
-const char *localizedDefaultLabel(const char *value) {
-  if (!englishLanguage() || value == nullptr) return value;
-  if (strcmp(value, "VENKU") == 0) return "OUTSIDE";
-  if (strcmp(value, "MÍSTNOST") == 0) return "ROOM";
-  if (strcmp(value, "TEPLOTA") == 0) return "TEMPERATURE";
-  if (strcmp(value, "POCITOVÁ") == 0) return "FEELS LIKE";
-  if (strcmp(value, "VLHKOST") == 0) return "HUMIDITY";
-  if (strcmp(value, "TLAK") == 0) return "PRESSURE";
-  return value;
-}
-
 void applyDashboardLanguage() {
   const bool english = englishLanguage();
   if (dayBrightnessTitleLabel != nullptr)
@@ -1730,12 +1719,12 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   };
   if (openMeteo) {
     clockConfigCopy(metricAConfig.name, sizeof(metricAConfig.name),
-                    localizedDefaultLabel(config.openMeteoSlots[2].name));
+                    config.openMeteoSlots[2].name);
     clockConfigCopy(metricAConfig.suffix, sizeof(metricAConfig.suffix),
                     openMeteoUnit(config.openMeteoSlots[2].value));
     metricAConfig.decimals = openMeteoDecimals(config.openMeteoSlots[2].value);
     clockConfigCopy(metricBConfig.name, sizeof(metricBConfig.name),
-                    localizedDefaultLabel(config.openMeteoSlots[3].name));
+                    config.openMeteoSlots[3].name);
     clockConfigCopy(metricBConfig.suffix, sizeof(metricBConfig.suffix),
                     openMeteoUnit(config.openMeteoSlots[3].value));
     metricBConfig.decimals = openMeteoDecimals(config.openMeteoSlots[3].value);
@@ -1812,20 +1801,20 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   renderSecondRing(millis());
   if (nightVisualChanged) applyDashboardColors();
   lv_label_set_text(outsideTitleLabel, openMeteo
-                                           ? localizedDefaultLabel(config.openMeteoSlots[0].name)
+                                           ? config.openMeteoSlots[0].name
                                            : config.leftSide.name[0] == '\0'
                                            ? (englishLanguage() ? "ROOM" : "MÍSTNOST")
-                                           : localizedDefaultLabel(config.leftSide.name));
+                                           : config.leftSide.name);
   alignCenter(outsideTitleLabel, -122, 5);
   setObjectVisible(outsideTitleLabel, outsideConfigured);
   setObjectVisible(outsideIntegerLabel, outsideConfigured);
   setObjectVisible(outsideDecimalLabel, outsideConfigured);
   setObjectVisible(outsideUnitLabel, outsideConfigured);
   lv_label_set_text(roomTitleLabel, openMeteo
-                                        ? localizedDefaultLabel(config.openMeteoSlots[1].name)
+                                        ? config.openMeteoSlots[1].name
                                         : config.rightSide.name[0] == '\0'
                                         ? (englishLanguage() ? "ROOM" : "MÍSTNOST")
-                                        : localizedDefaultLabel(config.rightSide.name));
+                                        : config.rightSide.name);
   alignCenter(roomTitleLabel, 127, 5);
   setObjectVisible(roomTitleLabel, roomConfigured);
   setObjectVisible(roomIntegerLabel, roomConfigured);
