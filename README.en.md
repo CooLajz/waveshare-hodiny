@@ -132,7 +132,8 @@ The web interface configures:
 
 - the device language; until a choice is stored, the display remains in Czech
   and the first web visit stores Czech for `cs`/`sk` browsers or English for
-  every other browser language; later visits use the stored device setting,
+  every other browser language; later visits use the stored device setting and
+  the fixed web header provides flag buttons for changing it at any time,
 - the data source and shared geographic location,
 - Home Assistant URL, token, weather and sun entities,
 - left and right room values, names, icons and colors,

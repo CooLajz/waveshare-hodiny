@@ -147,7 +147,8 @@ Web umožňuje nastavit:
 
 - jazyk zařízení; dokud není uložená volba, displej používá češtinu a při
   prvním otevření webu se uloží čeština pro prohlížeče `cs`/`sk`, jinak
-  angličtina; další návštěvy už respektují uložené nastavení zařízení,
+  angličtina; další návštěvy už respektují uložené nastavení zařízení a jazyk
+  lze kdykoli přepnout vlajkami v pevném horním pruhu webu,
 - zdroj dat Open-Meteo nebo Home Assistant a společnou polohu zařízení,
 - Home Assistant URL, token, entitu počasí a entitu slunce,
 - levou a pravou místnost včetně názvu, teploty, ikony a barev,

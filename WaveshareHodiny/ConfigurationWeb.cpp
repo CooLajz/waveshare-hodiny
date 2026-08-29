@@ -1408,6 +1408,26 @@ void handleSaveConfig() {
   applyWebMode(requestedWebMode);
 }
 
+void handleSaveLanguage() {
+  ClockConfig &config = currentConfig();
+  const String language = server.arg("language");
+  if (language == "cs")
+    config.language = CLOCK_LANGUAGE_CZECH;
+  else if (language == "en")
+    config.language = CLOCK_LANGUAGE_ENGLISH;
+  else {
+    sendError(400, F("Jazyk není platný."));
+    return;
+  }
+  config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+  if (configSaveCallback == nullptr || !configSaveCallback(config, false)) {
+    sendError(500, F("Nastavení se nepodařilo uložit do paměti."));
+    return;
+  }
+  extendWebAvailability();
+  sendJson(200, F("{\"ok\":true}"));
+}
+
 void handleRadarRangeState() {
   extendWebAvailability();
   uint16_t savedRadiusKm = 0;
@@ -1463,8 +1483,12 @@ void handleOpenMeteoLocation() {
   HTTPClient http;
   http.setConnectTimeout(5000);
   http.setTimeout(8000);
-  const String url = String(F("https://geocoding-api.open-meteo.com/v1/search?count=10&language=cs&format=json&name=")) +
-                     urlEncode(city);
+  const bool englishLanguage =
+      currentConfig().language == CLOCK_LANGUAGE_ENGLISH;
+  const String url =
+      String(F("https://geocoding-api.open-meteo.com/v1/search?count=10&language=")) +
+      (englishLanguage ? F("en") : F("cs")) + F("&format=json&name=") +
+      urlEncode(city);
   int status = HTTPC_ERROR_CONNECTION_REFUSED;
   String payload;
   if (http.begin(client, url)) {
@@ -1477,7 +1501,7 @@ void handleOpenMeteoLocation() {
   if (!ok) {
     sendError(502, status == HTTP_CODE_OK
                        ? F("Město nebylo nalezeno.")
-                       : F("Open-Meteo nyní není dostupné."));
+                       : F("Geokódovací služba nyní není dostupná."));
     return;
   }
   sendJson(200, payload);
@@ -1934,6 +1958,9 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
   });
   registerBoundedPost("/api/config", []() {
     if (requireConfigurationAccess()) handleSaveConfig();
+  });
+  registerBoundedPost("/api/language", []() {
+    if (requireConfigurationAccess()) handleSaveLanguage();
   });
   registerBoundedPost("/api/ha/test", []() {
     if (requireConfigurationAccess()) handleTestConnection();
