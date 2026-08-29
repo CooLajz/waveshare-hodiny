@@ -81,6 +81,11 @@ def main() -> None:
         path = site / relative
         if not path.is_file() or path.stat().st_size == 0:
             raise SystemExit(f"Povinný soubor webu chybí nebo je prázdný: {path}")
+    index_html = (site / "index.html").read_text(encoding="utf-8")
+    expected_css_url = f"styles.css?v={sha256(site / 'styles.css')[:12]}"
+    expected_js_url = f"app.js?v={sha256(site / 'app.js')[:12]}"
+    if expected_css_url not in index_html or expected_js_url not in index_html:
+        raise SystemExit("HTML nepoužívá obsahové verze aktuálního CSS a JavaScriptu.")
     validate_weather_assets(site)
 
     firmware = site / "firmware"

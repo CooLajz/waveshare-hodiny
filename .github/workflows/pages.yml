@@ -40,6 +40,11 @@ jobs:
           cp screenshots/*.png _site/screenshots/
           cp media/waveshare-hodiny-minute-transition.mp4 _site/media/
 
+          css_version="$(sha256sum _site/styles.css | cut -c1-12)"
+          js_version="$(sha256sum _site/app.js | cut -c1-12)"
+          sed -Ei "s|(href=\"styles\.css)(\?v=[^\"]+)?\"|\1?v=$css_version\"|" _site/index.html
+          sed -Ei "s|(src=\"app\.js)(\?v=[^\"]+)?\"|\1?v=$js_version\"|" _site/index.html
+
           releases="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 5 --exclude-drafts --exclude-pre-releases --json tagName)"
           latest_tag="$(jq -r '.[0].tagName // empty' <<<"$releases")"
           if [[ -n "$latest_tag" ]]; then
