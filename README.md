@@ -176,9 +176,11 @@ tohoto omezení.
 
 Počet snímků lze nastavit od 1 do 15. Jeden snímek znamená statický radar;
 vyšší počet vytvoří animaci od nejstaršího snímku k nejnovějšímu. Po posledním
-snímku následuje pětisekundová pauza. Čas posledního, tedy nejaktuálnějšího
-snímku je v denním režimu zvýrazněný jasně zeleně. Nová data se kontrolují v
-pevných pětiminutových slotech přibližně minutu po čase publikace ČHMÚ.
+snímku následuje nastavitelná pauza 0 až 30 sekund; výchozí hodnota je 5 sekund.
+Čas posledního, tedy nejaktuálnějšího snímku je v denním režimu zvýrazněný
+jasně zeleně. Decentní pruh pod popisem ukazuje průběh animace a během kompletní
+přípravy prázdné cache je červený. Nová data se kontrolují v pevných
+pětiminutových slotech přibližně minutu po čase publikace ČHMÚ.
 
 Při červeném nočním vzhledu se mapový podklad, města, poloha, čas i jednotlivé
 stupně odrazivosti převedou do odstínů červené. Jas jednotlivých stupňů dál
@@ -196,7 +198,12 @@ naposledy uložená přes web.
 Automatické střídání hodin a radaru je ve výchozím stavu vypnuté. Po zapnutí
 lze nastavit samostatnou dobu zobrazení hodin a radaru. Nastavený čas radaru
 je minimální: rozběhnutý animační cyklus se vždy dokončí včetně závěrečné
-pauzy, takže přechod zpět na hodiny nepřeruší animaci uprostřed.
+pauzy, takže přechod zpět na hodiny nepřeruší animaci uprostřed. Po restartu
+se příprava cache spustí na pozadí až po připojení Wi-Fi a synchronizaci času.
+První automatický přechod na radar počká na kompletní animaci; další přechody
+ji proto zobrazí okamžitě od nejstaršího snímku. Je-li automatické střídání
+vypnuté, firmware radar na pozadí nestahuje a načítání začne až při ručním
+otevření.
 
 ### Barevné prahy měřených hodnot
 

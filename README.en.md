@@ -150,12 +150,40 @@ The web interface configures:
 
 Radar imagery comes from the open MAX_Z composite published by the Czech
 Hydrometeorological Institute. Views cover 25, 50, 100 or 200 km around the
-saved coordinates, or the whole Czech Republic. One frame creates a static
-view; 2–15 frames create an animation from oldest to newest.
+saved coordinates, or the whole Czech Republic. The map includes the national
+outline and a range-specific selection of cities.
+
+The radar is available only when Open-Meteo location search identifies the
+saved country as `CZ`. For locations outside Czechia, the firmware does not
+start the radar, download its data in the background or respond to radar
+gestures, and automatic screen rotation is disabled. Open-Meteo weather and
+Home Assistant remain available without this restriction.
+
+One frame creates a static view; 2–15 frames create an animation from oldest to
+newest. The pause after the newest frame is configurable from 0 to 30 seconds
+and defaults to 5 seconds. In day mode the newest timestamp is bright green. A
+thin bar below the caption shows animation progress and turns red while an
+empty cache is being fully prepared. New imagery is checked in fixed
+five-minute slots, approximately one minute after the CHMI publication time.
+
+The red night appearance converts the map, cities, location marker, labels and
+precipitation intensity levels to shades of red. The newest timestamp then uses
+the same red as the other text. Changing the appearance reuses the prepared
+cache and does not download or rebuild the animation.
 
 The web range buttons preview a view immediately. Blue marks the range currently
 shown on the clock and amber marks the saved default. The preview becomes
-persistent only after saving the configuration.
+persistent only after saving the configuration. A range selected on the device
+is temporary and the saved web value is restored after a restart.
+
+Automatic rotation is disabled by default and provides separate clock and radar
+durations. The radar duration is a minimum: an animation already in progress,
+including its final pause, always completes before the clock returns. After a
+restart, background cache preparation begins only after Wi-Fi is connected and
+time synchronization has completed. The first automatic transition waits for
+the complete animation, so playback starts immediately from the oldest frame.
+With automatic rotation disabled, radar data is not downloaded in the
+background and loading starts when the radar is opened manually.
 
 ### Color scales
 
@@ -167,22 +195,37 @@ hard color thresholds. The two values use independent scales.
 
 Day and night brightness are independent. Automatic mode uses Open-Meteo sunrise
 and sunset for the selected location or a Home Assistant sun entity. Optional
-offsets adjust both transitions. With automation disabled, a short dashboard tap
-switches day and night appearance.
+offsets adjust both transitions. With automation disabled, a short tap on either
+the clock or radar switches the day and night appearance.
+
+The configuration web server defaults to **Always on**. It can instead remain
+available for ten minutes after startup or activation from the device, or be
+disabled completely. Use it only on a trusted network; the dashboard gear icon
+indicates an active configuration server. An optional 6–20 character password
+protects web settings. The **System** tab shows an unprotected state in red and
+an active password in green. Only a derived hash is stored, and the password is
+not included in backups.
 
 ### Diagnostics and backups
 
-The read-only diagnostics page reports firmware, CPU, flash, PSRAM, Wi-Fi,
-Home Assistant runtime and radar state. Exported JSON backups contain appearance
-and entity IDs but intentionally omit the Home Assistant token, web password and
-control API secret.
+The read-only `/diagnostics` page reports firmware, CPU, flash, current display
+pixel clock, current and minimum internal RAM and PSRAM, Wi-Fi, Home Assistant
+and Open-Meteo runtime state. Radar details include the selected city, GPS,
+range, prepared-frame count and time span, last successful refresh, next check,
+HTTP status and the file currently being processed. Exported JSON backups
+contain appearance and entity IDs but intentionally omit the Home Assistant
+token, web password and control API secret.
 
 ## Touchscreen settings
 
-Long-press the dashboard or radar to open the settings pages. Arrow buttons move
-between pages. Available controls include day/night brightness, automatic mode,
-weather icons, seconds effects, web-server mode and OTA checks. Vertical swipes
-on the radar change its range; a horizontal swipe returns to the clock.
+Long-press anywhere on the clock or radar to open the settings pages. A
+horizontal swipe in either direction switches between the clock and radar.
+On the radar, swiping up zooms in and swiping down zooms out; this range change
+remains temporary until restart. With automatic day/night mode disabled, a
+short tap on either screen switches the appearance. Arrow buttons move between
+the three settings pages; swipes are not used inside the settings menu.
+Available controls include day/night brightness, automatic mode, weather icons,
+seconds effects, web-server mode and OTA checks.
 
 ## Animated Meteocons
 
@@ -204,6 +247,12 @@ and received size, SHA-256, ESP32-S3 chip family and inactive-partition capacity
 If validation or writing fails, the running firmware remains active. Wi-Fi and
 configuration in NVS and `clockcfg` survive a normal OTA update. A factory flash
 or full erase is a separate operation and may remove user data.
+
+Version 1.6.0 contains one historical configuration migration from public
+version 1.5.5. It preserves the existing data source, Home Assistant settings,
+entities and appearance, adds the radar options with a 50 km range and six
+frames, and leaves automatic rotation disabled. Intermediate development
+schemas are not maintained as separate migration steps.
 
 Automatic updates are disabled after a clean installation. When enabled, the
 firmware checks at most once per local calendar day after 04:10. Manual and
@@ -312,6 +361,12 @@ protocol. Use the repository script with the currently verified serial port:
 - [Open-Meteo](https://open-meteo.com/) for weather data,
 - [CHMI](https://www.chmi.cz/) for open precipitation radar data,
 - [Home Assistant](https://www.home-assistant.io/) for the automation platform.
+
+I used and adapted parts of Petr's open-source
+[MeteoPlaneRadar](https://github.com/petus/MeteoPlaneRadar) project from
+[Chiptron.cz](https://chiptron.cz/) while implementing the radar. Thank you for
+publishing the project, the practical CHMI radar-data example and the map data
+that made this integration possible.
 
 ## License
 
