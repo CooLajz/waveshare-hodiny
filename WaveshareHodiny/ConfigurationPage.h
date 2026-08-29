@@ -295,7 +295,7 @@ const char CONFIGURATION_PAGE[] PROGMEM = R"HTML(
       <h2>Webový server a API</h2>
       <div class="grid">
         <div class="span-6"><label for="webMode">Webový server</label><select id="webMode" name="webMode"><option value="timed">Zapnout na 10 minut</option><option value="always">Vždy zapnutý</option><option value="disabled">Vypnutý</option></select><span class="hint">Při vypnutí jej lze znovu povolit na displeji hodin.</span></div>
-        <div class="span-6"><label for="controlApiBase">Ovládací API pro Home Assistant</label><input id="controlApiBase" readonly><span class="hint">Secret je uložený v zařízení a není součástí exportované zálohy.</span></div>
+        <div class="span-6"><label for="controlApiBase">Ovládací API</label><input id="controlApiBase" readonly><span class="hint">Secret je uložený v zařízení a není součástí exportované zálohy.</span></div>
         <div class="span-12 advanced-band" id="webPasswordSettings">
           <div class="grid">
             <div class="span-6"><label for="webPassword">Heslo webového nastavení <span class="password-label-state risk-state" id="webPasswordState">— bez hesla</span></label><input id="webPassword" type="password" minlength="6" maxlength="20" autocomplete="new-password" placeholder="6–20 znaků"><span class="hint">Heslo se ukládá bezpečně v zařízení a není součástí zálohy.</span></div>
