@@ -361,6 +361,7 @@ void maintainAutomaticRadarRotation() {
   const ClockConfig config = runtimeConfigSnapshot();
   const bool allowed =
       clockConfigRadarAvailable(config) && config.automaticRadarRotation &&
+      WiFi.status() == WL_CONNECTED && timeWasSynchronized &&
       !displayForcedOff &&
       clockDashboardAutomaticRotationAllowed();
   if (!allowed) {
@@ -397,6 +398,16 @@ void maintainAutomaticRadarRotation() {
       if (snapshot.completedAnimationCycles == radarRotationCycleAtTimeout)
         return;
     }
+  } else {
+    ChmiRadarSnapshot snapshot;
+    chmiRadarServiceSnapshot(snapshot);
+    const bool completeAnimationReady =
+        snapshot.ready && !snapshot.loading &&
+        !snapshot.fullPreparationInProgress &&
+        snapshot.animationFrameCount == config.radarFrameCount;
+    // Automatická rotace nesmí poprvé otevřít radar uprostřed přípravy.
+    // Ruční gesto zůstává neblokované a může radar zobrazit kdykoliv.
+    if (!completeAnimationReady) return;
   }
   clockDashboardSetRadarVisible(!radarVisible);
 }
@@ -644,6 +655,14 @@ void maintainNetworkTime() {
     if (homeAssistantTaskHandle != nullptr) {
       xTaskNotifyGive(homeAssistantTaskHandle);
     }
+    const ClockConfig config = runtimeConfigSnapshot();
+    const bool radarAvailable = clockConfigRadarAvailable(config);
+    chmiRadarServiceSetActive(
+        radarAvailable && clockDashboardRadarVisible(),
+        radarAvailable && config.automaticRadarRotation,
+        config.openMeteoLatitude, config.openMeteoLongitude,
+        config.radarRadiusKm, config.radarFrameCount,
+        config.radarMapOpacity, config.radarPauseSeconds);
 #if !FIRMWARE_RELEASE
     Serial.println("NTP synchronizovano");
 #endif
@@ -1369,9 +1388,8 @@ void setup() {
                        handleRadarRangeChange);
   clockDashboardApplyConfiguration(runtimeConfig);
   chmiRadarServiceBegin();
-  const bool radarAvailable = clockConfigRadarAvailable(runtimeConfig);
   chmiRadarServiceSetActive(
-      false, radarAvailable && runtimeConfig.automaticRadarRotation,
+      false, false,
       runtimeConfig.openMeteoLatitude, runtimeConfig.openMeteoLongitude,
       runtimeConfig.radarRadiusKm, runtimeConfig.radarFrameCount,
       runtimeConfig.radarMapOpacity, runtimeConfig.radarPauseSeconds);

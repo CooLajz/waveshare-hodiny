@@ -10,6 +10,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <new>
 #include <time.h>
 
 #include "ChmiCa.h"
@@ -96,7 +97,7 @@ bool acceptedCompleteDecodeError = false;
 char latestIndexFile[FILE_NAME_CAPACITY] = "";
 char currentFile[FILE_NAME_CAPACITY] = "";
 
-PNG png;
+PNG *pngDecoder = nullptr;
 uint8_t *pngBuffer = nullptr;
 uint8_t *cachedPngFrames[MAX_ANIMATION_FRAME_COUNT] = {};
 size_t cachedPngSizes[MAX_ANIMATION_FRAME_COUNT] = {};
@@ -129,6 +130,15 @@ int firstPreparedFrame();
 uint8_t rgb565ToRgb332(uint16_t color);
 uint16_t nightRadarColor(uint8_t color);
 void applyNightRadarPalette(uint16_t *buffer);
+
+bool ensurePngDecoder() {
+  if (pngDecoder != nullptr) return true;
+  void *storage = heap_caps_malloc(sizeof(PNG),
+                                   MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (storage == nullptr) return false;
+  pngDecoder = new (storage) PNG();
+  return true;
+}
 
 unsigned long millisecondsUntilNextRefreshSlot() {
   const time_t now = time(nullptr);
@@ -452,7 +462,8 @@ void drawDecodedLine(PNGDRAW *draw) {
   if (decodeTarget == nullptr || lineBuffer == nullptr) return;
   if (draw->y != decodedLineCount) decodedLinesSequential = false;
   ++decodedLineCount;
-  png.getLineAsRGB565(draw, lineBuffer, PNG_RGB565_LITTLE_ENDIAN, 0x00000000);
+  pngDecoder->getLineAsRGB565(draw, lineBuffer, PNG_RGB565_LITTLE_ENDIAN,
+                              0x00000000);
   for (int targetY = 0; targetY < CHMI_RADAR_HEIGHT; ++targetY) {
     if (sourceY[targetY] != draw->y) continue;
     uint16_t *row = decodeTarget + targetY * CHMI_RADAR_WIDTH;
@@ -779,15 +790,15 @@ bool showBaseMap(float latitude, float longitude, uint16_t radiusKm,
 bool decodeRadar(const uint8_t *pngData, size_t pngSize, float latitude,
                  float longitude, uint16_t radiusKm, uint8_t mapOpacityValue,
                  uint16_t *target) {
-  if (pngData == nullptr ||
-      png.openRAM(const_cast<uint8_t *>(pngData), static_cast<int>(pngSize),
-                  drawDecodedLine) !=
+  if (pngData == nullptr || !ensurePngDecoder() ||
+      pngDecoder->openRAM(const_cast<uint8_t *>(pngData),
+                          static_cast<int>(pngSize), drawDecodedLine) !=
       PNG_SUCCESS)
     return false;
-  imageWidth = png.getWidth();
-  imageHeight = png.getHeight();
+  imageWidth = pngDecoder->getWidth();
+  imageHeight = pngDecoder->getHeight();
   if (imageWidth <= 0 || imageHeight <= 0 || imageWidth > 2048) {
-    png.close();
+    pngDecoder->close();
     return false;
   }
   if (lineCapacity < static_cast<size_t>(imageWidth)) {
@@ -797,7 +808,7 @@ bool decodeRadar(const uint8_t *pngData, size_t pngSize, float latitude,
     lineCapacity = lineBuffer == nullptr ? 0 : imageWidth;
   }
   if (lineBuffer == nullptr) {
-    png.close();
+    pngDecoder->close();
     return false;
   }
 
@@ -824,9 +835,9 @@ bool decodeRadar(const uint8_t *pngData, size_t pngSize, float latitude,
   decodedLineCount = 0;
   decodedLinesSequential = true;
   decodeTarget = target;
-  const int result = png.decode(nullptr, 0);
+  const int result = pngDecoder->decode(nullptr, 0);
   decodeTarget = nullptr;
-  png.close();
+  pngDecoder->close();
   const bool completeImage =
       decodedLinesSequential && decodedLineCount == imageHeight;
   portENTER_CRITICAL(&stateMux);
@@ -1513,7 +1524,10 @@ void radarTask(void *) {
     bool redrawNightVisual = false;
     int frameToRedraw = -1;
     portENTER_CRITICAL(&stateMux);
-    haveFrames = ready && displayedFrame >= 0;
+    // Při přípravě na pozadí zůstává displayedFrame == -1, dokud se radar
+    // poprvé nezobrazí. Hotovou animaci proto určujeme podle připravených
+    // snímků, jinak by ji worker do prvního zobrazení načítal stále dokola.
+    haveFrames = ready && animationFrameCount > 0;
     rebuildRequested = rebuildFromCacheRequested;
     reloadNow = reloadRequested;
     showBase = showBaseMapRequested;
@@ -1623,7 +1637,7 @@ void chmiRadarServicePrepareForFirmwareUpdate() {
     vTaskDeleteWithCaps(taskHandle);
     taskHandle = nullptr;
   }
-  png.close();
+  if (pngDecoder != nullptr) pngDecoder->close();
   for (uint16_t *&buffer : displayBuffers) {
     if (buffer != nullptr) heap_caps_free(buffer);
     buffer = nullptr;
