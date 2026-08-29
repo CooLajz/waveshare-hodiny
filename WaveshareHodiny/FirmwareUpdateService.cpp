@@ -23,6 +23,14 @@ SemaphoreHandle_t statusMutex = nullptr;
 FirmwareUpdateSnapshot status;
 FirmwareUpdateLifecycleCallback lifecycleCallback = nullptr;
 
+struct PendingFirmwareInstall {
+  char url[256] = "";
+  char sha256[65] = "";
+  uint32_t size = 0;
+};
+
+PendingFirmwareInstall pendingInstall;
+
 void lockStatus() {
   if (statusMutex != nullptr) xSemaphoreTake(statusMutex, portMAX_DELAY);
 }
@@ -126,6 +134,12 @@ String sha256Hex(const uint8_t digest[32]) {
 
 bool installFirmware(const String &url, uint32_t expectedSize,
                      const String &expectedSha256) {
+  NetworkOperationGuard networkGuard(NETWORK_TIMEOUT_MS);
+  if (!networkGuard) {
+    setMessage(FirmwareUpdateState::Failed,
+               "Síť je právě vytížená jinou operací.", false);
+    return false;
+  }
   setMessage(FirmwareUpdateState::Downloading,
              "Stahuji a ověřuji nový firmware…", true);
   lockStatus();
@@ -248,28 +262,28 @@ bool installFirmware(const String &url, uint32_t expectedSize,
   return true;
 }
 
-void checkFirmware(bool installWhenAvailable) {
+bool checkFirmware(bool installWhenAvailable) {
   if (WiFi.status() != WL_CONNECTED) {
     setMessage(FirmwareUpdateState::Failed,
                "Zařízení není připojené k Wi-Fi.", false);
-    return;
+    return false;
   }
   if (FIRMWARE_SERVER_URL[0] == '\0' || FIRMWARE_PROJECT_SLUG[0] == '\0') {
     setMessage(FirmwareUpdateState::Failed,
                "Server aktualizací není v buildu nakonfigurovaný.", false);
-    return;
+    return false;
   }
   if (time(nullptr) < VALID_TIME_THRESHOLD) {
     setMessage(FirmwareUpdateState::Failed,
                "Čas ještě není synchronizovaný pro bezpečné HTTPS.", false);
-    return;
+    return false;
   }
 
   NetworkOperationGuard networkGuard(NETWORK_TIMEOUT_MS);
   if (!networkGuard) {
     setMessage(FirmwareUpdateState::Failed,
                "Síť je právě vytížená jinou operací.", false);
-    return;
+    return false;
   }
 
   String payload;
@@ -284,7 +298,7 @@ void checkFirmware(bool installWhenAvailable) {
     if (!http.begin(client, metadataEndpoint)) {
       setMessage(FirmwareUpdateState::Failed,
                  "Nepodařilo se otevřít server aktualizací.", false);
-      return;
+      return false;
     }
     http.addHeader("Accept", "application/json");
     const int responseCode = http.GET();
@@ -294,7 +308,7 @@ void checkFirmware(bool installWhenAvailable) {
       setMessage(FirmwareUpdateState::Failed,
                  "Server zatím nemá OTA metadata pro tento projekt.",
                  false);
-      return;
+      return false;
     }
     if (responseCode != HTTP_CODE_OK) {
       String detail;
@@ -311,7 +325,7 @@ void checkFirmware(bool installWhenAvailable) {
       const String message =
           String("Kontrola verze na serveru selhala: ") + detail + ".";
       setMessage(FirmwareUpdateState::Failed, message.c_str(), false);
-      return;
+      return false;
     }
     payload = http.getString();
     http.end();
@@ -332,13 +346,13 @@ void checkFirmware(bool installWhenAvailable) {
       chipFamily != FIRMWARE_CHIP_VARIANT || !validSha256(sha256)) {
     setMessage(FirmwareUpdateState::Failed,
                "OTA metadata ze serveru nejsou platná.", false);
-    return;
+    return false;
   }
   url = normalizedDownloadUrl(url);
   if (url.isEmpty()) {
     setMessage(FirmwareUpdateState::Failed,
                "OTA obraz neleží na povoleném serveru.", false);
-    return;
+    return false;
   }
 
   const bool newer =
@@ -352,7 +366,7 @@ void checkFirmware(bool installWhenAvailable) {
   if (!newer) {
     setMessage(FirmwareUpdateState::Current,
                "Používáš aktuální verzi firmware.", false);
-    return;
+    return false;
   }
   if (!installWhenAvailable) {
     setMessage(FirmwareUpdateState::Available,
@@ -360,20 +374,41 @@ void checkFirmware(bool installWhenAvailable) {
                    ? "Na serveru je dostupná novější verze."
                    : "Novější release je dostupný; development se aktualizuje kabelem.",
                false);
-    return;
+    return false;
   }
   if (!IS_RELEASE_FIRMWARE) {
     setMessage(FirmwareUpdateState::Available,
                "Development build se aktualizuje pouze kabelem.", false);
-    return;
+    return false;
   }
-  installFirmware(url, size, sha256);
+  lockStatus();
+  strlcpy(pendingInstall.url, url.c_str(), sizeof(pendingInstall.url));
+  strlcpy(pendingInstall.sha256, sha256.c_str(),
+          sizeof(pendingInstall.sha256));
+  pendingInstall.size = size;
+  unlockStatus();
+  return true;
 }
 
-void updateTask(void *parameter) {
-  const bool installWhenAvailable = reinterpret_cast<uintptr_t>(parameter) != 0;
-  checkFirmware(installWhenAvailable);
+void installTask(void *) {
+  PendingFirmwareInstall request;
+  lockStatus();
+  request = pendingInstall;
+  unlockStatus();
+  installFirmware(String(request.url), request.size, String(request.sha256));
   vTaskDelete(nullptr);
+}
+
+void updateCheckTask(void *parameter) {
+  const bool installWhenAvailable = reinterpret_cast<uintptr_t>(parameter) != 0;
+  const bool installRequested = checkFirmware(installWhenAvailable);
+  if (installRequested &&
+      xTaskCreatePinnedToCore(installTask, "firmware-install", 12288, nullptr,
+                              1, nullptr, 0) != pdPASS) {
+    setMessage(FirmwareUpdateState::Failed,
+               "Instalační OTA úlohu se nepodařilo spustit.", false);
+  }
+  vTaskDeleteWithCaps(nullptr);
 }
 }  // namespace
 
@@ -404,12 +439,11 @@ bool firmwareUpdateServiceRequestCheck(bool installWhenAvailable) {
   strlcpy(status.message, "Kontroluji novou verzi…",
           sizeof(status.message));
   unlockStatus();
-  // TLS handshake potřebuje velký souvislý blok interní RAM. Zásobník OTA
-  // úlohy proto stejně jako u ostatních síťových workerů držíme v PSRAM;
-  // jinak jeho 12 kB může těsně před navázáním HTTPS způsobit chybu
-  // MBEDTLS_ERR_SSL_ALLOC_FAILED.
+  // Kontrola metadat nezapisuje do flash, proto může mít zásobník v PSRAM a
+  // ponechat interní RAM TLS handshaku. Samotnou instalaci po kontrole převezme
+  // oddělený task s interním zásobníkem, který je bezpečný během zápisu flash.
   const BaseType_t created = xTaskCreatePinnedToCoreWithCaps(
-      updateTask, "firmware-update", 12288,
+      updateCheckTask, "firmware-check", 12288,
       reinterpret_cast<void *>(installWhenAvailable ? 1 : 0), 1, nullptr, 0,
       MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (created != pdPASS) {
