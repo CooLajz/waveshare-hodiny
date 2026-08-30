@@ -90,5 +90,24 @@ int main(int argc, char **argv) {
   assert(!tmepParseExport(empty, strlen(empty), catalog, error,
                           sizeof(error)));
   assert(strstr(error, "žádná čidla") != nullptr);
+
+  std::string manySensors = "{";
+  for (size_t index = 0; index <= TMEP_MAX_SENSORS; ++index) {
+    if (index > 0) manySensors += ',';
+    manySensors += '"' + std::to_string(1000 + index) +
+                   R"(":{"teplota":20,"teplota_jednotka":"°C"})";
+  }
+  manySensors += '}';
+  assert(tmepParseExport(manySensors.c_str(), manySensors.size(), catalog,
+                         error, sizeof(error)));
+  assert(catalog.count == TMEP_MAX_SENSORS);
+  assert(catalog.truncated);
+  assert(tmepFindSensor(catalog, "1000") != nullptr);
+  assert(tmepFindSensor(catalog,
+                        std::to_string(999 + TMEP_MAX_SENSORS).c_str()) !=
+         nullptr);
+  assert(tmepFindSensor(catalog,
+                        std::to_string(1000 + TMEP_MAX_SENSORS).c_str()) ==
+         nullptr);
   return 0;
 }

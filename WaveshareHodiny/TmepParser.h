@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-constexpr size_t TMEP_MAX_SENSORS = 16;
+constexpr size_t TMEP_MAX_SENSORS = 32;
 constexpr size_t TMEP_SENSOR_TITLE_LENGTH = 64;
 constexpr size_t TMEP_SENSOR_DOMAIN_LENGTH = 64;
 constexpr size_t TMEP_SENSOR_LOCATION_LENGTH = 64;
@@ -42,4 +42,3 @@ const TmepSensor *tmepFindSensor(const TmepCatalog &catalog,
                                 const char *sensorId);
 const TmepValue *tmepFindValue(const TmepSensor &sensor, const char *field);
 bool tmepFieldSupported(const char *field);
-

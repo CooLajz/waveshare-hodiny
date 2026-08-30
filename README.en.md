@@ -120,8 +120,8 @@ also define the center of local CHMI radar views.
 ### TMEP.cz as an Open-Meteo extension
 
 Your own TMEP.cz sensors can be added to Open-Meteo mode. Paste the complete URL
-from **Extended JSON – with all sensors**, select **Verify and load sensors**, and values from all available
-sensors are appended to the same four selectors under a TMEP.cz group. The
+from **Extended JSON – with all sensors**, select **Verify and load sensors**, and
+values from up to 32 sensors are appended to the same four selectors under a TMEP.cz group. The
 firmware uses the unit returned by the export, including for custom quantities.
 The entire account is refreshed with one HTTPS request every minute, while
 Open-Meteo continues to refresh every 10 minutes. The firmware extracts the ID

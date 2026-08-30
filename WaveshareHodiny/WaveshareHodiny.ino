@@ -1070,38 +1070,50 @@ bool tmepSlotsEnabled(const ClockConfig &config) {
   return false;
 }
 
-bool fetchTmepValues(const ClockConfig &config, ClockValues &values) {
-  if (!tmepSlotsEnabled(config)) return true;
-  float *destinations[] = {&values.leftTemperatureC, &values.rightTemperatureC,
-                           &values.metricAValue, &values.metricBValue};
-  static TmepCatalog catalog;
-  int status = HTTPC_ERROR_CONNECTION_REFUSED;
-  String error;
-  if (!tmepFetchCatalog(config.tmepExportId, config.tmepExportKey, catalog,
-                        NetworkDiagnosticKind::TmepRuntime, status, error)) {
-    return false;
-  }
+struct TmepValuesContext {
+  const ClockConfig &config;
+  ClockValues &values;
+  bool complete = true;
+};
 
-  bool ok = true;
+void applyTmepValues(const TmepCatalog &catalog, void *rawContext) {
+  TmepValuesContext &context =
+      *static_cast<TmepValuesContext *>(rawContext);
+  float *destinations[] = {&context.values.leftTemperatureC,
+                           &context.values.rightTemperatureC,
+                           &context.values.metricAValue,
+                           &context.values.metricBValue};
   for (size_t index = 0; index < 4; ++index) {
-    const ClockTmepSlotConfig &slot = config.tmepSlots[index];
+    const ClockTmepSlotConfig &slot = context.config.tmepSlots[index];
     if (!slot.enabled) continue;
     const TmepSensor *sensor = tmepFindSensor(catalog, slot.sensorId);
     const TmepValue *value =
         sensor == nullptr ? nullptr : tmepFindValue(*sensor, slot.field);
     if (value == nullptr || !value->available) {
       *destinations[index] = NAN;
-      ok = false;
+      context.complete = false;
       continue;
     }
     *destinations[index] = value->value;
   }
-  if (!ok) {
+}
+
+bool fetchTmepValues(const ClockConfig &config, ClockValues &values) {
+  TmepValuesContext context{config, values};
+  int status = HTTPC_ERROR_CONNECTION_REFUSED;
+  String error;
+  if (!tmepFetchCatalog(config.tmepExportId, config.tmepExportKey,
+                        applyTmepValues, &context,
+                        NetworkDiagnosticKind::TmepRuntime, status, error)) {
+    return false;
+  }
+
+  if (!context.complete) {
     networkDiagnosticsSetDetail(
         NetworkDiagnosticKind::TmepRuntime,
         F("Export neobsahuje všechny vybrané hodnoty."));
   }
-  return ok;
+  return context.complete;
 }
 
 bool applyHomeAssistantState(const ClockConfig &config, const String &entityId,
@@ -1417,12 +1429,14 @@ void homeAssistantTask(void *) {
   ClockValues lastAvailableValues;
   unsigned long nextOpenMeteoRefreshAt = 0;
   unsigned long nextTmepRefreshAt = 0;
+  bool tmepCatalogPrimed = false;
   for (;;) {
     const ClockConfig config = runtimeConfigSnapshot();
     ClockValues values = lastAvailableValues;
     if (WiFi.status() != WL_CONNECTED) {
       nextOpenMeteoRefreshAt = 0;
       nextTmepRefreshAt = 0;
+      tmepCatalogPrimed = false;
       publishHomeAssistantValues(ClockValues{});
       ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(HOME_ASSISTANT_RETRY_MS));
       continue;
@@ -1444,13 +1458,21 @@ void homeAssistantTask(void *) {
       }
 
       const bool tmepEnabled = tmepSlotsEnabled(config);
+      const bool tmepConfigured = config.tmepExportId[0] != '\0' &&
+                                  config.tmepExportKey[0] != '\0';
       now = millis();
-      if (tmepEnabled && deadlineReached(now, nextTmepRefreshAt)) {
-        fetchTmepValues(config, values);
-        nextTmepRefreshAt = millis() + TMEP_REFRESH_MS;
-        valuesUpdated = true;
-      } else if (!tmepEnabled) {
+      const bool tmepRefreshDue =
+          tmepConfigured && deadlineReached(now, nextTmepRefreshAt) &&
+          (tmepEnabled || !tmepCatalogPrimed);
+      if (tmepRefreshDue) {
+        const bool responded = fetchTmepValues(config, values);
+        tmepCatalogPrimed = responded;
+        nextTmepRefreshAt =
+            millis() + (responded ? TMEP_REFRESH_MS : EXTERNAL_DATA_RETRY_MS);
+        valuesUpdated = tmepEnabled;
+      } else if (!tmepConfigured) {
         nextTmepRefreshAt = 0;
+        tmepCatalogPrimed = false;
       }
 
       if (valuesUpdated) {
@@ -1463,7 +1485,7 @@ void homeAssistantTask(void *) {
           deadlineReached(now, nextOpenMeteoRefreshAt)
               ? 0
               : nextOpenMeteoRefreshAt - now;
-      if (tmepEnabled) {
+      if (tmepConfigured && (tmepEnabled || !tmepCatalogPrimed)) {
         const unsigned long tmepWaitMs =
             deadlineReached(now, nextTmepRefreshAt)
                 ? 0
@@ -1473,12 +1495,14 @@ void homeAssistantTask(void *) {
       if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(waitMs)) > 0) {
         nextOpenMeteoRefreshAt = 0;
         nextTmepRefreshAt = 0;
+        tmepCatalogPrimed = false;
       }
       continue;
     }
 
     nextOpenMeteoRefreshAt = 0;
     nextTmepRefreshAt = 0;
+    tmepCatalogPrimed = false;
 
     if (config.homeAssistantUrl[0] == '\0' ||
         config.homeAssistantToken[0] == '\0') {

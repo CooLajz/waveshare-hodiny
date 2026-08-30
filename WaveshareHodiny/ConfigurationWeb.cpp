@@ -1804,38 +1804,8 @@ void appendTmepValueJson(String &result, const char *field,
   result += '}';
 }
 
-void handleTmepTest() {
-  const ClockConfig &config = currentConfig();
-  String exportId = config.tmepExportId;
-  String exportKey = config.tmepExportKey;
-  const String submittedTmepUrl = server.arg("tmepExportUrl");
-  if (!submittedTmepUrl.isEmpty() &&
-      !parseTmepExportUrl(submittedTmepUrl, exportId, exportKey)) {
-    sendError(400, F("Exportní URL TMEP není platná."));
-    return;
-  }
-  if (exportId.isEmpty() || exportKey.isEmpty()) {
-    sendError(400, F("Zadej exportní URL TMEP."));
-    return;
-  }
-  static TmepCatalog catalog;
-  int status = HTTPC_ERROR_CONNECTION_REFUSED;
-  String error;
-  const bool useCache = submittedTmepUrl.isEmpty() &&
-                        tmepGetCachedCatalog(exportId.c_str(),
-                                             exportKey.c_str(), catalog);
-  if (!useCache && server.arg("cachedOnly") == "1") {
-    sendError(409, F("Hodnoty TMEP zatím nejsou načtené."));
-    return;
-  }
-  if (!useCache &&
-      !tmepFetchCatalog(exportId.c_str(), exportKey.c_str(), catalog,
-                        NetworkDiagnosticKind::TmepTest, status, error)) {
-    sendError(status == HTTP_CODE_OK ? 401 : 502, error);
-    return;
-  }
-
-  String result;
+void appendTmepCatalogJson(const TmepCatalog &catalog, void *rawResult) {
+  String &result = *static_cast<String *>(rawResult);
   result.reserve(8192);
   result = F("{\"ok\":true,\"truncated\":");
   result += catalog.truncated ? F("true") : F("false");
@@ -1863,6 +1833,42 @@ void handleTmepTest() {
     result += F("]}");
   }
   result += F("]}");
+}
+
+void handleTmepTest() {
+  const ClockConfig &config = currentConfig();
+  String exportId = config.tmepExportId;
+  String exportKey = config.tmepExportKey;
+  const String submittedTmepUrl = server.arg("tmepExportUrl");
+  if (!submittedTmepUrl.isEmpty() &&
+      !parseTmepExportUrl(submittedTmepUrl, exportId, exportKey)) {
+    sendError(400, F("Exportní URL TMEP není platná."));
+    return;
+  }
+  if (exportId.isEmpty() || exportKey.isEmpty()) {
+    sendError(400, F("Zadej exportní URL TMEP."));
+    return;
+  }
+  int status = HTTPC_ERROR_CONNECTION_REFUSED;
+  String error;
+  String result;
+  const bool useCache = server.arg("cachedOnly") == "1" &&
+                        submittedTmepUrl.isEmpty() &&
+                        tmepVisitCachedCatalog(
+                            exportId.c_str(), exportKey.c_str(),
+                            appendTmepCatalogJson, &result);
+  if (!useCache && server.arg("cachedOnly") == "1") {
+    sendError(409, F("Hodnoty TMEP zatím nejsou načtené."));
+    return;
+  }
+  if (!useCache &&
+      !tmepFetchCatalog(exportId.c_str(), exportKey.c_str(),
+                        appendTmepCatalogJson, &result,
+                        NetworkDiagnosticKind::TmepTest, status, error)) {
+    sendError(status == HTTP_CODE_OK ? 401 : 502, error);
+    return;
+  }
+
   sendJson(200, result);
 }
 
@@ -1902,6 +1908,8 @@ void handleTmepRemove() {
     return;
   }
   tmepClearCachedCatalog();
+  networkDiagnosticsReset(NetworkDiagnosticKind::TmepRuntime);
+  networkDiagnosticsReset(NetworkDiagnosticKind::TmepTest);
   extendWebAvailability();
   sendJson(200, F("{\"ok\":true}"));
 }

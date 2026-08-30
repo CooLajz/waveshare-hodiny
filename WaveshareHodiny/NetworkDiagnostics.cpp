@@ -59,6 +59,12 @@ void networkDiagnosticsEnd(NetworkDiagnosticKind kind, bool success,
   portEXIT_CRITICAL(&diagnosticsMux);
 }
 
+void networkDiagnosticsReset(NetworkDiagnosticKind kind) {
+  portENTER_CRITICAL(&diagnosticsMux);
+  snapshots[indexFor(kind)] = NetworkDiagnosticSnapshot{};
+  portEXIT_CRITICAL(&diagnosticsMux);
+}
+
 NetworkDiagnosticSnapshot networkDiagnosticsSnapshot(
     NetworkDiagnosticKind kind) {
   portENTER_CRITICAL(&diagnosticsMux);

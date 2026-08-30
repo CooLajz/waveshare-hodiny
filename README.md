@@ -128,8 +128,8 @@ současně určují střed lokálních pohledů meteoradaru ČHMÚ.
 ### TMEP.cz jako doplněk Open-Meteo
 
 K režimu Open-Meteo lze přidat vlastní čidla z TMEP.cz. Vlož celou URL ze sekce
-**Rozšířený JSON – se všemi čidly**, zvol **Ověřit a načíst čidla** a hodnoty všech dostupných čidel se přidají
-přímo do stejných čtyř výběrů pod skupinu TMEP.cz. Firmware používá jednotku
+**Rozšířený JSON – se všemi čidly**, zvol **Ověřit a načíst čidla** a hodnoty až
+32 čidel se přidají přímo do stejných čtyř výběrů pod skupinu TMEP.cz. Firmware používá jednotku
 vrácenou exportem, takže podporuje i vlastní veličiny. Celý účet se obnovuje
 jedním HTTPS požadavkem každou minutu; Open-Meteo se dál obnovuje jednou za
 10 minut. Firmware si z vložené URL bezpečně vybere ID a exportní klíč a

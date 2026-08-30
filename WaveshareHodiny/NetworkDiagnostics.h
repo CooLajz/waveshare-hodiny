@@ -38,6 +38,7 @@ void networkDiagnosticsEnd(NetworkDiagnosticKind kind, bool success,
                            int result);
 void networkDiagnosticsSetDetail(NetworkDiagnosticKind kind,
                                  const String &detail);
+void networkDiagnosticsReset(NetworkDiagnosticKind kind);
 NetworkDiagnosticSnapshot networkDiagnosticsSnapshot(
     NetworkDiagnosticKind kind);
 NetworkMemorySnapshot networkDiagnosticsCurrentMemory();
