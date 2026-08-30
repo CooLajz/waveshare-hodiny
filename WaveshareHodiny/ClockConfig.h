@@ -72,6 +72,7 @@ enum ClockDateFormat : uint8_t {
   CLOCK_DATE_FORMAT_DAY_MONTH_YEAR = 2,
   CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH_YEAR = 3,
   CLOCK_DATE_FORMAT_HIDDEN = 4,
+  CLOCK_DATE_FORMAT_DAY_MONTH = 5,
 };
 
 enum ClockStyle : uint8_t {
@@ -82,7 +83,13 @@ enum ClockStyle : uint8_t {
 struct ClockAppearanceConfig {
   uint8_t style = CLOCK_STYLE_DIGITAL;
   uint32_t analogToneColor = 0x00D6FF;
+  uint32_t analogHandToneColor = 0x00D6FF;
+  uint32_t analogCardinalAccentColor = 0xFFAB00;
   bool analogCardinalAccentsEnabled = true;
+  bool analogOutlineHandsEnabled = false;
+  bool analogMonochromeValuesEnabled = false;
+  uint8_t analogDateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;
+  uint32_t analogDateColor = 0xB5B5B5;
   uint32_t monochromeWeatherIconColor = 0xFFFFFF;
 };
 
@@ -183,7 +190,10 @@ bool clockConfigSave(const ClockConfig &config);
 void clockConfigApplyDefaults(ClockConfig &config);
 bool clockConfigRadarAvailable(const ClockConfig &config);
 bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
-                         uint32_t defaultMonochromeWeatherIconColor = 0xFFFFFF);
+                         uint32_t defaultMonochromeWeatherIconColor = 0xFFFFFF,
+                         uint8_t defaultAnalogDateFormat =
+                             CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH,
+                         uint32_t defaultAnalogDateColor = 0xB5B5B5);
 bool clockAppearanceSave(const ClockAppearanceConfig &appearance);
 
 void clockConfigCopy(char *destination, size_t destinationSize,

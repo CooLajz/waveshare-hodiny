@@ -189,6 +189,13 @@ bool previewClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
       activeAppearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
       static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
   activeAppearance.analogToneColor &= 0xFFFFFF;
+  activeAppearance.analogHandToneColor &= 0xFFFFFF;
+  activeAppearance.analogCardinalAccentColor &= 0xFFFFFF;
+  activeAppearance.analogDateFormat = constrain(
+      activeAppearance.analogDateFormat,
+      static_cast<uint8_t>(CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH),
+      static_cast<uint8_t>(CLOCK_DATE_FORMAT_DAY_MONTH));
+  activeAppearance.analogDateColor &= 0xFFFFFF;
   activeAppearance.monochromeWeatherIconColor &= 0xFFFFFF;
   pendingAppearance = activeAppearance;
   clockAppearanceApplyPending = true;
@@ -201,6 +208,13 @@ bool saveClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
       normalized.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
       static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
   normalized.analogToneColor &= 0xFFFFFF;
+  normalized.analogHandToneColor &= 0xFFFFFF;
+  normalized.analogCardinalAccentColor &= 0xFFFFFF;
+  normalized.analogDateFormat = constrain(
+      normalized.analogDateFormat,
+      static_cast<uint8_t>(CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH),
+      static_cast<uint8_t>(CLOCK_DATE_FORMAT_DAY_MONTH));
+  normalized.analogDateColor &= 0xFFFFFF;
   normalized.monochromeWeatherIconColor &= 0xFFFFFF;
   if (!clockAppearanceSave(normalized)) return false;
   persistedAppearance = normalized;
@@ -758,7 +772,11 @@ void maintainNetworkTime() {
   const bool english = config.language == CLOCK_LANGUAGE_ENGLISH;
   const char *const *weekdays = english ? ENGLISH_WEEKDAYS : CZECH_WEEKDAYS;
   const char *const *months = english ? ENGLISH_MONTHS : CZECH_MONTHS;
-  switch (config.dateFormat) {
+  const uint8_t displayedDateFormat =
+      activeAppearance.style == CLOCK_STYLE_ANALOG
+          ? activeAppearance.analogDateFormat
+          : config.dateFormat;
+  switch (displayedDateFormat) {
     case CLOCK_DATE_FORMAT_HIDDEN:
       dateText[0] = '\0';
       break;
@@ -772,6 +790,10 @@ void maintainNetworkTime() {
                  localTime.tm_mday, localTime.tm_mon + 1,
                  localTime.tm_year + 1900);
       }
+      break;
+    case CLOCK_DATE_FORMAT_DAY_MONTH:
+      snprintf(dateText, sizeof(dateText), "%02d.%02d.",
+               localTime.tm_mday, localTime.tm_mon + 1);
       break;
     case CLOCK_DATE_FORMAT_DAY_MONTH_YEAR:
       if (english)
@@ -1452,7 +1474,8 @@ void setup() {
              strcmp(persistedConfig.rightSide.icon, "weather") == 0) {
     legacyWeatherIconColor = persistedConfig.rightWeatherIconColor;
   }
-  clockAppearanceLoad(persistedAppearance, legacyWeatherIconColor);
+  clockAppearanceLoad(persistedAppearance, legacyWeatherIconColor,
+                      persistedConfig.dateFormat, persistedConfig.dateColor);
   activeAppearance = persistedAppearance;
   runtimeConfig = persistedConfig;
   applyDevelopmentDefaults(runtimeConfig);
@@ -1520,8 +1543,11 @@ void loop() {
   maintainFirmwareDisplayStatus();
   applyPendingHomeAssistantValues();
   const ClockConfig animationConfig = runtimeConfigSnapshot();
+  const bool monochromeAnalogValues =
+      activeAppearance.style == CLOCK_STYLE_ANALOG &&
+      activeAppearance.analogMonochromeValuesEnabled;
   const uint8_t weatherIconStyle =
-      clockDashboardNightModeEnabled()
+      clockDashboardNightModeEnabled() || monochromeAnalogValues
           ? CLOCK_WEATHER_ICON_STYLE_MONOCHROME
           : animationConfig.weatherIconStyle;
   weatherAnimationServiceLoop(sampleValues.weatherCode,

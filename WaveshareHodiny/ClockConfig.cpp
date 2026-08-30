@@ -13,7 +13,13 @@ constexpr char CONFIG_KEY[] = "config";
 constexpr char APPEARANCE_NAMESPACE[] = "clock-look";
 constexpr char APPEARANCE_STYLE_KEY[] = "style";
 constexpr char APPEARANCE_TONE_KEY[] = "tone";
+constexpr char APPEARANCE_HAND_TONE_KEY[] = "hand-tone";
+constexpr char APPEARANCE_ACCENT_COLOR_KEY[] = "accent-color";
 constexpr char APPEARANCE_ACCENTS_KEY[] = "accents";
+constexpr char APPEARANCE_OUTLINE_HANDS_KEY[] = "outline-hands";
+constexpr char APPEARANCE_MONO_VALUES_KEY[] = "mono-values";
+constexpr char APPEARANCE_DATE_FORMAT_KEY[] = "date-format";
+constexpr char APPEARANCE_DATE_COLOR_KEY[] = "date-color";
 constexpr char APPEARANCE_WEATHER_COLOR_KEY[] = "weather-color";
 
 struct ConfigRecord {
@@ -110,7 +116,7 @@ void normalizeConfig(ClockConfig &config) {
   config.dateFormat = constrain(
       config.dateFormat,
       static_cast<uint8_t>(CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH),
-      static_cast<uint8_t>(CLOCK_DATE_FORMAT_HIDDEN));
+      static_cast<uint8_t>(CLOCK_DATE_FORMAT_DAY_MONTH));
   config.dataSource = constrain(
       config.dataSource, static_cast<uint8_t>(CLOCK_DATA_SOURCE_OPEN_METEO),
       static_cast<uint8_t>(CLOCK_DATA_SOURCE_HOME_ASSISTANT));
@@ -183,7 +189,9 @@ bool clockConfigRadarAvailable(const ClockConfig &config) {
 }
 
 bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
-                         uint32_t defaultMonochromeWeatherIconColor) {
+                         uint32_t defaultMonochromeWeatherIconColor,
+                         uint8_t defaultAnalogDateFormat,
+                         uint32_t defaultAnalogDateColor) {
   appearance = ClockAppearanceConfig{};
   appearance.monochromeWeatherIconColor =
       defaultMonochromeWeatherIconColor & 0xFFFFFF;
@@ -196,8 +204,28 @@ bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
       static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
   appearance.analogToneColor =
       preferences.getUInt(APPEARANCE_TONE_KEY, 0x00D6FF) & 0xFFFFFF;
+  appearance.analogHandToneColor =
+      preferences.getUInt(APPEARANCE_HAND_TONE_KEY,
+                          appearance.analogToneColor) &
+      0xFFFFFF;
+  appearance.analogCardinalAccentColor =
+      preferences.getUInt(APPEARANCE_ACCENT_COLOR_KEY, 0xFFAB00) &
+      0xFFFFFF;
   appearance.analogCardinalAccentsEnabled =
       preferences.getBool(APPEARANCE_ACCENTS_KEY, true);
+  appearance.analogOutlineHandsEnabled =
+      preferences.getBool(APPEARANCE_OUTLINE_HANDS_KEY, false);
+  appearance.analogMonochromeValuesEnabled =
+      preferences.getBool(APPEARANCE_MONO_VALUES_KEY, false);
+  appearance.analogDateFormat = constrain(
+      preferences.getUChar(APPEARANCE_DATE_FORMAT_KEY,
+                           defaultAnalogDateFormat),
+      static_cast<uint8_t>(CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH),
+      static_cast<uint8_t>(CLOCK_DATE_FORMAT_DAY_MONTH));
+  appearance.analogDateColor =
+      preferences.getUInt(APPEARANCE_DATE_COLOR_KEY,
+                          defaultAnalogDateColor) &
+      0xFFFFFF;
   appearance.monochromeWeatherIconColor =
       preferences.getUInt(APPEARANCE_WEATHER_COLOR_KEY,
                           defaultMonochromeWeatherIconColor) &
@@ -219,16 +247,45 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
       preferences.putUInt(APPEARANCE_TONE_KEY,
                           appearance.analogToneColor & 0xFFFFFF) ==
       sizeof(uint32_t);
+  const bool handToneSaved =
+      preferences.putUInt(APPEARANCE_HAND_TONE_KEY,
+                          appearance.analogHandToneColor & 0xFFFFFF) ==
+      sizeof(uint32_t);
+  const bool accentColorSaved =
+      preferences.putUInt(APPEARANCE_ACCENT_COLOR_KEY,
+                          appearance.analogCardinalAccentColor & 0xFFFFFF) ==
+      sizeof(uint32_t);
   const bool accentsSaved =
       preferences.putBool(APPEARANCE_ACCENTS_KEY,
                           appearance.analogCardinalAccentsEnabled) ==
       sizeof(bool);
+  const bool outlineHandsSaved =
+      preferences.putBool(APPEARANCE_OUTLINE_HANDS_KEY,
+                          appearance.analogOutlineHandsEnabled) ==
+      sizeof(bool);
+  const bool monoValuesSaved =
+      preferences.putBool(APPEARANCE_MONO_VALUES_KEY,
+                          appearance.analogMonochromeValuesEnabled) ==
+      sizeof(bool);
+  const uint8_t dateFormat = constrain(
+      appearance.analogDateFormat,
+      static_cast<uint8_t>(CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH),
+      static_cast<uint8_t>(CLOCK_DATE_FORMAT_DAY_MONTH));
+  const bool dateFormatSaved =
+      preferences.putUChar(APPEARANCE_DATE_FORMAT_KEY, dateFormat) ==
+      sizeof(dateFormat);
+  const bool dateColorSaved =
+      preferences.putUInt(APPEARANCE_DATE_COLOR_KEY,
+                          appearance.analogDateColor & 0xFFFFFF) ==
+      sizeof(uint32_t);
   const bool weatherColorSaved =
       preferences.putUInt(APPEARANCE_WEATHER_COLOR_KEY,
                           appearance.monochromeWeatherIconColor & 0xFFFFFF) ==
       sizeof(uint32_t);
   preferences.end();
-  return styleSaved && toneSaved && accentsSaved && weatherColorSaved;
+  return styleSaved && toneSaved && handToneSaved && accentColorSaved &&
+         accentsSaved && outlineHandsSaved && monoValuesSaved &&
+         dateFormatSaved && dateColorSaved && weatherColorSaved;
 }
 
 void clockConfigCopy(char *destination, size_t destinationSize,

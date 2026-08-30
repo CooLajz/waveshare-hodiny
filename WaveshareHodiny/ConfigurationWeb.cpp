@@ -655,6 +655,35 @@ bool validRadarRadius(int radiusKm) {
 
 bool parseHtmlColor(const String &value, uint32_t &color);
 
+bool parseDateFormat(const String &value, uint8_t &format) {
+  if (value == "weekday-day-month")
+    format = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;
+  else if (value == "numeric")
+    format = CLOCK_DATE_FORMAT_NUMERIC;
+  else if (value == "day-month-year")
+    format = CLOCK_DATE_FORMAT_DAY_MONTH_YEAR;
+  else if (value == "weekday-day-month-year")
+    format = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH_YEAR;
+  else if (value == "day-month")
+    format = CLOCK_DATE_FORMAT_DAY_MONTH;
+  else if (value == "hidden")
+    format = CLOCK_DATE_FORMAT_HIDDEN;
+  else
+    return false;
+  return true;
+}
+
+const __FlashStringHelper *dateFormatName(uint8_t format) {
+  if (format == CLOCK_DATE_FORMAT_NUMERIC) return F("numeric");
+  if (format == CLOCK_DATE_FORMAT_DAY_MONTH_YEAR)
+    return F("day-month-year");
+  if (format == CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH_YEAR)
+    return F("weekday-day-month-year");
+  if (format == CLOCK_DATE_FORMAT_DAY_MONTH) return F("day-month");
+  if (format == CLOCK_DATE_FORMAT_HIDDEN) return F("hidden");
+  return F("weekday-day-month");
+}
+
 void radarRangeState(uint16_t &savedRadiusKm, uint16_t &activeRadiusKm) {
   savedRadiusKm = currentConfig().radarRadiusKm;
   activeRadiusKm = savedRadiusKm;
@@ -673,9 +702,75 @@ bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
   if (!parseHtmlColor(server.arg("analogToneColor"),
                       appearance.analogToneColor))
     return false;
+  if (server.hasArg("analogHandToneColor")) {
+    if (!parseHtmlColor(server.arg("analogHandToneColor"),
+                        appearance.analogHandToneColor))
+      return false;
+  } else if (currentAppearanceStateCallback != nullptr) {
+    ClockAppearanceConfig saved;
+    ClockAppearanceConfig active;
+    currentAppearanceStateCallback(saved, active);
+    appearance.analogHandToneColor = active.analogHandToneColor;
+  } else {
+    appearance.analogHandToneColor = appearance.analogToneColor;
+  }
+  if (server.hasArg("analogCardinalAccentColor")) {
+    if (!parseHtmlColor(server.arg("analogCardinalAccentColor"),
+                        appearance.analogCardinalAccentColor))
+      return false;
+  } else if (currentAppearanceStateCallback != nullptr) {
+    ClockAppearanceConfig saved;
+    ClockAppearanceConfig active;
+    currentAppearanceStateCallback(saved, active);
+    appearance.analogCardinalAccentColor =
+        active.analogCardinalAccentColor;
+  }
   const String accents = server.arg("analogCardinalAccentsEnabled");
   if (accents != "0" && accents != "1") return false;
   appearance.analogCardinalAccentsEnabled = accents == "1";
+  if (server.hasArg("analogOutlineHandsEnabled")) {
+    const String outlineHands = server.arg("analogOutlineHandsEnabled");
+    if (outlineHands != "0" && outlineHands != "1") return false;
+    appearance.analogOutlineHandsEnabled = outlineHands == "1";
+  } else if (currentAppearanceStateCallback != nullptr) {
+    ClockAppearanceConfig saved;
+    ClockAppearanceConfig active;
+    currentAppearanceStateCallback(saved, active);
+    appearance.analogOutlineHandsEnabled =
+        active.analogOutlineHandsEnabled;
+  }
+  if (server.hasArg("analogMonochromeValuesEnabled")) {
+    const String monochromeValues =
+        server.arg("analogMonochromeValuesEnabled");
+    if (monochromeValues != "0" && monochromeValues != "1") return false;
+    appearance.analogMonochromeValuesEnabled = monochromeValues == "1";
+  } else if (currentAppearanceStateCallback != nullptr) {
+    ClockAppearanceConfig saved;
+    ClockAppearanceConfig active;
+    currentAppearanceStateCallback(saved, active);
+    appearance.analogMonochromeValuesEnabled =
+        active.analogMonochromeValuesEnabled;
+  }
+  if (server.hasArg("analogDateFormat")) {
+    if (!parseDateFormat(server.arg("analogDateFormat"),
+                         appearance.analogDateFormat))
+      return false;
+  } else if (currentAppearanceStateCallback != nullptr) {
+    ClockAppearanceConfig saved;
+    ClockAppearanceConfig active;
+    currentAppearanceStateCallback(saved, active);
+    appearance.analogDateFormat = active.analogDateFormat;
+  }
+  if (server.hasArg("analogDateColor")) {
+    if (!parseHtmlColor(server.arg("analogDateColor"),
+                        appearance.analogDateColor))
+      return false;
+  } else if (currentAppearanceStateCallback != nullptr) {
+    ClockAppearanceConfig saved;
+    ClockAppearanceConfig active;
+    currentAppearanceStateCallback(saved, active);
+    appearance.analogDateColor = active.analogDateColor;
+  }
   if (server.hasArg("monochromeWeatherIconColor")) {
     if (!parseHtmlColor(server.arg("monochromeWeatherIconColor"),
                         appearance.monochromeWeatherIconColor))
@@ -1043,12 +1138,40 @@ void handleGetConfig() {
   result += htmlColor(savedAppearance.analogToneColor);
   result += F("\",\"activeAnalogToneColor\":\"");
   result += htmlColor(activeAppearance.analogToneColor);
+  result += F("\",\"analogHandToneColor\":\"");
+  result += htmlColor(savedAppearance.analogHandToneColor);
+  result += F("\",\"activeAnalogHandToneColor\":\"");
+  result += htmlColor(activeAppearance.analogHandToneColor);
+  result += F("\",\"analogCardinalAccentColor\":\"");
+  result += htmlColor(savedAppearance.analogCardinalAccentColor);
+  result += F("\",\"activeAnalogCardinalAccentColor\":\"");
+  result += htmlColor(activeAppearance.analogCardinalAccentColor);
+  result += F("\",\"analogDateFormat\":\"");
+  result += dateFormatName(savedAppearance.analogDateFormat);
+  result += F("\",\"activeAnalogDateFormat\":\"");
+  result += dateFormatName(activeAppearance.analogDateFormat);
+  result += F("\",\"analogDateColor\":\"");
+  result += htmlColor(savedAppearance.analogDateColor);
+  result += F("\",\"activeAnalogDateColor\":\"");
+  result += htmlColor(activeAppearance.analogDateColor);
   result += F("\",\"analogCardinalAccentsEnabled\":");
   result += savedAppearance.analogCardinalAccentsEnabled ? F("true")
                                                          : F("false");
   result += F(",\"activeAnalogCardinalAccentsEnabled\":");
   result += activeAppearance.analogCardinalAccentsEnabled ? F("true")
                                                           : F("false");
+  result += F(",\"analogOutlineHandsEnabled\":");
+  result += savedAppearance.analogOutlineHandsEnabled ? F("true")
+                                                       : F("false");
+  result += F(",\"activeAnalogOutlineHandsEnabled\":");
+  result += activeAppearance.analogOutlineHandsEnabled ? F("true")
+                                                        : F("false");
+  result += F(",\"analogMonochromeValuesEnabled\":");
+  result += savedAppearance.analogMonochromeValuesEnabled ? F("true")
+                                                           : F("false");
+  result += F(",\"activeAnalogMonochromeValuesEnabled\":");
+  result += activeAppearance.analogMonochromeValuesEnabled ? F("true")
+                                                            : F("false");
   result += F(",\"monochromeWeatherIconColor\":\"");
   result += htmlColor(savedAppearance.monochromeWeatherIconColor);
   result += F("\",\"activeMonochromeWeatherIconColor\":\"");
@@ -1154,6 +1277,8 @@ void handleGetConfig() {
     result += F("day-month-year");
   else if (config.dateFormat == CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH_YEAR)
     result += F("weekday-day-month-year");
+  else if (config.dateFormat == CLOCK_DATE_FORMAT_DAY_MONTH)
+    result += F("day-month");
   else if (config.dateFormat == CLOCK_DATE_FORMAT_HIDDEN)
     result += F("hidden");
   else
@@ -1426,6 +1551,8 @@ void handleSaveConfig() {
     config.dateFormat = CLOCK_DATE_FORMAT_DAY_MONTH_YEAR;
   else if (dateFormat == "weekday-day-month-year")
     config.dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH_YEAR;
+  else if (dateFormat == "day-month")
+    config.dateFormat = CLOCK_DATE_FORMAT_DAY_MONTH;
   else if (dateFormat == "hidden")
     config.dateFormat = CLOCK_DATE_FORMAT_HIDDEN;
   else {
@@ -1585,10 +1712,34 @@ void handleClockAppearancePreview() {
   result += htmlColor(saved.analogToneColor);
   result += F("\",\"activeAnalogToneColor\":\"");
   result += htmlColor(active.analogToneColor);
+  result += F("\",\"analogHandToneColor\":\"");
+  result += htmlColor(saved.analogHandToneColor);
+  result += F("\",\"activeAnalogHandToneColor\":\"");
+  result += htmlColor(active.analogHandToneColor);
+  result += F("\",\"analogCardinalAccentColor\":\"");
+  result += htmlColor(saved.analogCardinalAccentColor);
+  result += F("\",\"activeAnalogCardinalAccentColor\":\"");
+  result += htmlColor(active.analogCardinalAccentColor);
+  result += F("\",\"analogDateFormat\":\"");
+  result += dateFormatName(saved.analogDateFormat);
+  result += F("\",\"activeAnalogDateFormat\":\"");
+  result += dateFormatName(active.analogDateFormat);
+  result += F("\",\"analogDateColor\":\"");
+  result += htmlColor(saved.analogDateColor);
+  result += F("\",\"activeAnalogDateColor\":\"");
+  result += htmlColor(active.analogDateColor);
   result += F("\",\"analogCardinalAccentsEnabled\":");
   result += saved.analogCardinalAccentsEnabled ? F("true") : F("false");
   result += F(",\"activeAnalogCardinalAccentsEnabled\":");
   result += active.analogCardinalAccentsEnabled ? F("true") : F("false");
+  result += F(",\"analogOutlineHandsEnabled\":");
+  result += saved.analogOutlineHandsEnabled ? F("true") : F("false");
+  result += F(",\"activeAnalogOutlineHandsEnabled\":");
+  result += active.analogOutlineHandsEnabled ? F("true") : F("false");
+  result += F(",\"analogMonochromeValuesEnabled\":");
+  result += saved.analogMonochromeValuesEnabled ? F("true") : F("false");
+  result += F(",\"activeAnalogMonochromeValuesEnabled\":");
+  result += active.analogMonochromeValuesEnabled ? F("true") : F("false");
   result += F(",\"monochromeWeatherIconColor\":\"");
   result += htmlColor(saved.monochromeWeatherIconColor);
   result += F("\",\"activeMonochromeWeatherIconColor\":\"");

@@ -41,7 +41,12 @@ constexpr int ANALOG_CENTER_Y = 240;
 constexpr int ANALOG_RING_RADIUS = 239;
 uint8_t activeClockStyle = CLOCK_STYLE_DIGITAL;
 uint32_t analogToneColor = 0x00D6FF;
+uint32_t analogHandToneColor = 0x00D6FF;
+uint32_t analogCardinalAccentColor = 0xFFAB00;
 bool analogCardinalAccentsEnabled = true;
+bool analogOutlineHandsEnabled = false;
+bool analogMonochromeValuesEnabled = false;
+uint32_t analogDateColor = 0xB5B5B5;
 uint32_t monochromeWeatherIconColor = 0xFFFFFF;
 ClockConfig dashboardRuntimeConfig;
 bool dashboardRuntimeConfigAvailable = false;
@@ -464,6 +469,17 @@ lv_color_t analogTone(float intensity = 1.0f) {
   return lv_color_make(red, green, blue);
 }
 
+lv_color_t analogHandTone(float intensity = 1.0f) {
+  intensity = constrain(intensity, 0.0f, 1.0f);
+  const uint8_t red = static_cast<uint8_t>(
+      ((analogHandToneColor >> 16) & 0xFF) * intensity);
+  const uint8_t green = static_cast<uint8_t>(
+      ((analogHandToneColor >> 8) & 0xFF) * intensity);
+  const uint8_t blue = static_cast<uint8_t>(
+      (analogHandToneColor & 0xFF) * intensity);
+  return lv_color_make(red, green, blue);
+}
+
 lv_point_t analogPoint(const lv_point_t &center, float angleDegrees,
                        float radius) {
   const float radians = angleDegrees * ANALOG_PI / 180.0f;
@@ -540,6 +556,32 @@ void drawAnalogArc(const AnalogDrawTarget &target, const lv_point_t &center,
   }
 }
 
+void drawAnalogArcSegment(const AnalogDrawTarget &target,
+                          const lv_point_t &center, uint16_t radius,
+                          float startAngleDegrees, float endAngleDegrees,
+                          lv_color_t color, lv_coord_t width) {
+  const auto lvglAngle = [](float analogAngle) -> uint16_t {
+    int angle = static_cast<int>(std::round(analogAngle - 90.0f)) % 360;
+    if (angle < 0) angle += 360;
+    return static_cast<uint16_t>(angle);
+  };
+  lv_draw_arc_dsc_t descriptor;
+  lv_draw_arc_dsc_init(&descriptor);
+  descriptor.color = color;
+  descriptor.width = width;
+  descriptor.opa = LV_OPA_COVER;
+  descriptor.rounded = true;
+  const uint16_t startAngle = lvglAngle(startAngleDegrees);
+  const uint16_t endAngle = lvglAngle(endAngleDegrees);
+  if (target.canvas != nullptr) {
+    lv_canvas_draw_arc(target.canvas, center.x, center.y, radius, startAngle,
+                       endAngle, &descriptor);
+  } else {
+    lv_draw_arc(target.context, &descriptor, &center, radius, startAngle,
+                endAngle);
+  }
+}
+
 void drawAnalogRadialLine(const AnalogDrawTarget &target,
                           const lv_point_t &center, float angleDegrees,
                           float innerRadius, float outerRadius,
@@ -554,17 +596,43 @@ void drawAnalogHand(const AnalogDrawTarget &target, const lv_point_t &center,
                     float angleDegrees, float rearLength, float frontLength,
                     lv_coord_t outlineWidth, lv_coord_t edgeWidth,
                     lv_coord_t coreWidth) {
-  const lv_point_t from = analogPoint(center, angleDegrees + 180.0f, rearLength);
+  const lv_coord_t outlineSideOffset =
+      max(static_cast<lv_coord_t>(3),
+          static_cast<lv_coord_t>(edgeWidth / 2 - 1));
+  const float effectiveRearLength =
+      rearLength + (analogOutlineHandsEnabled ? outlineSideOffset : 0);
+  const lv_point_t from =
+      analogPoint(center, angleDegrees + 180.0f, effectiveRearLength);
   const lv_point_t to = analogPoint(center, angleDegrees, frontLength);
   const lv_color_t outline = redNightVisualEnabled()
                                  ? lv_color_make(48, 0, 0)
                                  : lv_color_make(4, 14, 24);
   const lv_color_t edge = redNightVisualEnabled()
                               ? COLOR_ERROR
-                              : analogTone(0.88f);
+                              : analogHandTone(0.88f);
   const lv_color_t core = redNightVisualEnabled()
                               ? lv_color_make(255, 112, 112)
                               : lv_color_make(246, 250, 252);
+  if (analogOutlineHandsEnabled) {
+    const lv_color_t outlineColor =
+        redNightVisualEnabled() ? COLOR_ERROR : analogHandTone();
+    const lv_coord_t sideOffset = outlineSideOffset;
+    const lv_point_t leftFrom =
+        analogPoint(from, angleDegrees - 90.0f, sideOffset);
+    const lv_point_t leftTo =
+        analogPoint(to, angleDegrees - 90.0f, sideOffset);
+    const lv_point_t rightFrom =
+        analogPoint(from, angleDegrees + 90.0f, sideOffset);
+    const lv_point_t rightTo =
+        analogPoint(to, angleDegrees + 90.0f, sideOffset);
+
+    drawAnalogLine(target, leftFrom, leftTo, outlineColor, 4);
+    drawAnalogLine(target, rightFrom, rightTo, outlineColor, 4);
+    drawAnalogArcSegment(target, to, sideOffset, angleDegrees - 90.0f,
+                         angleDegrees + 90.0f, outlineColor, 4);
+    drawAnalogLine(target, leftFrom, rightFrom, outlineColor, 4);
+    return;
+  }
   drawAnalogLine(target, from, to, outline, outlineWidth);
   drawAnalogLine(target, from, to, edge, edgeWidth);
   drawAnalogLine(target, from, to, core, coreWidth);
@@ -575,7 +643,7 @@ void renderAnalogDial(const AnalogDrawTarget &target,
   const bool redNight = redNightVisualEnabled();
   const lv_color_t cyan = redNight ? COLOR_ERROR : analogTone();
   const lv_color_t amber =
-      redNight ? COLOR_ERROR : lv_color_make(255, 171, 0);
+      redNight ? COLOR_ERROR : configuredColor(analogCardinalAccentColor);
   const lv_color_t markerCore =
       redNight ? lv_color_make(255, 112, 112) : COLOR_TEXT;
   const lv_color_t markerEdge = redNight ? COLOR_ERROR : analogTone(0.75f);
@@ -721,7 +789,7 @@ void drawAnalogHandsEvent(lv_event_t *event) {
   const lv_point_t secondFrom = analogPoint(center, secondAngle + 180.0f, 34.0f);
   const lv_point_t secondTo = analogPoint(center, secondAngle, 192.0f);
   drawAnalogLine(target, secondFrom, secondTo,
-                 redNightVisualEnabled() ? COLOR_ERROR : analogTone(),
+                 redNightVisualEnabled() ? COLOR_ERROR : analogHandTone(),
                  3);
 
   drawAnalogCircle(target, center, 18,
@@ -729,7 +797,7 @@ void drawAnalogHandsEvent(lv_event_t *event) {
                                            : lv_color_make(3, 16, 27));
   drawAnalogCircle(target, center, 13,
                    redNightVisualEnabled() ? COLOR_ERROR
-                                           : analogTone(0.9f));
+                                           : analogHandTone(0.9f));
   drawAnalogCircle(target, center, 8,
                    redNightVisualEnabled() ? lv_color_make(255, 112, 112)
                                            : COLOR_TEXT);
@@ -868,8 +936,8 @@ void invalidateAnalogHands(bool hourAndMinute = true,
   float secondAngle = 0.0f;
   if (!analogHandAngles(hourAngle, minuteAngle, secondAngle)) return;
   if (hourAndMinute) {
-    invalidateAnalogHandArea(hourAngle, 16.0f, 145.0f, 21);
-    invalidateAnalogHandArea(minuteAngle, 20.0f, 178.0f, 17);
+    invalidateAnalogHandArea(hourAngle, 22.0f, 145.0f, 21);
+    invalidateAnalogHandArea(minuteAngle, 25.0f, 178.0f, 17);
   }
   if (second) invalidateAnalogHandArea(secondAngle, 34.0f, 192.0f, 3);
 }
@@ -1109,17 +1177,27 @@ void alignAnalogMetricLine(lv_obj_t *titleLabel, lv_obj_t *valueLabel,
 void applyAnalogColors() {
   if (!analogLayoutEnabled() || analogDialLayer == nullptr) return;
   const bool redNight = redNightVisualEnabled();
+  const lv_color_t unifiedColor = analogTone();
   const lv_color_t outside =
-      redNight ? COLOR_ERROR : configuredColor(outsideColor);
-  const lv_color_t room = redNight ? COLOR_ERROR : configuredColor(roomColor);
+      redNight ? COLOR_ERROR
+               : analogMonochromeValuesEnabled ? unifiedColor
+                                                : configuredColor(outsideColor);
+  const lv_color_t room =
+      redNight ? COLOR_ERROR
+               : analogMonochromeValuesEnabled ? unifiedColor
+                                                : configuredColor(roomColor);
   const lv_color_t metricA =
       redNight ? COLOR_ERROR
-               : metricColorForValue(currentValues.metricAValue,
-                                     metricAColorScale);
+               : analogMonochromeValuesEnabled
+                     ? unifiedColor
+                     : metricColorForValue(currentValues.metricAValue,
+                                           metricAColorScale);
   const lv_color_t metricB =
       redNight ? COLOR_ERROR
-               : metricColorForValue(currentValues.metricBValue,
-                                     metricBColorScale);
+               : analogMonochromeValuesEnabled
+                     ? unifiedColor
+                     : metricColorForValue(currentValues.metricBValue,
+                                           metricBColorScale);
   lv_obj_t *outsideLabels[] = {
       analogOutsideTitleLabel, analogOutsideValueLabel,
       analogOutsideDecimalLabel, analogOutsideUnitLabel};
@@ -1135,10 +1213,15 @@ void applyAnalogColors() {
   for (lv_obj_t *label : roomLabels) setTextColor(label, room);
   for (lv_obj_t *label : metricALabels) setTextColor(label, metricA);
   for (lv_obj_t *label : metricBLabels) setTextColor(label, metricB);
-  setTextColor(dateLabel,
-               redNight ? COLOR_ERROR : configuredColor(dateColor));
+  setTextColor(dateLabel, redNight ? COLOR_ERROR
+                                  : analogMonochromeValuesEnabled
+                                        ? unifiedColor
+                                        : configuredColor(analogDateColor));
   const lv_color_t weather =
-      redNight ? COLOR_ERROR : configuredColor(monochromeWeatherIconColor);
+      redNight ? COLOR_ERROR
+               : analogMonochromeValuesEnabled
+                     ? unifiedColor
+                     : configuredColor(monochromeWeatherIconColor);
   const bool animationIsMonochrome =
       strncmp(weatherAnimationKey, "monochrome-", 11) == 0;
   lv_obj_set_style_img_recolor(weatherImage, weather, 0);
@@ -1146,7 +1229,10 @@ void applyAnalogColors() {
   lv_obj_set_style_img_recolor(weatherAnimation, weather, 0);
   lv_obj_set_style_img_recolor_opa(
       weatherAnimation,
-      redNight || animationIsMonochrome ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+      redNight || analogMonochromeValuesEnabled || animationIsMonochrome
+          ? LV_OPA_COVER
+          : LV_OPA_TRANSP,
+      0);
   setTextColor(roomIconLabel, room);
 }
 
@@ -1741,7 +1827,9 @@ void applyDashboardColors() {
                                                                : COLOR_OUTSIDE,
                                 LV_PART_INDICATOR);
     }
-    setTextColor(dateLabel, configuredColor(dateColor));
+    setTextColor(dateLabel,
+                 configuredColor(analogLayoutEnabled() ? analogDateColor
+                                                       : dateColor));
     setTextColor(outsideTitleLabel, configuredOutsideColor);
     setTextColor(outsideIntegerLabel, configuredOutsideColor);
     setTextColor(outsideDecimalLabel, configuredOutsideColor);
@@ -2840,22 +2928,41 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
       appearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
       static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
   const uint32_t tone = appearance.analogToneColor & 0xFFFFFF;
+  const uint32_t handTone = appearance.analogHandToneColor & 0xFFFFFF;
+  const uint32_t accentColor =
+      appearance.analogCardinalAccentColor & 0xFFFFFF;
   const bool accentsEnabled = appearance.analogCardinalAccentsEnabled;
+  const bool outlineHandsEnabled = appearance.analogOutlineHandsEnabled;
+  const bool monochromeValuesEnabled =
+      appearance.analogMonochromeValuesEnabled;
+  const uint32_t appearanceDateColor =
+      appearance.analogDateColor & 0xFFFFFF;
   const uint32_t weatherColor =
       appearance.monochromeWeatherIconColor & 0xFFFFFF;
   if (activeClockStyle == style && analogToneColor == tone &&
+      analogHandToneColor == handTone &&
+      analogCardinalAccentColor == accentColor &&
       analogCardinalAccentsEnabled == accentsEnabled &&
+      analogOutlineHandsEnabled == outlineHandsEnabled &&
+      analogMonochromeValuesEnabled == monochromeValuesEnabled &&
+      analogDateColor == appearanceDateColor &&
       monochromeWeatherIconColor == weatherColor &&
       dashboardContent != nullptr) {
     return;
   }
   const bool styleChanged = activeClockStyle != style;
   const bool dialAppearanceChanged = analogToneColor != tone ||
+                                     analogCardinalAccentColor != accentColor ||
                                      analogCardinalAccentsEnabled !=
                                          accentsEnabled;
   activeClockStyle = style;
   analogToneColor = tone;
+  analogHandToneColor = handTone;
+  analogCardinalAccentColor = accentColor;
   analogCardinalAccentsEnabled = accentsEnabled;
+  analogOutlineHandsEnabled = outlineHandsEnabled;
+  analogMonochromeValuesEnabled = monochromeValuesEnabled;
+  analogDateColor = appearanceDateColor;
   monochromeWeatherIconColor = weatherColor;
   if (dashboardContent == nullptr || !dashboardRuntimeConfigAvailable) return;
   clockDashboardApplyConfiguration(dashboardRuntimeConfig);
