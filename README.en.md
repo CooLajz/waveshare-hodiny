@@ -29,8 +29,8 @@ are configured in a web interface without editing source code.
 </p>
 
 <p align="center">
-  <img src="screenshots/dashboard.png" alt="Waveshare Hodiny digital clock in day mode" width="30%">
   <img src="screenshots/dashboard-night.png" alt="Waveshare Hodiny red night dashboard" width="30%">
+  <img src="screenshots/dashboard-analog-night.png" alt="Waveshare Hodiny analog clock in red night mode" width="30%">
   <img src="screenshots/dashboard-radar.png" alt="CHMI precipitation radar on Waveshare Hodiny" width="30%">
 </p>
 
