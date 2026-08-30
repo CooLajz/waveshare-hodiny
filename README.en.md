@@ -6,9 +6,10 @@ An open-source information dashboard for the round 480 × 480 px
 [Waveshare ESP32-S3-Touch-LCD-2.1](https://www.waveshare.com/esp32-s3-touch-lcd-2.1.htm).
 It displays time, date, weather, temperatures, additional sensor values and
 precipitation radar data from the Czech Hydrometeorological Institute (CHMI).
-Values can come from Open-Meteo without an account or from Home Assistant.
-Appearance, data sources, location, radar, brightness, animations and updates
-are configured in a web interface without editing source code.
+Values can come from Open-Meteo without an account, optionally extended with
+personal TMEP.cz sensors, or from Home Assistant. Appearance, data sources,
+location, radar, brightness, animations and updates are configured in a web
+interface without editing source code.
 
 <p align="center">
   <a href="https://coolajz.github.io/waveshare-hodiny/">
@@ -53,6 +54,7 @@ changes the system text and verbal date shown on the display.
 - optional automatic rotation between the clock and radar,
 - two additional values such as CO₂, VOC, particulate matter, humidity,
   pressure or battery level,
+- personal TMEP.cz sensors as an optional extension to Open-Meteo values,
 - custom units, decimal precision and smooth color scales,
 - independent day and night brightness with manual or automatic switching,
 - dots, line and comet seconds effects,
@@ -121,13 +123,22 @@ also define the center of local CHMI radar views.
 
 Your own TMEP.cz sensors can be added to Open-Meteo mode. Paste the complete URL
 from **Extended JSON – with all sensors**, select **Verify and load sensors**, and
-values from up to 32 sensors are appended to the same four selectors under a TMEP.cz group. The
-firmware uses the unit returned by the export, including for custom quantities.
-The entire account is refreshed with one HTTPS request every minute, while
-Open-Meteo continues to refresh every 10 minutes. The firmware extracts the ID
-and export key and always builds the request with `extended=1&all=1`.
-These credentials remain stored on the device and are never returned by the
-configuration API or backup.
+values from up to 32 sensors are appended to the same four selectors under a
+TMEP.cz group. The firmware uses the unit returned by the export, including for
+custom quantities.
+
+When at least one TMEP value is selected, the complete export is fetched with
+one HTTPS request every minute. With no selected TMEP value, the catalog is
+loaded once after boot and is not refreshed periodically. Opening the web
+configuration displays the cached catalog first and refreshes it from TMEP.cz
+at most once per page load. Open-Meteo continues to refresh independently every
+10 minutes.
+
+The firmware extracts the ID and export key and always builds the request with
+`extended=1&all=1`. These credentials remain stored on the device and are never
+returned by the configuration API or backup. **Remove TMEP.cz** clears the URL,
+catalog, diagnostics and TMEP assignments; affected slots return to their
+default Open-Meteo values.
 
 Example export URL:
 `https://tmep.cz/vystup-json.php?id=11746&export_key=XXXXXXXXsd&extended=1&all=1`

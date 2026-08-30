@@ -6,8 +6,9 @@
 [Waveshare ESP32-S3-Touch-LCD-2.1](https://www.waveshare.com/esp32-s3-touch-lcd-2.1.htm)
 s rozlišením 480 × 480 px. Zobrazuje čas, datum, počasí, teploty, další
 měřené hodnoty a srážkový radar ČHMÚ. Jako zdroj hodnot lze použít Open-Meteo
-bez účtu nebo Home Assistant. Vzhled, zdroje dat, poloha, radar, jas, animace
-i aktualizace se nastavují z webového rozhraní bez úpravy zdrojového kódu.
+bez účtu, volitelně doplněné vlastními čidly TMEP.cz, nebo Home Assistant.
+Vzhled, zdroje dat, poloha, radar, jas, animace i aktualizace se nastavují
+z webového rozhraní bez úpravy zdrojového kódu.
 
 <p align="center">
   <a href="https://coolajz.github.io/waveshare-hodiny/">
@@ -52,6 +53,7 @@ pozicích 12, 3, 6 a 9 hodin.
 - červenou noční paletu radaru se zachováním rozlišení intenzity srážek,
 - volitelné automatické střídání hodin a radaru se samostatnou dobou zobrazení,
 - dvě další měřené veličiny, například CO₂, VOC, vlhkost, tlak nebo baterii,
+- vlastní čidla TMEP.cz jako volitelný doplněk hodnot Open-Meteo,
 - vlastní jednotky, počet desetinných míst a plynulé barevné škály,
 - denní a noční jas s ručním přepínáním nebo automatikou podle Open-Meteo či entity slunce,
 - tři efekty vteřin: klasické tečky, plynulou čáru a kometu,
@@ -129,12 +131,20 @@ současně určují střed lokálních pohledů meteoradaru ČHMÚ.
 
 K režimu Open-Meteo lze přidat vlastní čidla z TMEP.cz. Vlož celou URL ze sekce
 **Rozšířený JSON – se všemi čidly**, zvol **Ověřit a načíst čidla** a hodnoty až
-32 čidel se přidají přímo do stejných čtyř výběrů pod skupinu TMEP.cz. Firmware používá jednotku
-vrácenou exportem, takže podporuje i vlastní veličiny. Celý účet se obnovuje
-jedním HTTPS požadavkem každou minutu; Open-Meteo se dál obnovuje jednou za
-10 minut. Firmware si z vložené URL bezpečně vybere ID a exportní klíč a
-požadavek vždy skládá s `extended=1&all=1`. Citlivé údaje zůstávají uložené v
-zařízení a API ani záloha je nevracejí.
+32 čidel se přidají přímo do stejných čtyř výběrů pod skupinu TMEP.cz. Firmware
+používá jednotku vrácenou exportem, takže podporuje i vlastní veličiny.
+
+Je-li vybraná alespoň jedna hodnota TMEP, celý export se načítá jedním HTTPS
+požadavkem každou minutu. Bez vybrané hodnoty se katalog načte jednou po startu
+a dál se pravidelně neobnovuje. Otevření webové konfigurace nejprve zobrazí
+uložený katalog a nejvýše jednou za načtení stránky jej aktualizuje přímo
+z TMEP.cz. Open-Meteo se nezávisle obnovuje jednou za 10 minut.
+
+Firmware si z vložené URL bezpečně vybere ID a exportní klíč a požadavek vždy
+skládá s `extended=1&all=1`. Citlivé údaje zůstávají uložené v zařízení a API
+ani záloha je nevracejí. Volbou **Odebrat TMEP.cz** se smaže URL, katalog,
+diagnostický stav i přiřazení TMEP; dotčené pozice se vrátí na výchozí hodnoty
+Open-Meteo.
 
 Příklad exportní URL:
 `https://tmep.cz/vystup-json.php?id=11746&export_key=XXXXXXXXsd&extended=1&all=1`
