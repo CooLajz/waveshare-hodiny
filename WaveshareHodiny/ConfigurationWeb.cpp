@@ -177,6 +177,8 @@ constexpr char CONTROL_PREFS_NAMESPACE[] = "control-api";
 constexpr char CONTROL_PREFS_KEY[] = "secret";
 constexpr size_t CONTROL_SECRET_LENGTH = 32;
 String controlSecret;
+constexpr size_t SAVE_CONFIRMATION_ID_LENGTH = 16;
+String lastSaveConfirmationId;
 constexpr char WEB_AUTH_PREFS_NAMESPACE[] = "web-auth";
 constexpr char WEB_AUTH_PREFS_KEY[] = "credential";
 constexpr uint32_t WEB_PASSWORD_MAGIC = 0x57485058;
@@ -235,6 +237,18 @@ bool validWebPasswordLength(const String &password) {
       ++characterCount;
   }
   return characterCount >= 6 && characterCount <= 20;
+}
+
+bool validSaveConfirmationId(const String &value) {
+  if (value.length() != SAVE_CONFIRMATION_ID_LENGTH) return false;
+  for (size_t index = 0; index < value.length(); ++index) {
+    const char character = value[index];
+    if (!((character >= '0' && character <= '9') ||
+          (character >= 'a' && character <= 'f'))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool deriveWebPassword(const String &password, const uint8_t *salt,
@@ -981,6 +995,8 @@ void handleGetConfig() {
   result.reserve(3000);
   result = F("{\"ok\":true,\"homeAssistantUrl\":\"");
   result += jsonEscape(config.homeAssistantUrl);
+  result += F("\",\"saveConfirmationId\":\"");
+  result += lastSaveConfirmationId;
   result += F("\",\"tokenConfigured\":");
   result += config.homeAssistantToken[0] == '\0' ? F("false") : F("true");
   result += F(",\"webPasswordConfigured\":");
@@ -1180,6 +1196,12 @@ void handleGetConfig() {
 
 void handleSaveConfig() {
   ClockConfig &config = currentConfig();
+  const String saveConfirmationId = server.arg("saveConfirmationId");
+  if (!saveConfirmationId.isEmpty() &&
+      !validSaveConfirmationId(saveConfirmationId)) {
+    sendError(400, F("Identifikátor uložení není platný."));
+    return;
+  }
   const String language = server.arg("language");
   if (language == "cs")
     config.language = CLOCK_LANGUAGE_CZECH;
@@ -1479,6 +1501,7 @@ void handleSaveConfig() {
     sendError(500, F("Režim webového serveru se nepodařilo uložit."));
     return;
   }
+  lastSaveConfirmationId = saveConfirmationId;
   extendWebAvailability();
   sendJson(200, F("{\"ok\":true}"));
   applyWebMode(requestedWebMode);
