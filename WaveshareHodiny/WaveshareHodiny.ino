@@ -541,7 +541,8 @@ void loadDayNightStatusForWeb(bool &sunAvailable, bool &sunIsDay,
   nightMode = clockDashboardNightModeEnabled();
 }
 
-void handleSettingsSave(uint8_t dayBrightness, uint8_t nightBrightness,
+void handleSettingsSave(uint8_t clockStyle, uint8_t dayBrightness,
+                        uint8_t nightBrightness,
                         bool automaticDayNight, bool secondRingEnabled,
                         uint8_t selectedSecondEffect,
                         bool animatedWeatherIcons, uint8_t weatherIconStyle,
@@ -556,6 +557,12 @@ void handleSettingsSave(uint8_t dayBrightness, uint8_t nightBrightness,
   config.weatherIconStyle = weatherIconStyle;
   config.automaticFirmwareUpdate = automaticFirmwareUpdate;
   if (saveRuntimeConfig(config, false)) {
+    ClockAppearanceConfig appearance = persistedAppearance;
+    appearance.style = constrain(
+        clockStyle, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
+        static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
+    if (appearance.style != persistedAppearance.style)
+      saveClockAppearanceFromWeb(appearance);
     configurationWebSetMode(static_cast<ConfigurationWebMode>(webMode));
     clockDashboardSetWebMode(configurationWebMode());
   }
@@ -590,6 +597,9 @@ void handleUsbCommands() {
         Serial.println("SETTINGS_OPEN");
       } else if (usbCommand == "SETTINGS3" && !screenshotTransferActive) {
         clockDashboardShowSettingsPage(2);
+        Serial.println("SETTINGS_OPEN");
+      } else if (usbCommand == "SETTINGS4" && !screenshotTransferActive) {
+        clockDashboardShowSettingsPage(3);
         Serial.println("SETTINGS_OPEN");
       } else if (usbCommand == "NIGHT" && !screenshotTransferActive) {
         clockDashboardSetNightMode(true);

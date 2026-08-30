@@ -21,7 +21,8 @@ struct ClockValues {
 
 using BrightnessPreviewCallback = void (*)(uint8_t brightness);
 using SettingsOpenCallback = void (*)();
-using SettingsSaveCallback = void (*)(uint8_t dayBrightness,
+using SettingsSaveCallback = void (*)(uint8_t clockStyle,
+                                      uint8_t dayBrightness,
                                       uint8_t nightBrightness,
                                       bool automaticDayNight,
                                       bool secondRingEnabled,

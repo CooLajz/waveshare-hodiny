@@ -149,12 +149,12 @@ def main() -> None:
     parser.add_argument(
         "--settings",
         action="store_true",
-        help="Před screenshotem otevře obrazovku nastavení jasu",
+        help="Před screenshotem otevře první stránku nastavení",
     )
     parser.add_argument(
         "--settings-page",
         type=int,
-        choices=(1, 2, 3),
+        choices=(1, 2, 3, 4),
         help="Před screenshotem otevře vybranou stránku nastavení",
     )
     parser.add_argument(
