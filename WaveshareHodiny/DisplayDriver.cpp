@@ -43,21 +43,38 @@ void flushDisplay(lv_disp_drv_t *driver, const lv_area_t *area, lv_color_t *pixe
   // Oba draw buffery jsou přímo fyzické framebuffery RGB panelu. I při
   // částečném LVGL renderu proto panelu předáváme začátek celého hotového
   // framebufferu; area popisuje pouze oblast, kterou LVGL uvnitř něj změnilo.
-  if (!LCD_addWindow(0, 0, 479, 479,
-                     reinterpret_cast<uint8_t *>(&pixels->full))) {
+  const bool framePresented = LCD_addWindow(
+      0, 0, 479, 479, reinterpret_cast<uint8_t *>(&pixels->full));
+  if (!framePresented) {
     // Při chybě zachováme LVGL živé; následný resync obnoví RGB DMA bez
     // předstírání, že čekání na bezpečné uvolnění framebufferu uspělo.
     LCD_Resync();
   }
 
-  if (partialRefreshWarmupFrames > 0) {
+  if (framePresented && partialRefreshWarmupFrames > 0) {
     // Direct mode předpokládá, že oba framebuffery obsahují stejný výchozí
     // snímek. Než jej zapneme, necháme LVGL oba buffery po jednom kompletně
     // vyrenderovat. Vyhneme se tak kopírování do framebufferu, který může panel
     // právě číst, a tedy i jednorázovému roztržení obrazu při přepnutí.
     --partialRefreshWarmupFrames;
     if (partialRefreshWarmupFrames == 0) {
-      partialRefreshEnableRequested = true;
+      // Mezi dvěma plnými zahřívacími snímky může přeskočit sekunda nebo se
+      // změnit jiný dynamický obsah. Oba buffery by pak před zapnutím LVGL
+      // direct mode nebyly totožné a panel by mohl krátce střídat dvě polohy
+      // ručičky. Po dokončení fyzického snímku už panel předchozí framebuffer
+      // nečte, proto jej bezpečně sjednotíme s právě dokončeným obrazem.
+      void *otherBuffer = nullptr;
+      if (pixels == frameBuffer1)
+        otherBuffer = frameBuffer2;
+      else if (pixels == frameBuffer2)
+        otherBuffer = frameBuffer1;
+      if (otherBuffer == nullptr) {
+        partialRefreshWarmupFrames = 2;
+        partialRefreshWarmupRequested = true;
+      } else {
+        memcpy(otherBuffer, pixels, FRAMEBUFFER_BYTES);
+        partialRefreshEnableRequested = true;
+      }
     } else {
       partialRefreshWarmupRequested = true;
     }
