@@ -108,8 +108,8 @@ Produkční firmware obsluhuje Improv Serial na obou konektorech.
 2. Počkej na připojení; na displeji se zobrazí IP adresa a stavové ikony.
 3. Otevři `http://waveshare-hodiny.local/`. Pokud mDNS v síti nefunguje,
    použij IP adresu z nastavení na displeji.
-4. V záložce **Zdroj a poloha** vyber Open-Meteo nebo Home Assistant a vyhledej
-   město. Poloha je společná pro počasí Open-Meteo i meteoradar.
+4. V záložce **Zdroj a poloha** vyber Open-Meteo s TMEP.cz nebo Home Assistant
+   a vyhledej město. Poloha je společná pro počasí Open-Meteo i meteoradar.
 5. Při použití Home Assistantu zadej jeho adresu a long-lived access token a
    tlačítkem **Otestovat připojení** ověř spojení.
 6. Uprav vzhled, radar a jas a zvol **Uložit změny**.
@@ -124,6 +124,20 @@ Nová konfigurace používá Open-Meteo, polohu Brno a pohled meteoradaru na cel
 Open-Meteo je výchozí zdroj a nevyžaduje účet ani token. Poskytuje aktuální
 počasí a čtyři konfigurovatelné hodnoty. Vybrané město a jeho GPS souřadnice
 současně určují střed lokálních pohledů meteoradaru ČHMÚ.
+
+### TMEP.cz jako doplněk Open-Meteo
+
+K režimu Open-Meteo lze přidat vlastní čidla z TMEP.cz. Vlož celou URL ze sekce
+**Rozšířený JSON – se všemi čidly**, zvol **Ověřit a načíst čidla** a hodnoty všech dostupných čidel se přidají
+přímo do stejných čtyř výběrů pod skupinu TMEP.cz. Firmware používá jednotku
+vrácenou exportem, takže podporuje i vlastní veličiny. Celý účet se obnovuje
+jedním HTTPS požadavkem každou minutu; Open-Meteo se dál obnovuje jednou za
+10 minut. Firmware si z vložené URL bezpečně vybere ID a exportní klíč a
+požadavek vždy skládá s `extended=1&all=1`. Citlivé údaje zůstávají uložené v
+zařízení a API ani záloha je nevracejí.
+
+Příklad exportní URL:
+`https://tmep.cz/vystup-json.php?id=11746&export_key=XXXXXXXXsd&extended=1&all=1`
 
 ### Home Assistant
 
@@ -269,14 +283,14 @@ V záložce **Systém** je odkaz na samostatnou stránku `/diagnostics`, která 
 otevře v novém panelu. Bez dalších měření na pozadí zobrazuje aktuální a
 minimální volnou interní RAM a PSRAM, procesor, velikost flash, důvod restartu,
 Wi-Fi, IP adresu a skutečnou frekvenci pixel clocku displeje. Dále ukazuje stav
-Home Assistantu a Open-Meteo a u radaru vybrané město, GPS, rozsah, počet
+Home Assistantu, Open-Meteo a TMEP.cz a u radaru vybrané město, GPS, rozsah, počet
 připravených snímků, jejich časové rozpětí, poslední úspěšnou aktualizaci,
 další plánovanou kontrolu, HTTP stav a právě zpracovávaný soubor.
 
 ### Záloha konfigurace
 
 Exportovaná JSON záloha obsahuje vzhled a ID entit, ale neobsahuje Home
-Assistant token, heslo webu ani secret ovládacího API. Po importu proto může
+Assistant token, exportní URL TMEP.cz, heslo webu ani secret ovládacího API. Po importu proto může
 být nutné citlivé hodnoty zadat znovu. Restart zařízení uložené nastavení
 nemaže.
 

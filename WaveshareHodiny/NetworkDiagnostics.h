@@ -8,7 +8,9 @@ enum class NetworkDiagnosticKind : uint8_t {
   WeatherAnimation = 2,
   OpenMeteoRuntime = 3,
   OpenMeteoTest = 4,
-  Count = 5,
+  TmepRuntime = 5,
+  TmepTest = 6,
+  Count = 7,
 };
 
 struct NetworkMemorySnapshot {
@@ -23,6 +25,7 @@ struct NetworkDiagnosticSnapshot {
   uint32_t successes = 0;
   uint32_t failures = 0;
   int lastResult = 0;
+  bool lastSuccess = false;
   unsigned long lastStartedAt = 0;
   unsigned long lastFinishedAt = 0;
   NetworkMemorySnapshot before;

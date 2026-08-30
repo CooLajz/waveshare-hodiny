@@ -139,6 +139,7 @@ lv_obj_t *analogMetricAUnitLabel = nullptr;
 lv_obj_t *analogMetricBTitleLabel = nullptr;
 lv_obj_t *analogMetricBValueLabel = nullptr;
 lv_obj_t *analogMetricBUnitLabel = nullptr;
+lv_obj_t *analogMetricDivider = nullptr;
 
 struct AnalogDialRun {
   uint16_t length;
@@ -702,12 +703,6 @@ void renderAnalogDial(const AnalogDrawTarget &target,
                  {static_cast<lv_coord_t>(center.x + 38),
                   static_cast<lv_coord_t>(center.y - 112)},
                  cyan, 2, LV_OPA_80);
-  drawAnalogLine(target,
-                 {static_cast<lv_coord_t>(center.x - 69),
-                  static_cast<lv_coord_t>(center.y + 120)},
-                 {static_cast<lv_coord_t>(center.x + 69),
-                  static_cast<lv_coord_t>(center.y + 120)},
-                 cyan, 2, LV_OPA_80);
 }
 
 void drawCachedAnalogDial(lv_draw_ctx_t *drawContext,
@@ -973,7 +968,7 @@ void createAnalogLayout(lv_obj_t *content) {
   analogOutsideDecimalLabel =
       makeLabel(content, &lv_font_montserrat_28, COLOR_OUTSIDE);
   analogOutsideUnitLabel =
-      makeLabel(content, &lv_font_montserrat_20, COLOR_OUTSIDE);
+      makeLabel(content, &lv_font_montserrat_28, COLOR_OUTSIDE);
 
   analogRoomTitleLabel = makeLabel(content, &clock_czech_20, COLOR_ROOM);
   lv_obj_set_style_text_letter_space(analogRoomTitleLabel, 1, 0);
@@ -982,7 +977,7 @@ void createAnalogLayout(lv_obj_t *content) {
       makeLabel(content, &lv_font_montserrat_36, COLOR_ROOM);
   analogRoomDecimalLabel =
       makeLabel(content, &lv_font_montserrat_28, COLOR_ROOM);
-  analogRoomUnitLabel = makeLabel(content, &lv_font_montserrat_20, COLOR_ROOM);
+  analogRoomUnitLabel = makeLabel(content, &lv_font_montserrat_28, COLOR_ROOM);
 
   analogMetricATitleLabel = makeLabel(content, &clock_czech_16, COLOR_AIR);
   analogMetricAValueLabel =
@@ -995,6 +990,15 @@ void createAnalogLayout(lv_obj_t *content) {
       makeLabel(content, &lv_font_montserrat_32, COLOR_HUMIDITY);
   analogMetricBUnitLabel =
       makeLabel(content, &clock_czech_16, COLOR_HUMIDITY);
+
+  analogMetricDivider = lv_obj_create(content);
+  lv_obj_set_size(analogMetricDivider, 138, 2);
+  lv_obj_set_style_radius(analogMetricDivider, 1, 0);
+  lv_obj_set_style_border_width(analogMetricDivider, 0, 0);
+  lv_obj_set_style_bg_color(analogMetricDivider, analogTone(), 0);
+  lv_obj_set_style_bg_opa(analogMetricDivider, LV_OPA_80, 0);
+  lv_obj_clear_flag(analogMetricDivider, LV_OBJ_FLAG_SCROLLABLE);
+  alignCenter(analogMetricDivider, 0, 120);
 
   lv_img_set_zoom(weatherImage, 256);
   alignCenter(weatherImage, 0, -70);
@@ -1012,6 +1016,7 @@ void createAnalogLayout(lv_obj_t *content) {
         analogMetricATitleLabel, analogMetricAValueLabel,
         analogMetricAUnitLabel,  analogMetricBTitleLabel,
         analogMetricBValueLabel, analogMetricBUnitLabel,
+        analogMetricDivider,
     };
     for (lv_obj_t *object : analogOnly)
       lv_obj_add_flag(object, LV_OBJ_FLAG_HIDDEN);
@@ -1150,28 +1155,53 @@ void setAnalogTemperature(lv_obj_t *integerLabel, lv_obj_t *decimalLabel,
     left += decimalWidth;
   }
   left += UNIT_GAP;
-  const int unitCenterY =
-      centerY +
-      (lv_obj_get_height(unitLabel) - lv_obj_get_height(integerLabel)) / 2;
-  alignCenter(unitLabel, left + lv_obj_get_width(unitLabel) / 2, unitCenterY);
+  alignCenter(unitLabel, left + lv_obj_get_width(unitLabel) / 2, centerY + 4);
 }
 
-void alignAnalogMetricLine(lv_obj_t *titleLabel, lv_obj_t *valueLabel,
-                           lv_obj_t *unitLabel, int centerY) {
+int analogMetricLineWidth(lv_obj_t *titleLabel, lv_obj_t *valueLabel,
+                          lv_obj_t *unitLabel) {
   lv_obj_update_layout(titleLabel);
   lv_obj_update_layout(valueLabel);
   lv_obj_update_layout(unitLabel);
   constexpr int TITLE_GAP = 12;
   constexpr int UNIT_GAP = 7;
-  const int totalWidth = lv_obj_get_width(titleLabel) + TITLE_GAP +
-                         lv_obj_get_width(valueLabel) + UNIT_GAP +
-                         lv_obj_get_width(unitLabel);
+  return lv_obj_get_width(titleLabel) + TITLE_GAP +
+         lv_obj_get_width(valueLabel) + UNIT_GAP + lv_obj_get_width(unitLabel);
+}
+
+void alignAnalogMetricLine(lv_obj_t *titleLabel, lv_obj_t *valueLabel,
+                           lv_obj_t *unitLabel, int centerY,
+                           int unitOffsetY = 6) {
+  constexpr int TITLE_GAP = 12;
+  constexpr int UNIT_GAP = 7;
+  const int totalWidth =
+      analogMetricLineWidth(titleLabel, valueLabel, unitLabel);
   int left = -totalWidth / 2;
   alignCenter(titleLabel, left + lv_obj_get_width(titleLabel) / 2, centerY + 5);
   left += lv_obj_get_width(titleLabel) + TITLE_GAP;
   alignCenter(valueLabel, left + lv_obj_get_width(valueLabel) / 2, centerY);
   left += lv_obj_get_width(valueLabel) + UNIT_GAP;
-  alignCenter(unitLabel, left + lv_obj_get_width(unitLabel) / 2, centerY + 6);
+  alignCenter(unitLabel, left + lv_obj_get_width(unitLabel) / 2,
+              centerY + unitOffsetY);
+}
+
+void updateAnalogMetricDivider() {
+  if (analogMetricDivider == nullptr) return;
+  constexpr int MINIMUM_WIDTH = 138;
+  constexpr int HORIZONTAL_PADDING = 12;
+  constexpr int MAXIMUM_WIDTH = 250;
+  const int widestLine =
+      max(analogMetricLineWidth(analogMetricATitleLabel,
+                                analogMetricAValueLabel,
+                                analogMetricAUnitLabel),
+          analogMetricLineWidth(analogMetricBTitleLabel,
+                                analogMetricBValueLabel,
+                                analogMetricBUnitLabel));
+  const int dividerWidth =
+      constrain(widestLine + HORIZONTAL_PADDING, MINIMUM_WIDTH, MAXIMUM_WIDTH);
+  if (lv_obj_get_width(analogMetricDivider) != dividerWidth)
+    lv_obj_set_width(analogMetricDivider, dividerWidth);
+  alignCenter(analogMetricDivider, 0, 120);
 }
 
 void applyAnalogColors() {
@@ -1213,6 +1243,8 @@ void applyAnalogColors() {
   for (lv_obj_t *label : roomLabels) setTextColor(label, room);
   for (lv_obj_t *label : metricALabels) setTextColor(label, metricA);
   for (lv_obj_t *label : metricBLabels) setTextColor(label, metricB);
+  lv_obj_set_style_bg_color(
+      analogMetricDivider, redNight ? COLOR_ERROR : unifiedColor, 0);
   setTextColor(dateLabel, redNight ? COLOR_ERROR
                                   : analogMonochromeValuesEnabled
                                         ? unifiedColor
@@ -2698,27 +2730,35 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
                ? 0
                : 1;
   };
+  const auto slotUnit = [&](size_t index) -> const char * {
+    return config.tmepSlots[index].enabled
+               ? config.tmepSlots[index].unit
+               : openMeteoUnit(config.openMeteoSlots[index].value);
+  };
+  const auto slotDecimals = [&](size_t index) -> uint8_t {
+    return config.tmepSlots[index].enabled
+               ? config.tmepSlots[index].decimals
+               : openMeteoDecimals(config.openMeteoSlots[index].value);
+  };
   if (openMeteo) {
     clockConfigCopy(metricAConfig.name, sizeof(metricAConfig.name),
                     config.openMeteoSlots[2].name);
     clockConfigCopy(metricAConfig.suffix, sizeof(metricAConfig.suffix),
-                    openMeteoUnit(config.openMeteoSlots[2].value));
-    metricAConfig.decimals = openMeteoDecimals(config.openMeteoSlots[2].value);
+                    slotUnit(2));
+    metricAConfig.decimals = slotDecimals(2);
     clockConfigCopy(metricBConfig.name, sizeof(metricBConfig.name),
                     config.openMeteoSlots[3].name);
     clockConfigCopy(metricBConfig.suffix, sizeof(metricBConfig.suffix),
-                    openMeteoUnit(config.openMeteoSlots[3].value));
-    metricBConfig.decimals = openMeteoDecimals(config.openMeteoSlots[3].value);
+                    slotUnit(3));
+    metricBConfig.decimals = slotDecimals(3);
     metricAColorScale = ClockMetricColorScale{};
     metricAColorScale.points[0].color = config.openMeteoSlots[2].color;
     metricBColorScale = ClockMetricColorScale{};
     metricBColorScale.points[0].color = config.openMeteoSlots[3].color;
-    strlcpy(outsideUnit, openMeteoUnit(config.openMeteoSlots[0].value),
-            sizeof(outsideUnit));
-    strlcpy(roomUnit, openMeteoUnit(config.openMeteoSlots[1].value),
-            sizeof(roomUnit));
-    outsideDecimals = openMeteoDecimals(config.openMeteoSlots[0].value);
-    roomDecimals = openMeteoDecimals(config.openMeteoSlots[1].value);
+    strlcpy(outsideUnit, slotUnit(0), sizeof(outsideUnit));
+    strlcpy(roomUnit, slotUnit(1), sizeof(roomUnit));
+    outsideDecimals = slotDecimals(0);
+    roomDecimals = slotDecimals(1);
   } else {
     strlcpy(outsideUnit, "°C", sizeof(outsideUnit));
     strlcpy(roomUnit, "°C", sizeof(roomUnit));
@@ -2839,6 +2879,7 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   if (analogLayoutEnabled()) {
     lv_obj_clear_flag(analogDialLayer, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(analogHandsLayer, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(analogMetricDivider, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(analogOutsideTitleLabel,
                       lv_label_get_text(outsideTitleLabel));
     lv_label_set_text(analogRoomTitleLabel, lv_label_get_text(roomTitleLabel));
@@ -2855,7 +2896,8 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
     alignAnalogMetricLine(analogMetricATitleLabel, analogMetricAValueLabel,
                           analogMetricAUnitLabel, 98);
     alignAnalogMetricLine(analogMetricBTitleLabel, analogMetricBValueLabel,
-                          analogMetricBUnitLabel, 140);
+                          analogMetricBUnitLabel, 140, 4);
+    updateAnalogMetricDivider();
 
     setObjectVisible(analogOutsideTitleLabel, outsideConfigured);
     setObjectVisible(analogOutsideValueLabel, outsideConfigured);
@@ -2899,6 +2941,7 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
         analogMetricATitleLabel, analogMetricAValueLabel,
         analogMetricAUnitLabel,  analogMetricBTitleLabel,
         analogMetricBValueLabel, analogMetricBUnitLabel,
+        analogMetricDivider,
     };
     for (lv_obj_t *object : analogOnly)
       lv_obj_add_flag(object, LV_OBJ_FLAG_HIDDEN);
@@ -3028,7 +3071,8 @@ void clockDashboardUpdate(const ClockValues &values) {
                             analogMetricAUnitLabel, 98);
     if (metricBChanged)
       alignAnalogMetricLine(analogMetricBTitleLabel, analogMetricBValueLabel,
-                            analogMetricBUnitLabel, 140);
+                            analogMetricBUnitLabel, 140, 4);
+    if (metricAChanged || metricBChanged) updateAnalogMetricDivider();
     applyAnalogColors();
     applyConnectionStatusColors();
     if (automaticDayNightEnabled && currentValues.sunStateAvailable) {

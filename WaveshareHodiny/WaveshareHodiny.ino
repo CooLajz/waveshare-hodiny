@@ -24,6 +24,7 @@
 #include "NetworkDiagnostics.h"
 #include "NetworkCoordinator.h"
 #include "TCA9554PWR.h"
+#include "TmepService.h"
 #include "WifiProvisioning.h"
 #include "WeatherAnimationService.h"
 
@@ -117,6 +118,8 @@ constexpr uint32_t HOME_ASSISTANT_RESPONSE_TIMEOUT_MS = 8000;
 constexpr uint8_t HOME_ASSISTANT_REQUEST_ATTEMPTS = 2;
 constexpr uint32_t HOME_ASSISTANT_REQUEST_RETRY_DELAY_MS = 250;
 constexpr uint32_t OPEN_METEO_REFRESH_MS = 10UL * 60UL * 1000UL;
+constexpr uint32_t TMEP_REFRESH_MS = 60UL * 1000UL;
+constexpr uint32_t EXTERNAL_DATA_RETRY_MS = 60UL * 1000UL;
 constexpr time_t VALID_TIME_THRESHOLD = 1700000000;
 
 const char *CZECH_WEEKDAYS[] = {
@@ -1043,6 +1046,7 @@ bool fetchOpenMeteo(const ClockConfig &config, ClockValues &values) {
   float *destinations[] = {&values.leftTemperatureC, &values.rightTemperatureC,
                            &values.metricAValue, &values.metricBValue};
   for (size_t index = 0; index < 4; ++index) {
+    if (config.tmepSlots[index].enabled) continue;
     if (extractJsonNumberField(payload, config.openMeteoSlots[index].value,
                                number)) {
       *destinations[index] = static_cast<float>(number);
@@ -1056,6 +1060,47 @@ bool fetchOpenMeteo(const ClockConfig &config, ClockValues &values) {
                               ok ? F("Aktuální data načtena")
                                  : F("Odpověď neobsahuje všechny hodnoty"));
   networkDiagnosticsEnd(NetworkDiagnosticKind::OpenMeteoRuntime, ok, status);
+  return ok;
+}
+
+bool tmepSlotsEnabled(const ClockConfig &config) {
+  for (const ClockTmepSlotConfig &slot : config.tmepSlots) {
+    if (slot.enabled) return true;
+  }
+  return false;
+}
+
+bool fetchTmepValues(const ClockConfig &config, ClockValues &values) {
+  if (!tmepSlotsEnabled(config)) return true;
+  float *destinations[] = {&values.leftTemperatureC, &values.rightTemperatureC,
+                           &values.metricAValue, &values.metricBValue};
+  static TmepCatalog catalog;
+  int status = HTTPC_ERROR_CONNECTION_REFUSED;
+  String error;
+  if (!tmepFetchCatalog(config.tmepExportId, config.tmepExportKey, catalog,
+                        NetworkDiagnosticKind::TmepRuntime, status, error)) {
+    return false;
+  }
+
+  bool ok = true;
+  for (size_t index = 0; index < 4; ++index) {
+    const ClockTmepSlotConfig &slot = config.tmepSlots[index];
+    if (!slot.enabled) continue;
+    const TmepSensor *sensor = tmepFindSensor(catalog, slot.sensorId);
+    const TmepValue *value =
+        sensor == nullptr ? nullptr : tmepFindValue(*sensor, slot.field);
+    if (value == nullptr || !value->available) {
+      *destinations[index] = NAN;
+      ok = false;
+      continue;
+    }
+    *destinations[index] = value->value;
+  }
+  if (!ok) {
+    networkDiagnosticsSetDetail(
+        NetworkDiagnosticKind::TmepRuntime,
+        F("Export neobsahuje všechny vybrané hodnoty."));
+  }
   return ok;
 }
 
@@ -1370,24 +1415,70 @@ int weatherCodeForState(const String &state) {
 
 void homeAssistantTask(void *) {
   ClockValues lastAvailableValues;
+  unsigned long nextOpenMeteoRefreshAt = 0;
+  unsigned long nextTmepRefreshAt = 0;
   for (;;) {
     const ClockConfig config = runtimeConfigSnapshot();
     ClockValues values = lastAvailableValues;
     if (WiFi.status() != WL_CONNECTED) {
+      nextOpenMeteoRefreshAt = 0;
+      nextTmepRefreshAt = 0;
       publishHomeAssistantValues(ClockValues{});
       ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(HOME_ASSISTANT_RETRY_MS));
       continue;
     }
 
     if (config.dataSource == CLOCK_DATA_SOURCE_OPEN_METEO) {
-      const bool apiResponded = fetchOpenMeteo(config, values);
-      if (apiResponded) lastAvailableValues = values;
-      publishHomeAssistantValues(values);
-      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(
-                                   apiResponded ? OPEN_METEO_REFRESH_MS
-                                                : HOME_ASSISTANT_RETRY_MS));
+      const auto deadlineReached = [](unsigned long now,
+                                      unsigned long deadline) {
+        return deadline == 0 || static_cast<long>(now - deadline) >= 0;
+      };
+      unsigned long now = millis();
+      bool valuesUpdated = false;
+      if (deadlineReached(now, nextOpenMeteoRefreshAt)) {
+        const bool responded = fetchOpenMeteo(config, values);
+        nextOpenMeteoRefreshAt =
+            millis() +
+            (responded ? OPEN_METEO_REFRESH_MS : EXTERNAL_DATA_RETRY_MS);
+        valuesUpdated = true;
+      }
+
+      const bool tmepEnabled = tmepSlotsEnabled(config);
+      now = millis();
+      if (tmepEnabled && deadlineReached(now, nextTmepRefreshAt)) {
+        fetchTmepValues(config, values);
+        nextTmepRefreshAt = millis() + TMEP_REFRESH_MS;
+        valuesUpdated = true;
+      } else if (!tmepEnabled) {
+        nextTmepRefreshAt = 0;
+      }
+
+      if (valuesUpdated) {
+        lastAvailableValues = values;
+        publishHomeAssistantValues(values);
+      }
+
+      now = millis();
+      unsigned long waitMs =
+          deadlineReached(now, nextOpenMeteoRefreshAt)
+              ? 0
+              : nextOpenMeteoRefreshAt - now;
+      if (tmepEnabled) {
+        const unsigned long tmepWaitMs =
+            deadlineReached(now, nextTmepRefreshAt)
+                ? 0
+                : nextTmepRefreshAt - now;
+        if (tmepWaitMs < waitMs) waitMs = tmepWaitMs;
+      }
+      if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(waitMs)) > 0) {
+        nextOpenMeteoRefreshAt = 0;
+        nextTmepRefreshAt = 0;
+      }
       continue;
     }
+
+    nextOpenMeteoRefreshAt = 0;
+    nextTmepRefreshAt = 0;
 
     if (config.homeAssistantUrl[0] == '\0' ||
         config.homeAssistantToken[0] == '\0') {
@@ -1480,6 +1571,7 @@ void setup() {
   runtimeConfig = persistedConfig;
   applyDevelopmentDefaults(runtimeConfig);
   networkCoordinatorBegin();
+  tmepServiceBegin();
   LCD_Init();
   currentDisplayBrightness = runtimeConfig.dayBrightness;
   Set_Backlight(currentDisplayBrightness);

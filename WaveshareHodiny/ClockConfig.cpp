@@ -32,6 +32,7 @@ struct ConfigRecord {
 constexpr uint32_t PUBLIC_1_5_5_SCHEMA_VERSION = 20;
 constexpr uint32_t LANGUAGE_SCHEMA_VERSION = 25;
 constexpr uint32_t RADAR_SCHEMA_VERSION = 24;
+constexpr uint32_t TMEP_PREDECESSOR_SCHEMA_VERSION = 26;
 
 // Firmware 1.5.5 stored the same prefix as ClockConfig up to dateFormat.
 // Keeping the payload as bytes preserves its exact released NVS layout and
@@ -42,6 +43,15 @@ struct ConfigRecordV155 {
   uint32_t magic;
   uint32_t schemaVersion;
   uint8_t config[PUBLIC_1_5_5_CONFIG_SIZE];
+  uint32_t checksum;
+};
+
+constexpr size_t SCHEMA_26_CONFIG_SIZE = offsetof(ClockConfig, tmepExportKey);
+
+struct ConfigRecordV26 {
+  uint32_t magic;
+  uint32_t schemaVersion;
+  uint8_t config[SCHEMA_26_CONFIG_SIZE];
   uint32_t checksum;
 };
 
@@ -69,8 +79,13 @@ static_assert(PUBLIC_1_5_5_CONFIG_SIZE % alignof(ClockConfig) == 0,
 static_assert(PUBLIC_1_5_5_CONFIG_SIZE == 2096 &&
                   sizeof(ConfigRecordV155) == 2108,
               "NVS formát veřejné verze 1.5.5 se nesmí změnit.");
+static_assert(SCHEMA_26_CONFIG_SIZE == 2108 &&
+                  sizeof(ConfigRecordV26) == 2120,
+              "Migrační záznam schématu 26 musí zachovat přesnou velikost.");
 static_assert(sizeof(ConfigRecordV155) <= sizeof(ConfigRecord),
               "Migrační záznam se musí vejít do společného pracovního bufferu.");
+static_assert(sizeof(ConfigRecordV26) <= sizeof(ConfigRecord),
+              "Schéma 26 se musí vejít do společného pracovního bufferu.");
 
 uint32_t bytesChecksum(const uint8_t *bytes, size_t size) {
   uint32_t hash = 2166136261u;
@@ -157,6 +172,14 @@ void normalizeConfig(ClockConfig &config) {
   config.rightSide.color &= 0xFFFFFF;
   for (ClockOpenMeteoSlotConfig &slot : config.openMeteoSlots) {
     slot.color &= 0xFFFFFF;
+  }
+  for (ClockTmepSlotConfig &slot : config.tmepSlots) {
+    slot.decimals = constrain(slot.decimals, static_cast<uint8_t>(0),
+                              static_cast<uint8_t>(2));
+    if (slot.sensorId[0] == '\0' || slot.field[0] == '\0' ||
+        slot.unit[0] == '\0') {
+      slot = ClockTmepSlotConfig{};
+    }
   }
   config.timeColor &= 0xFFFFFF;
   config.dateColor &= 0xFFFFFF;
@@ -341,8 +364,9 @@ bool clockConfigLoad(ClockConfig &config) {
   static ConfigRecord record;
   record = ConfigRecord{};
   const size_t storedSize = preferences.getBytesLength(CONFIG_KEY);
-  const bool supportedSize =
-      storedSize == sizeof(record) || storedSize == sizeof(ConfigRecordV155);
+  const bool supportedSize = storedSize == sizeof(record) ||
+                             storedSize == sizeof(ConfigRecordV26) ||
+                             storedSize == sizeof(ConfigRecordV155);
   const bool readComplete =
       supportedSize && preferences.getBytes(CONFIG_KEY, &record, storedSize) ==
                            storedSize;
@@ -360,21 +384,50 @@ bool clockConfigLoad(ClockConfig &config) {
     return true;
   }
 
+  const ConfigRecordV26 &legacyV26 =
+      *reinterpret_cast<const ConfigRecordV26 *>(&record);
+  uint32_t embeddedSchemaV26 = 0;
+  if (readComplete && storedSize == sizeof(legacyV26)) {
+    memcpy(&embeddedSchemaV26, legacyV26.config,
+           sizeof(embeddedSchemaV26));
+  }
+  const bool validSchema26Prefix =
+      readComplete && storedSize == sizeof(legacyV26) &&
+      legacyV26.magic == CONFIG_MAGIC &&
+      legacyV26.schemaVersion >= RADAR_SCHEMA_VERSION &&
+      legacyV26.schemaVersion <= TMEP_PREDECESSOR_SCHEMA_VERSION &&
+      embeddedSchemaV26 == legacyV26.schemaVersion &&
+      legacyV26.checksum ==
+          bytesChecksum(legacyV26.config, sizeof(legacyV26.config));
+
+  if (validSchema26Prefix &&
+      legacyV26.schemaVersion == TMEP_PREDECESSOR_SCHEMA_VERSION) {
+    memcpy(&config, legacyV26.config, sizeof(legacyV26.config));
+    config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+    config.tmepExportKey[0] = '\0';
+    config.tmepExportId[0] = '\0';
+    for (ClockTmepSlotConfig &slot : config.tmepSlots)
+      slot = ClockTmepSlotConfig{};
+    normalizeConfig(config);
+    return clockConfigSave(config);
+  }
+
   // Schema 25 used 0 for Czech and 1 for English. Preserve that explicit
   // choice while migrating to the tri-state representation.
   const bool validLanguageRecord =
-      readComplete && storedSize == sizeof(record) &&
-      record.magic == CONFIG_MAGIC &&
-      record.schemaVersion == LANGUAGE_SCHEMA_VERSION &&
-      record.config.schemaVersion == LANGUAGE_SCHEMA_VERSION &&
-      record.checksum == configChecksum(record.config);
+      validSchema26Prefix &&
+      legacyV26.schemaVersion == LANGUAGE_SCHEMA_VERSION;
   if (validLanguageRecord) {
-    const uint8_t legacyLanguage = record.config.language;
-    config = record.config;
+    memcpy(&config, legacyV26.config, sizeof(legacyV26.config));
+    const uint8_t legacyLanguage = config.language;
     config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
     config.language = legacyLanguage == 1 ? CLOCK_LANGUAGE_ENGLISH
                                           : CLOCK_LANGUAGE_CZECH;
     config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_CZECHIA;
+    config.tmepExportKey[0] = '\0';
+    config.tmepExportId[0] = '\0';
+    for (ClockTmepSlotConfig &slot : config.tmepSlots)
+      slot = ClockTmepSlotConfig{};
     normalizeConfig(config);
     return clockConfigSave(config);
   }
@@ -382,16 +435,16 @@ bool clockConfigLoad(ClockConfig &config) {
   // Schema 24 has the same binary size. The language byte occupied trailing
   // padding, so the old checksum can be verified before migration.
   const bool validRadarRecord =
-      readComplete && storedSize == sizeof(record) &&
-      record.magic == CONFIG_MAGIC &&
-      record.schemaVersion == RADAR_SCHEMA_VERSION &&
-      record.config.schemaVersion == RADAR_SCHEMA_VERSION &&
-      record.checksum == configChecksum(record.config);
+      validSchema26Prefix && legacyV26.schemaVersion == RADAR_SCHEMA_VERSION;
   if (validRadarRecord) {
-    config = record.config;
+    memcpy(&config, legacyV26.config, sizeof(legacyV26.config));
     config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
     config.language = CLOCK_LANGUAGE_UNSET;
     config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_CZECHIA;
+    config.tmepExportKey[0] = '\0';
+    config.tmepExportId[0] = '\0';
+    for (ClockTmepSlotConfig &slot : config.tmepSlots)
+      slot = ClockTmepSlotConfig{};
     normalizeConfig(config);
     return clockConfigSave(config);
   }
@@ -422,6 +475,10 @@ bool clockConfigLoad(ClockConfig &config) {
   config.radarPauseSeconds = 5;
   config.language = CLOCK_LANGUAGE_UNSET;
   config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_CZECHIA;
+  config.tmepExportKey[0] = '\0';
+  config.tmepExportId[0] = '\0';
+  for (ClockTmepSlotConfig &slot : config.tmepSlots)
+    slot = ClockTmepSlotConfig{};
   normalizeConfig(config);
   return clockConfigSave(config);
 }

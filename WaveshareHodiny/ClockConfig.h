@@ -11,13 +11,22 @@ constexpr size_t CLOCK_METRIC_SUFFIX_LENGTH = 16;
 constexpr size_t CLOCK_ROOM_ICON_LENGTH = 16;
 constexpr size_t CLOCK_OPEN_METEO_CITY_LENGTH = 64;
 constexpr size_t CLOCK_OPEN_METEO_VALUE_LENGTH = 32;
+constexpr size_t CLOCK_TMEP_EXPORT_KEY_LENGTH = 128;
+constexpr size_t CLOCK_TMEP_EXPORT_ID_LENGTH = 16;
+constexpr size_t CLOCK_TMEP_SENSOR_ID_LENGTH = 16;
+constexpr size_t CLOCK_TMEP_FIELD_LENGTH = 16;
+constexpr size_t CLOCK_TMEP_UNIT_LENGTH = 16;
 constexpr size_t CLOCK_METRIC_COLOR_POINT_COUNT = 10;
 // Schema 20 is the public 1.5.5 baseline. Schema 24 added CHMI radar settings
 // plus automatic clock/radar rotation. Schema 25 added the persistent UI
 // language; schema 26 distinguishes an as-yet unselected language and uses
 // the remaining byte for CHMI radar country availability.
 // Intermediate development schemas were never released.
-constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 26;
+// Schema 27 adds optional TMEP credentials parsed from an export URL and a
+// TMEP source descriptor for each of the four Open-Meteo dashboard positions.
+// The schema 26 prefix stays
+// byte-for-byte unchanged so existing configuration can be migrated safely.
+constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 27;
 
 enum ClockLanguage : uint8_t {
   CLOCK_LANGUAGE_UNSET = 0,
@@ -125,6 +134,14 @@ struct ClockOpenMeteoSlotConfig {
   uint32_t color = 0xFFFFFF;
 };
 
+struct ClockTmepSlotConfig {
+  bool enabled = false;
+  char sensorId[CLOCK_TMEP_SENSOR_ID_LENGTH] = "";
+  char field[CLOCK_TMEP_FIELD_LENGTH] = "";
+  char unit[CLOCK_TMEP_UNIT_LENGTH] = "";
+  uint8_t decimals = 1;
+};
+
 struct ClockConfig {
   uint32_t schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
   char homeAssistantUrl[CLOCK_HA_URL_LENGTH] = "";
@@ -177,12 +194,17 @@ struct ClockConfig {
   uint8_t radarPauseSeconds = 5;
   uint8_t language = CLOCK_LANGUAGE_UNSET;
   uint8_t openMeteoCountry = CLOCK_LOCATION_COUNTRY_CZECHIA;
+  char tmepExportKey[CLOCK_TMEP_EXPORT_KEY_LENGTH] = "";
+  char tmepExportId[CLOCK_TMEP_EXPORT_ID_LENGTH] = "";
+  ClockTmepSlotConfig tmepSlots[4];
 };
 
 static_assert(offsetof(ClockConfig, language) == 2106 &&
                   offsetof(ClockConfig, openMeteoCountry) == 2107 &&
-                  sizeof(ClockConfig) == 2108,
-              "Schema 26 must preserve the released binary record size.");
+                  offsetof(ClockConfig, tmepExportKey) == 2108 &&
+                  sizeof(ClockTmepSlotConfig) == 50 &&
+                  sizeof(ClockConfig) == 2452,
+              "Schema 27 must preserve the complete schema 26 prefix.");
 
 bool clockConfigBegin();
 bool clockConfigLoad(ClockConfig &config);

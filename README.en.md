@@ -100,7 +100,8 @@ USB connector. Production firmware handles Improv Serial on both transports.
 2. Wait for the device to connect; its IP address appears in the settings screen.
 3. Open `http://waveshare-hodiny.local/`. Use the displayed IP address if mDNS
    is unavailable on your network.
-4. Select Open-Meteo or Home Assistant and search for the device location.
+4. Select Open-Meteo with TMEP.cz or Home Assistant and search for the device
+   location.
 5. For Home Assistant, enter its URL and a long-lived access token, then test
    the connection.
 6. Configure the dashboard, radar and brightness and save the changes.
@@ -115,6 +116,21 @@ Republic radar view. Home Assistant is optional.
 Open-Meteo is the default source and requires no account or token. It supplies
 the current weather and four configurable values. The selected city coordinates
 also define the center of local CHMI radar views.
+
+### TMEP.cz as an Open-Meteo extension
+
+Your own TMEP.cz sensors can be added to Open-Meteo mode. Paste the complete URL
+from **Extended JSON – with all sensors**, select **Verify and load sensors**, and values from all available
+sensors are appended to the same four selectors under a TMEP.cz group. The
+firmware uses the unit returned by the export, including for custom quantities.
+The entire account is refreshed with one HTTPS request every minute, while
+Open-Meteo continues to refresh every 10 minutes. The firmware extracts the ID
+and export key and always builds the request with `extended=1&all=1`.
+These credentials remain stored on the device and are never returned by the
+configuration API or backup.
+
+Example export URL:
+`https://tmep.cz/vystup-json.php?id=11746&export_key=XXXXXXXXsd&extended=1&all=1`
 
 ### Home Assistant
 
@@ -229,12 +245,12 @@ not included in backups.
 ### Diagnostics and backups
 
 The read-only `/diagnostics` page reports firmware, CPU, flash, current display
-pixel clock, current and minimum internal RAM and PSRAM, Wi-Fi, Home Assistant
-and Open-Meteo runtime state. Radar details include the selected city, GPS,
+pixel clock, current and minimum internal RAM and PSRAM, Wi-Fi, Home Assistant,
+Open-Meteo and TMEP.cz runtime state. Radar details include the selected city, GPS,
 range, prepared-frame count and time span, last successful refresh, next check,
 HTTP status and the file currently being processed. Exported JSON backups
 contain appearance and entity IDs but intentionally omit the Home Assistant
-token, web password and control API secret.
+token, TMEP.cz export URL, web password and control API secret.
 
 ## Touchscreen settings
 

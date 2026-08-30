@@ -25,6 +25,7 @@
 #include "LoginPage.h"
 #include "NetworkCoordinator.h"
 #include "NetworkDiagnostics.h"
+#include "TmepService.h"
 
 namespace {
 constexpr size_t MAX_POST_BODY_BYTES = 16 * 1024;
@@ -532,14 +533,25 @@ String sideJson(const ClockSideConfig &side) {
   return result;
 }
 
-String openMeteoSlotJson(const ClockOpenMeteoSlotConfig &slot) {
+String openMeteoSlotJson(const ClockOpenMeteoSlotConfig &slot,
+                         const ClockTmepSlotConfig &tmepSlot) {
   String result = F("{\"value\":\"");
   result += jsonEscape(slot.value);
   result += F("\",\"name\":\"");
   result += jsonEscape(slot.name);
   result += F("\",\"color\":\"");
   result += htmlColor(slot.color);
-  result += F("\"}");
+  result += F("\",\"source\":\"");
+  result += tmepSlot.enabled ? F("tmep") : F("open-meteo");
+  result += F("\",\"tmepSensorId\":\"");
+  result += jsonEscape(tmepSlot.sensorId);
+  result += F("\",\"tmepField\":\"");
+  result += jsonEscape(tmepSlot.field);
+  result += F("\",\"unit\":\"");
+  result += jsonEscape(tmepSlot.unit);
+  result += F("\",\"decimals\":");
+  result += tmepSlot.decimals;
+  result += '}';
   return result;
 }
 
@@ -557,6 +569,96 @@ bool validOpenMeteoValue(const String &value) {
     if (value == candidate) return true;
   }
   return false;
+}
+
+bool validTmepSensorId(const String &sensorId) {
+  if (sensorId.isEmpty() || sensorId.length() >= CLOCK_TMEP_SENSOR_ID_LENGTH)
+    return false;
+  for (size_t index = 0; index < sensorId.length(); ++index) {
+    if (!std::isdigit(static_cast<unsigned char>(sensorId[index])))
+      return false;
+  }
+  return true;
+}
+
+bool validTmepUnit(const String &unit) {
+  if (unit.isEmpty() || unit.length() >= CLOCK_TMEP_UNIT_LENGTH) return false;
+  for (size_t index = 0; index < unit.length(); ++index) {
+    if (static_cast<uint8_t>(unit[index]) < 0x20) return false;
+  }
+  return true;
+}
+
+int hexDigit(char character) {
+  if (character >= '0' && character <= '9') return character - '0';
+  if (character >= 'a' && character <= 'f') return character - 'a' + 10;
+  if (character >= 'A' && character <= 'F') return character - 'A' + 10;
+  return -1;
+}
+
+bool decodeQueryValue(const String &input, String &output) {
+  output = "";
+  output.reserve(input.length());
+  for (size_t index = 0; index < input.length(); ++index) {
+    const char character = input[index];
+    if (character == '+') {
+      output += ' ';
+      continue;
+    }
+    if (character != '%') {
+      output += character;
+      continue;
+    }
+    if (index + 2 >= input.length()) return false;
+    const int high = hexDigit(input[index + 1]);
+    const int low = hexDigit(input[index + 2]);
+    if (high < 0 || low < 0) return false;
+    output += static_cast<char>((high << 4) | low);
+    index += 2;
+  }
+  return true;
+}
+
+bool parseTmepExportUrl(const String &url, String &exportId,
+                        String &exportKey) {
+  String normalized = url;
+  normalized.trim();
+  static const char TMEP_PREFIX[] = "https://tmep.cz/";
+  static const char TMEP_WWW_PREFIX[] = "https://www.tmep.cz/";
+  if ((!normalized.startsWith(TMEP_PREFIX) &&
+       !normalized.startsWith(TMEP_WWW_PREFIX)) ||
+      normalized.indexOf('#') >= 0)
+    return false;
+  const int queryStart = normalized.indexOf('?');
+  if (queryStart < 0) return false;
+  exportId = "";
+  exportKey = "";
+  const String query = normalized.substring(queryStart + 1);
+  int position = 0;
+  while (position <= static_cast<int>(query.length())) {
+    int end = query.indexOf('&', position);
+    if (end < 0) end = query.length();
+    const String item = query.substring(position, end);
+    const int separator = item.indexOf('=');
+    if (separator > 0) {
+      String name;
+      String value;
+      if (!decodeQueryValue(item.substring(0, separator), name) ||
+          !decodeQueryValue(item.substring(separator + 1), value))
+        return false;
+      if (name == "id") exportId = value;
+      if (name == "export_key") exportKey = value;
+    }
+    if (end >= static_cast<int>(query.length())) break;
+    position = end + 1;
+  }
+  if (!validTmepSensorId(exportId) || exportKey.isEmpty() ||
+      exportKey.length() >= CLOCK_TMEP_EXPORT_KEY_LENGTH)
+    return false;
+  for (size_t index = 0; index < exportKey.length(); ++index) {
+    if (static_cast<uint8_t>(exportKey[index]) < 0x20) return false;
+  }
+  return true;
 }
 
 String urlEncode(const String &value) {
@@ -613,6 +715,13 @@ void sendJson(int status, const String &payload) {
 void sendError(int status, const __FlashStringHelper *message) {
   String payload = F("{\"ok\":false,\"message\":\"");
   payload += message;
+  payload += F("\"}");
+  sendJson(status, payload);
+}
+
+void sendError(int status, const String &message) {
+  String payload = F("{\"ok\":false,\"message\":\"");
+  payload += jsonEscape(message.c_str());
   payload += F("\"}");
   sendJson(status, payload);
 }
@@ -1094,6 +1203,10 @@ void handleGetConfig() {
   result += lastSaveConfirmationId;
   result += F("\",\"tokenConfigured\":");
   result += config.homeAssistantToken[0] == '\0' ? F("false") : F("true");
+  result += F(",\"tmepKeyConfigured\":");
+  result += config.tmepExportId[0] == '\0' || config.tmepExportKey[0] == '\0'
+                ? F("false")
+                : F("true");
   result += F(",\"webPasswordConfigured\":");
   result += webPasswordEnabled ? F("true") : F("false");
   result += F(",\"dataSource\":\"");
@@ -1180,7 +1293,8 @@ void handleGetConfig() {
   result += F(",\"openMeteoSlots\":[");
   for (size_t index = 0; index < 4; ++index) {
     if (index > 0) result += ',';
-    result += openMeteoSlotJson(config.openMeteoSlots[index]);
+    result += openMeteoSlotJson(config.openMeteoSlots[index],
+                                config.tmepSlots[index]);
   }
   result += ']';
   result += F(",\"controlSecret\":\"");
@@ -1410,17 +1524,57 @@ void handleSaveConfig() {
       static_cast<uint16_t>(clockDisplaySeconds);
   config.radarDisplaySeconds =
       static_cast<uint16_t>(radarDisplaySeconds);
+  const String submittedTmepUrl = server.arg("tmepExportUrl");
+  if (!submittedTmepUrl.isEmpty()) {
+    String exportId;
+    String exportKey;
+    if (!parseTmepExportUrl(submittedTmepUrl, exportId, exportKey)) {
+      sendError(400, F("Exportní URL TMEP není platná."));
+      return;
+    }
+    clockConfigCopy(config.tmepExportKey, sizeof(config.tmepExportKey),
+                    exportKey);
+    clockConfigCopy(config.tmepExportId, sizeof(config.tmepExportId),
+                    exportId);
+  }
   for (size_t index = 0; index < 4; ++index) {
     const String prefix = String(F("openMeteoSlot")) + index;
     const String value = server.arg(prefix + F("Value"));
-    if (!validOpenMeteoValue(value) ||
-        !parseHtmlColor(server.arg(prefix + F("Color")),
+    if (!parseHtmlColor(server.arg(prefix + F("Color")),
                         config.openMeteoSlots[index].color)) {
       sendError(400, F("Nastavení pozice Open-Meteo není platné."));
       return;
     }
-    clockConfigCopy(config.openMeteoSlots[index].value,
-                    sizeof(config.openMeteoSlots[index].value), value);
+    if (value.startsWith("tmep:")) {
+      const int separator = value.indexOf(':', 5);
+      const String sensorId =
+          separator > 5 ? value.substring(5, separator) : String();
+      const String field =
+          separator > 5 ? value.substring(separator + 1) : String();
+      const String unit = server.arg(prefix + F("Unit"));
+      const int decimals = server.arg(prefix + F("Decimals")).toInt();
+      if (config.tmepExportId[0] == '\0' || config.tmepExportKey[0] == '\0' ||
+          !validTmepSensorId(sensorId) ||
+          !tmepFieldSupported(field.c_str()) || !validTmepUnit(unit) ||
+          decimals < 0 || decimals > 2) {
+        sendError(400, F("Nastavení hodnoty TMEP není platné."));
+        return;
+      }
+      ClockTmepSlotConfig &tmepSlot = config.tmepSlots[index];
+      tmepSlot.enabled = true;
+      clockConfigCopy(tmepSlot.sensorId, sizeof(tmepSlot.sensorId), sensorId);
+      clockConfigCopy(tmepSlot.field, sizeof(tmepSlot.field), field);
+      clockConfigCopy(tmepSlot.unit, sizeof(tmepSlot.unit), unit);
+      tmepSlot.decimals = static_cast<uint8_t>(decimals);
+    } else {
+      if (!validOpenMeteoValue(value)) {
+        sendError(400, F("Nastavení pozice Open-Meteo není platné."));
+        return;
+      }
+      clockConfigCopy(config.openMeteoSlots[index].value,
+                      sizeof(config.openMeteoSlots[index].value), value);
+      config.tmepSlots[index] = ClockTmepSlotConfig{};
+    }
     clockConfigCopy(config.openMeteoSlots[index].name,
                     sizeof(config.openMeteoSlots[index].name),
                     server.arg(prefix + F("Name")));
@@ -1632,6 +1786,124 @@ void handleSaveConfig() {
   extendWebAvailability();
   sendJson(200, F("{\"ok\":true}"));
   applyWebMode(requestedWebMode);
+}
+
+void appendTmepValueJson(String &result, const char *field,
+                         const TmepValue &value, bool &first) {
+  if (!value.available || value.unit[0] == '\0') return;
+  if (!first) result += ',';
+  first = false;
+  result += F("{\"field\":\"");
+  result += field;
+  result += F("\",\"value\":");
+  result += String(value.value, static_cast<unsigned int>(value.decimals));
+  result += F(",\"unit\":\"");
+  result += jsonEscape(value.unit);
+  result += F("\",\"decimals\":");
+  result += value.decimals;
+  result += '}';
+}
+
+void handleTmepTest() {
+  const ClockConfig &config = currentConfig();
+  String exportId = config.tmepExportId;
+  String exportKey = config.tmepExportKey;
+  const String submittedTmepUrl = server.arg("tmepExportUrl");
+  if (!submittedTmepUrl.isEmpty() &&
+      !parseTmepExportUrl(submittedTmepUrl, exportId, exportKey)) {
+    sendError(400, F("Exportní URL TMEP není platná."));
+    return;
+  }
+  if (exportId.isEmpty() || exportKey.isEmpty()) {
+    sendError(400, F("Zadej exportní URL TMEP."));
+    return;
+  }
+  static TmepCatalog catalog;
+  int status = HTTPC_ERROR_CONNECTION_REFUSED;
+  String error;
+  const bool useCache = submittedTmepUrl.isEmpty() &&
+                        tmepGetCachedCatalog(exportId.c_str(),
+                                             exportKey.c_str(), catalog);
+  if (!useCache && server.arg("cachedOnly") == "1") {
+    sendError(409, F("Hodnoty TMEP zatím nejsou načtené."));
+    return;
+  }
+  if (!useCache &&
+      !tmepFetchCatalog(exportId.c_str(), exportKey.c_str(), catalog,
+                        NetworkDiagnosticKind::TmepTest, status, error)) {
+    sendError(status == HTTP_CODE_OK ? 401 : 502, error);
+    return;
+  }
+
+  String result;
+  result.reserve(8192);
+  result = F("{\"ok\":true,\"truncated\":");
+  result += catalog.truncated ? F("true") : F("false");
+  result += F(",\"sensors\":[");
+  for (size_t index = 0; index < catalog.count; ++index) {
+    if (index > 0) result += ',';
+    const TmepSensor &sensor = catalog.sensors[index];
+    result += F("{\"id\":\"");
+    result += jsonEscape(sensor.id);
+    result += F("\",\"title\":\"");
+    result += jsonEscape(sensor.title);
+    result += F("\",\"domain\":\"");
+    result += jsonEscape(sensor.domain);
+    result += F("\",\"location\":\"");
+    result += jsonEscape(sensor.location);
+    result += F("\",\"measuredAt\":\"");
+    result += jsonEscape(sensor.measuredAt);
+    result += F("\",\"values\":[");
+    bool first = true;
+    appendTmepValueJson(result, "teplota", sensor.temperature, first);
+    appendTmepValueJson(result, "vlhkost", sensor.humidity, first);
+    appendTmepValueJson(result, "tlak", sensor.pressure, first);
+    appendTmepValueJson(result, "rssi", sensor.rssi, first);
+    appendTmepValueJson(result, "napeti", sensor.voltage, first);
+    result += F("]}");
+  }
+  result += F("]}");
+  sendJson(200, result);
+}
+
+void handleTmepRemove() {
+  ClockConfig &config = currentConfig();
+  if (config.tmepExportId[0] == '\0' && config.tmepExportKey[0] == '\0') {
+    sendError(409, F("TMEP.cz už není nastavené."));
+    return;
+  }
+  NetworkOperationGuard networkGuard(8000);
+  if (!networkGuard) {
+    sendError(503, F("Síť je právě vytížená jinou operací."));
+    return;
+  }
+
+  static const char *fallbackValues[] = {
+      "temperature_2m", "apparent_temperature", "relative_humidity_2m",
+      "pressure_msl"};
+  static const char *fallbackNames[] = {"TEPLOTA", "POCITOVÁ", "VLHKOST",
+                                        "TLAK"};
+  config.tmepExportId[0] = '\0';
+  config.tmepExportKey[0] = '\0';
+  for (size_t index = 0; index < 4; ++index) {
+    if (config.tmepSlots[index].enabled) {
+      clockConfigCopy(config.openMeteoSlots[index].value,
+                      sizeof(config.openMeteoSlots[index].value),
+                      fallbackValues[index]);
+      clockConfigCopy(config.openMeteoSlots[index].name,
+                      sizeof(config.openMeteoSlots[index].name),
+                      fallbackNames[index]);
+    }
+    config.tmepSlots[index] = ClockTmepSlotConfig{};
+  }
+  config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+  if (configSaveCallback == nullptr || !configSaveCallback(config, false)) {
+    sendError(500, F("TMEP.cz se nepodařilo odebrat z paměti."));
+    return;
+  }
+  tmepClearCachedCatalog();
+  extendWebAvailability();
+  sendJson(200, F("{\"ok\":true}"));
 }
 
 void handleSaveLanguage() {
@@ -1854,6 +2126,8 @@ void appendDiagnosticJson(String &result,
   result += snapshot.failures;
   result += F(",\"lastResult\":");
   result += snapshot.lastResult;
+  result += F(",\"lastSuccess\":");
+  result += snapshot.lastSuccess ? F("true") : F("false");
   result += F(",\"lastStartedAt\":");
   result += snapshot.lastStartedAt;
   result += F(",\"lastFinishedAt\":");
@@ -2019,6 +2293,12 @@ void handleDiagnostics() {
   result += F(",\"openMeteoTest\":");
   appendDiagnosticJson(
       result, networkDiagnosticsSnapshot(NetworkDiagnosticKind::OpenMeteoTest));
+  result += F(",\"tmepRuntime\":");
+  appendDiagnosticJson(
+      result, networkDiagnosticsSnapshot(NetworkDiagnosticKind::TmepRuntime));
+  result += F(",\"tmepTest\":");
+  appendDiagnosticJson(
+      result, networkDiagnosticsSnapshot(NetworkDiagnosticKind::TmepTest));
   result += '}';
   sendJson(200, result);
 }
@@ -2259,6 +2539,12 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
   });
   registerBoundedPost("/api/open-meteo/location", []() {
     if (requireConfigurationAccess()) handleOpenMeteoLocation();
+  });
+  registerBoundedPost("/api/tmep/test", []() {
+    if (requireConfigurationAccess()) handleTmepTest();
+  });
+  registerBoundedPost("/api/tmep/remove", []() {
+    if (requireConfigurationAccess()) handleTmepRemove();
   });
   server.on("/api/radar/state", HTTP_GET, []() {
     if (requireConfigurationAccess()) handleRadarRangeState();
