@@ -55,12 +55,18 @@ ClockConfig runtimeConfig;
 ClockConfig persistedConfig;
 ClockConfig configSaveBuffer;
 ClockConfig dashboardConfigBuffer;
+ClockAppearanceConfig persistedAppearance;
+ClockAppearanceConfig activeAppearance;
+ClockAppearanceConfig pendingAppearance;
 SemaphoreHandle_t runtimeConfigMutex = nullptr;
 TaskHandle_t homeAssistantTaskHandle = nullptr;
 String usbCommand;
 bool screenshotTransferActive = false;
 unsigned long displayResyncAt = 0;
 int lastDisplayedSecond = -1;
+#if !FIRMWARE_RELEASE
+int32_t displayTimeOffsetSeconds = 0;
+#endif
 bool wifiWasConnected = false;
 bool timeWasSynchronized = false;
 ClockValues pendingHomeAssistantValues;
@@ -71,6 +77,7 @@ portMUX_TYPE dayNightLightRefreshMux = portMUX_INITIALIZER_UNLOCKED;
 bool mdnsStarted = false;
 String displayedWifiIp;
 bool runtimeConfigurationApplyPending = false;
+bool clockAppearanceApplyPending = false;
 unsigned long runtimeConfigurationApplyAt = 0;
 int lastAutomaticFirmwareCheckDate = -1;
 unsigned long lastFirmwareDisplayRefreshAt = 0;
@@ -168,6 +175,45 @@ bool saveRuntimeConfig(const ClockConfig &config, bool tokenWasSubmitted) {
   runtimeConfigurationApplyAt = millis() + 250;
   if (homeAssistantTaskHandle != nullptr) xTaskNotifyGive(homeAssistantTaskHandle);
   return true;
+}
+
+void loadClockAppearanceForWeb(ClockAppearanceConfig &saved,
+                               ClockAppearanceConfig &active) {
+  saved = persistedAppearance;
+  active = activeAppearance;
+}
+
+bool previewClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
+  activeAppearance = appearance;
+  activeAppearance.style = constrain(
+      activeAppearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
+      static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
+  activeAppearance.analogToneColor &= 0xFFFFFF;
+  activeAppearance.monochromeWeatherIconColor &= 0xFFFFFF;
+  pendingAppearance = activeAppearance;
+  clockAppearanceApplyPending = true;
+  return true;
+}
+
+bool saveClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
+  ClockAppearanceConfig normalized = appearance;
+  normalized.style = constrain(
+      normalized.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
+      static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
+  normalized.analogToneColor &= 0xFFFFFF;
+  normalized.monochromeWeatherIconColor &= 0xFFFFFF;
+  if (!clockAppearanceSave(normalized)) return false;
+  persistedAppearance = normalized;
+  activeAppearance = normalized;
+  pendingAppearance = normalized;
+  clockAppearanceApplyPending = true;
+  return true;
+}
+
+void applyPendingClockAppearance() {
+  if (!clockAppearanceApplyPending) return;
+  clockAppearanceApplyPending = false;
+  clockDashboardApplyAppearance(pendingAppearance);
 }
 
 void applyPendingRuntimeConfiguration() {
@@ -565,6 +611,19 @@ void handleUsbCommands() {
       } else if (usbCommand == "WEBUNLOCK" && !screenshotTransferActive) {
         configurationWebUnlockForTest();
         Serial.println("WEB_CONFIG_UNLOCKED");
+      } else if (usbCommand.startsWith("TIMEOFFSET") &&
+                 !screenshotTransferActive) {
+        const String minutesText = usbCommand.substring(10);
+        char *end = nullptr;
+        const long minutes = strtol(minutesText.c_str(), &end, 10);
+        if (end != minutesText.c_str() && *end == '\0' &&
+            minutes >= -720 && minutes <= 720) {
+          displayTimeOffsetSeconds = static_cast<int32_t>(minutes * 60L);
+          lastDisplayedSecond = -1;
+          Serial.printf("TIME_OFFSET_MINUTES=%ld\n", minutes);
+        } else {
+          Serial.println("TIME_OFFSET_ERROR");
+        }
       }
       usbCommand = "";
     } else if (usbCommand.length() < 32) {
@@ -668,8 +727,12 @@ void maintainNetworkTime() {
 #endif
   }
 
+  time_t displayedNow = now;
+#if !FIRMWARE_RELEASE
+  displayedNow += displayTimeOffsetSeconds;
+#endif
   struct tm localTime;
-  localtime_r(&now, &localTime);
+  localtime_r(&displayedNow, &localTime);
   if (localTime.tm_sec == lastDisplayedSecond) return;
   lastDisplayedSecond = localTime.tm_sec;
 
@@ -1372,6 +1435,15 @@ void setup() {
     Serial.println("Konfiguracni pamet se nepodarilo nacist");
 #endif
   }
+  uint32_t legacyWeatherIconColor = persistedConfig.leftWeatherIconColor;
+  if (persistedConfig.dataSource == CLOCK_DATA_SOURCE_OPEN_METEO) {
+    legacyWeatherIconColor = persistedConfig.openMeteoSlots[0].color;
+  } else if (strcmp(persistedConfig.leftSide.icon, "weather") != 0 &&
+             strcmp(persistedConfig.rightSide.icon, "weather") == 0) {
+    legacyWeatherIconColor = persistedConfig.rightWeatherIconColor;
+  }
+  clockAppearanceLoad(persistedAppearance, legacyWeatherIconColor);
+  activeAppearance = persistedAppearance;
   runtimeConfig = persistedConfig;
   applyDevelopmentDefaults(runtimeConfig);
   networkCoordinatorBegin();
@@ -1379,6 +1451,7 @@ void setup() {
   currentDisplayBrightness = runtimeConfig.dayBrightness;
   Set_Backlight(currentDisplayBrightness);
   displayDriverInit();
+  clockDashboardApplyAppearance(activeAppearance);
   clockDashboardInit(sampleValues, runtimeConfig.dayBrightness,
                        runtimeConfig.nightBrightness,
                        runtimeConfig.automaticDayNight,
@@ -1411,7 +1484,9 @@ void setup() {
                         requestHomeAssistantRefreshFromWeb,
                         loadDayNightStatusForWeb, handleDisplayPower,
                         displayPowerForcedOff, loadRadarRangeStateForWeb,
-                        previewRadarRangeFromWeb);
+                        previewRadarRangeFromWeb, loadClockAppearanceForWeb,
+                        previewClockAppearanceFromWeb,
+                        saveClockAppearanceFromWeb);
   clockDashboardSetWebMode(configurationWebMode());
 
   const esp_task_wdt_config_t watchdogConfig = {
@@ -1444,7 +1519,9 @@ void loop() {
                               weatherIconStyle,
                               !clockDashboardRadarVisible() &&
                                   animationConfig.animatedWeatherIcons &&
-                                  (animationConfig.dataSource ==
+                                  (activeAppearance.style ==
+                                       CLOCK_STYLE_ANALOG ||
+                                   animationConfig.dataSource ==
                                        CLOCK_DATA_SOURCE_OPEN_METEO ||
                                    strcmp(animationConfig.leftSide.icon,
                                           "weather") == 0 ||
@@ -1452,13 +1529,19 @@ void loop() {
                                           "weather") == 0));
   configurationWebLoop();
   applyPendingRuntimeConfiguration();
+  applyPendingClockAppearance();
   maintainDisplayGestures();
   maintainRadarNightVisual();
   maintainRadarRangeChange();
   maintainRadarDisplay();
   maintainAutomaticRadarRotation();
-  clockDashboardLoop();
-  displayDriverLoop();
+  // Během DEV screenshotu už přenášíme neměnnou kopii framebufferu. Dočasné
+  // pozastavení LVGL timerů zabrání tomu, aby GIF dekodér soupeřil s USB CDC;
+  // po dokončení přenosu se animace plynule rozběhne od dalšího snímku.
+  if (!screenshotTransferActive) {
+    clockDashboardLoop();
+    displayDriverLoop();
+  }
   if (firmwareUpdateDisplayRequested && firmwareUpdateDisplayActive) {
     firmwareUpdateDisplayPresented = true;
   }

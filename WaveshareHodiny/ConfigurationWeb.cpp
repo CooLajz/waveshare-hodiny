@@ -163,6 +163,9 @@ DisplayPowerCallback currentDisplayPowerCallback = nullptr;
 DisplayPowerStatusCallback currentDisplayPowerStatusCallback = nullptr;
 RadarRangeStateCallback currentRadarRangeStateCallback = nullptr;
 RadarRangePreviewCallback currentRadarRangePreviewCallback = nullptr;
+ClockAppearanceStateCallback currentAppearanceStateCallback = nullptr;
+ClockAppearanceChangeCallback currentAppearancePreviewCallback = nullptr;
+ClockAppearanceChangeCallback currentAppearanceSaveCallback = nullptr;
 ClockConfig configBuffer;
 constexpr unsigned long WEB_AVAILABILITY_MS = 10UL * 60UL * 1000UL;
 bool webActive = false;
@@ -583,7 +586,7 @@ void addSecurityHeaders() {
   server.sendHeader(F("X-Frame-Options"), F("DENY"));
   server.sendHeader(
       F("Content-Security-Policy"),
-      F("default-src 'self'; style-src 'unsafe-inline'; script-src "
+      F("default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; script-src "
         "'self' 'unsafe-inline'; connect-src 'self'; form-action 'self'; "
         "frame-ancestors 'none'"));
 }
@@ -636,11 +639,49 @@ bool validRadarRadius(int radiusKm) {
          radiusKm == 100 || radiusKm == 200;
 }
 
+bool parseHtmlColor(const String &value, uint32_t &color);
+
 void radarRangeState(uint16_t &savedRadiusKm, uint16_t &activeRadiusKm) {
   savedRadiusKm = currentConfig().radarRadiusKm;
   activeRadiusKm = savedRadiusKm;
   if (currentRadarRangeStateCallback != nullptr)
     currentRadarRangeStateCallback(savedRadiusKm, activeRadiusKm);
+}
+
+bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
+  const String style = server.arg("clockStyle");
+  if (style == "digital")
+    appearance.style = CLOCK_STYLE_DIGITAL;
+  else if (style == "analog")
+    appearance.style = CLOCK_STYLE_ANALOG;
+  else
+    return false;
+  if (!parseHtmlColor(server.arg("analogToneColor"),
+                      appearance.analogToneColor))
+    return false;
+  const String accents = server.arg("analogCardinalAccentsEnabled");
+  if (accents != "0" && accents != "1") return false;
+  appearance.analogCardinalAccentsEnabled = accents == "1";
+  if (server.hasArg("monochromeWeatherIconColor")) {
+    if (!parseHtmlColor(server.arg("monochromeWeatherIconColor"),
+                        appearance.monochromeWeatherIconColor))
+      return false;
+  } else if (currentAppearanceStateCallback != nullptr) {
+    ClockAppearanceConfig saved;
+    ClockAppearanceConfig active;
+    currentAppearanceStateCallback(saved, active);
+    appearance.monochromeWeatherIconColor =
+        active.monochromeWeatherIconColor;
+  }
+  return true;
+}
+
+void appearanceState(ClockAppearanceConfig &saved,
+                     ClockAppearanceConfig &active) {
+  saved = ClockAppearanceConfig{};
+  active = saved;
+  if (currentAppearanceStateCallback != nullptr)
+    currentAppearanceStateCallback(saved, active);
 }
 
 String normalizedUrl(String url) {
@@ -933,6 +974,9 @@ void handleGetConfig() {
   uint16_t savedRadarRadiusKm = config.radarRadiusKm;
   uint16_t activeRadarRadiusKm = config.radarRadiusKm;
   radarRangeState(savedRadarRadiusKm, activeRadarRadiusKm);
+  ClockAppearanceConfig savedAppearance;
+  ClockAppearanceConfig activeAppearance;
+  appearanceState(savedAppearance, activeAppearance);
   String result;
   result.reserve(3000);
   result = F("{\"ok\":true,\"homeAssistantUrl\":\"");
@@ -973,6 +1017,27 @@ void handleGetConfig() {
   result += config.clockDisplaySeconds;
   result += F(",\"radarDisplaySeconds\":");
   result += config.radarDisplaySeconds;
+  result += F(",\"clockStyle\":\"");
+  result += savedAppearance.style == CLOCK_STYLE_ANALOG ? F("analog")
+                                                        : F("digital");
+  result += F("\",\"activeClockStyle\":\"");
+  result += activeAppearance.style == CLOCK_STYLE_ANALOG ? F("analog")
+                                                         : F("digital");
+  result += F("\",\"analogToneColor\":\"");
+  result += htmlColor(savedAppearance.analogToneColor);
+  result += F("\",\"activeAnalogToneColor\":\"");
+  result += htmlColor(activeAppearance.analogToneColor);
+  result += F("\",\"analogCardinalAccentsEnabled\":");
+  result += savedAppearance.analogCardinalAccentsEnabled ? F("true")
+                                                         : F("false");
+  result += F(",\"activeAnalogCardinalAccentsEnabled\":");
+  result += activeAppearance.analogCardinalAccentsEnabled ? F("true")
+                                                          : F("false");
+  result += F(",\"monochromeWeatherIconColor\":\"");
+  result += htmlColor(savedAppearance.monochromeWeatherIconColor);
+  result += F("\",\"activeMonochromeWeatherIconColor\":\"");
+  result += htmlColor(activeAppearance.monochromeWeatherIconColor);
+  result += '"';
   result += F(",\"openMeteoSlots\":[");
   for (size_t index = 0; index < 4; ++index) {
     if (index > 0) result += ',';
@@ -1394,9 +1459,20 @@ void handleSaveConfig() {
       constrain(server.arg("secondDotBrightness").toInt(), 0, 255);
   config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
 
+  ClockAppearanceConfig appearance;
+  if (!readAppearanceFromRequest(appearance)) {
+    sendError(400, F("Typ nebo tón hodin není platný."));
+    return;
+  }
+
   if (configSaveCallback == nullptr ||
       !configSaveCallback(config, !submittedToken.isEmpty())) {
     sendError(500, F("Nastavení se nepodařilo uložit do paměti."));
+    return;
+  }
+  if (currentAppearanceSaveCallback == nullptr ||
+      !currentAppearanceSaveCallback(appearance)) {
+    sendError(500, F("Vzhled hodin se nepodařilo uložit do paměti."));
     return;
   }
   if (!persistWebMode(requestedWebMode)) {
@@ -1461,6 +1537,42 @@ void handleRadarRangePreview() {
     return;
   }
   handleRadarRangeState();
+}
+
+void handleClockAppearancePreview() {
+  extendWebAvailability();
+  ClockAppearanceConfig appearance;
+  if (!readAppearanceFromRequest(appearance)) {
+    sendError(400, F("Typ nebo tón hodin není platný."));
+    return;
+  }
+  if (currentAppearancePreviewCallback == nullptr ||
+      !currentAppearancePreviewCallback(appearance)) {
+    sendError(503, F("Náhled vzhledu hodin se nepodařilo změnit."));
+    return;
+  }
+  ClockAppearanceConfig saved;
+  ClockAppearanceConfig active;
+  appearanceState(saved, active);
+  String result = F("{\"ok\":true,\"clockStyle\":\"");
+  result += saved.style == CLOCK_STYLE_ANALOG ? F("analog") : F("digital");
+  result += F("\",\"activeClockStyle\":\"");
+  result += active.style == CLOCK_STYLE_ANALOG ? F("analog") : F("digital");
+  result += F("\",\"analogToneColor\":\"");
+  result += htmlColor(saved.analogToneColor);
+  result += F("\",\"activeAnalogToneColor\":\"");
+  result += htmlColor(active.analogToneColor);
+  result += F("\",\"analogCardinalAccentsEnabled\":");
+  result += saved.analogCardinalAccentsEnabled ? F("true") : F("false");
+  result += F(",\"activeAnalogCardinalAccentsEnabled\":");
+  result += active.analogCardinalAccentsEnabled ? F("true") : F("false");
+  result += F(",\"monochromeWeatherIconColor\":\"");
+  result += htmlColor(saved.monochromeWeatherIconColor);
+  result += F("\",\"activeMonochromeWeatherIconColor\":\"");
+  result += htmlColor(active.monochromeWeatherIconColor);
+  result += '"';
+  result += F("}");
+  sendJson(200, result);
 }
 
 void handleOpenMeteoLocation() {
@@ -1917,7 +2029,10 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
                            DisplayPowerCallback displayPowerCallback,
                            DisplayPowerStatusCallback displayPowerStatusCallback,
                            RadarRangeStateCallback radarRangeStateCallback,
-                           RadarRangePreviewCallback radarRangePreviewCallback) {
+                           RadarRangePreviewCallback radarRangePreviewCallback,
+                           ClockAppearanceStateCallback appearanceStateCallback,
+                           ClockAppearanceChangeCallback appearancePreviewCallback,
+                           ClockAppearanceChangeCallback appearanceSaveCallback) {
   configLoadCallback = loadCallback;
   configSaveCallback = saveCallback;
   webStatusCallback = statusCallback;
@@ -1928,6 +2043,9 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
   currentDisplayPowerStatusCallback = displayPowerStatusCallback;
   currentRadarRangeStateCallback = radarRangeStateCallback;
   currentRadarRangePreviewCallback = radarRangePreviewCallback;
+  currentAppearanceStateCallback = appearanceStateCallback;
+  currentAppearancePreviewCallback = appearancePreviewCallback;
+  currentAppearanceSaveCallback = appearanceSaveCallback;
   initializeControlSecret();
   initializeWebPassword();
   server.beginBoundedPostSupport();
@@ -1973,6 +2091,9 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
   });
   registerBoundedPost("/api/radar/preview", []() {
     if (requireConfigurationAccess()) handleRadarRangePreview();
+  });
+  registerBoundedPost("/api/clock-appearance/preview", []() {
+    if (requireConfigurationAccess()) handleClockAppearancePreview();
   });
   registerBoundedPost("/api/restart", []() {
     if (requireConfigurationAccess()) handleRestart();

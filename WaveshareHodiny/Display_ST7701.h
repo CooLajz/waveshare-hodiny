@@ -2,6 +2,7 @@
 #include <inttypes.h>
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
@@ -77,7 +78,6 @@
 
 extern uint8_t LCD_Backlight;
 extern esp_lcd_panel_handle_t panel_handle;
-bool example_on_vsync_event(esp_lcd_panel_handle_t panel, const esp_lcd_rgb_panel_event_data_t *event_data, void *user_data);
 void ST7701_Init();
 
 void LCD_Init();
@@ -86,7 +86,8 @@ bool LCD_SetPixelClock(uint32_t frequencyHz);
 uint32_t LCD_GetPixelClock();
 void LCD_Sleep();
 void LCD_Wake();
-void LCD_addWindow(uint16_t Xstart, uint16_t Ystart, uint16_t Xend, uint16_t Yend,uint8_t* color);
+bool LCD_addWindow(uint16_t Xstart, uint16_t Ystart, uint16_t Xend,
+                   uint16_t Yend, uint8_t* color);
 
 // backlight
 void Backlight_Init();

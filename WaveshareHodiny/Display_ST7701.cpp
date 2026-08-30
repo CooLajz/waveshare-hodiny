@@ -4,6 +4,26 @@ spi_device_handle_t SPI_handle = NULL;
 esp_lcd_panel_handle_t panel_handle = NULL;
 static uint32_t currentPixelClockFrequencyHz =
     ESP_PANEL_LCD_RGB_TIMING_FREQ_HZ;
+
+namespace {
+StaticSemaphore_t frameFinishedSemaphoreStorage;
+SemaphoreHandle_t frameFinishedSemaphore = nullptr;
+portMUX_TYPE frameFinishedMux = portMUX_INITIALIZER_UNLOCKED;
+volatile uint32_t finishedFrameCount = 0;
+
+bool IRAM_ATTR onBounceFrameFinished(
+    esp_lcd_panel_handle_t, const esp_lcd_rgb_panel_event_data_t*, void*) {
+  BaseType_t highPriorityTaskWoken = pdFALSE;
+  portENTER_CRITICAL_ISR(&frameFinishedMux);
+  ++finishedFrameCount;
+  portEXIT_CRITICAL_ISR(&frameFinishedMux);
+  if (frameFinishedSemaphore != nullptr) {
+    xSemaphoreGiveFromISR(frameFinishedSemaphore, &highPriorityTaskWoken);
+  }
+  return highPriorityTaskWoken == pdTRUE;
+}
+}  // namespace
+
 void ST7701_WriteCommand(uint8_t cmd)
 {
   spi_transaction_t spi_tran = {
@@ -374,20 +394,18 @@ void ST7701_Init()
       .bb_invalidate_cache = 0,
     },
   };
-  esp_lcd_new_rgb_panel(&rgb_config, &panel_handle);
-  // esp_lcd_rgb_panel_event_callbacks_t cbs = {
-  //   .on_vsync = example_on_vsync_event,
-  // };
-  // esp_lcd_rgb_panel_register_event_callbacks(panel_handle, &cbs, &disp_drv);
+  ESP_ERROR_CHECK(esp_lcd_new_rgb_panel(&rgb_config, &panel_handle));
+  frameFinishedSemaphore =
+      xSemaphoreCreateBinaryStatic(&frameFinishedSemaphoreStorage);
+  const esp_lcd_rgb_panel_event_callbacks_t callbacks = {
+    .on_bounce_frame_finish = onBounceFrameFinished,
+  };
+  ESP_ERROR_CHECK(esp_lcd_rgb_panel_register_event_callbacks(
+      panel_handle, &callbacks, nullptr));
   esp_lcd_panel_reset(panel_handle);
   esp_lcd_panel_init(panel_handle);
 }
 
-bool example_on_vsync_event(esp_lcd_panel_handle_t panel, const esp_lcd_rgb_panel_event_data_t *event_data, void *user_data)
-{
-  BaseType_t high_task_awoken = pdFALSE;
-  return high_task_awoken == pdTRUE;
-}
 void LCD_Init() {
   ST7701_Reset();
   ST7701_Init();
@@ -431,7 +449,8 @@ void LCD_Wake() {
   LCD_Resync();
 }
 
-void LCD_addWindow(uint16_t Xstart, uint16_t Ystart, uint16_t Xend, uint16_t Yend,uint8_t* color) {
+bool LCD_addWindow(uint16_t Xstart, uint16_t Ystart, uint16_t Xend,
+                   uint16_t Yend, uint8_t* color) {
   Xend = Xend + 1;      // esp_lcd_panel_draw_bitmap: x_end End index on x-axis (x_end not included)
   Yend = Yend + 1;      // esp_lcd_panel_draw_bitmap: y_end End index on y-axis (y_end not included)
   if (Xend >= ESP_PANEL_LCD_WIDTH)
@@ -439,7 +458,33 @@ void LCD_addWindow(uint16_t Xstart, uint16_t Ystart, uint16_t Xend, uint16_t Yen
   if (Yend >= ESP_PANEL_LCD_HEIGHT)
     Yend = ESP_PANEL_LCD_HEIGHT;
 
-  esp_lcd_panel_draw_bitmap(panel_handle, Xstart, Ystart, Xend, Yend, color);                     // x_end End index on x-axis (x_end not included)
+  if (frameFinishedSemaphore == nullptr) return false;
+  xSemaphoreTake(frameFinishedSemaphore, 0);
+
+  // V bounce-buffer režimu draw_bitmap pouze zvolí PSRAM framebuffer pro
+  // následující snímek. LVGL smí předchozí framebuffer znovu použít teprve
+  // poté, co jej RGB driver celý překopíruje do interních bounce bufferů.
+  // Společný critical section zaručí, že započítaný callback nemohl nastat
+  // mezi pořízením čítače a předáním nového framebufferu panelu.
+  uint32_t frameCountBeforeDraw = 0;
+  esp_err_t drawResult = ESP_FAIL;
+  portENTER_CRITICAL(&frameFinishedMux);
+  frameCountBeforeDraw = finishedFrameCount;
+  drawResult = esp_lcd_panel_draw_bitmap(panel_handle, Xstart, Ystart, Xend,
+                                         Yend, color);
+  portEXIT_CRITICAL(&frameFinishedMux);
+  if (drawResult != ESP_OK) return false;
+
+  const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(100);
+  while (finishedFrameCount == frameCountBeforeDraw) {
+    const TickType_t now = xTaskGetTickCount();
+    if (static_cast<int32_t>(deadline - now) <= 0 ||
+        xSemaphoreTake(frameFinishedSemaphore, deadline - now) != pdTRUE) {
+      ESP_LOGE("lcd", "Timeout pri synchronizaci RGB framebufferu");
+      return false;
+    }
+  }
+  return true;
 }
 
 

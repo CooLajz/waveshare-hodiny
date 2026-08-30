@@ -10,6 +10,11 @@ constexpr uint32_t CONFIG_MAGIC = 0x57484346;
 constexpr char CONFIG_PARTITION[] = "clockcfg";
 constexpr char CONFIG_NAMESPACE[] = "clock-config";
 constexpr char CONFIG_KEY[] = "config";
+constexpr char APPEARANCE_NAMESPACE[] = "clock-look";
+constexpr char APPEARANCE_STYLE_KEY[] = "style";
+constexpr char APPEARANCE_TONE_KEY[] = "tone";
+constexpr char APPEARANCE_ACCENTS_KEY[] = "accents";
+constexpr char APPEARANCE_WEATHER_COLOR_KEY[] = "weather-color";
 
 struct ConfigRecord {
   uint32_t magic;
@@ -175,6 +180,55 @@ void normalizeConfig(ClockConfig &config) {
 
 bool clockConfigRadarAvailable(const ClockConfig &config) {
   return config.openMeteoCountry == CLOCK_LOCATION_COUNTRY_CZECHIA;
+}
+
+bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
+                         uint32_t defaultMonochromeWeatherIconColor) {
+  appearance = ClockAppearanceConfig{};
+  appearance.monochromeWeatherIconColor =
+      defaultMonochromeWeatherIconColor & 0xFFFFFF;
+  Preferences preferences;
+  if (!preferences.begin(APPEARANCE_NAMESPACE, true, CONFIG_PARTITION))
+    return false;
+  appearance.style = constrain(
+      preferences.getUChar(APPEARANCE_STYLE_KEY, CLOCK_STYLE_DIGITAL),
+      static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
+      static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
+  appearance.analogToneColor =
+      preferences.getUInt(APPEARANCE_TONE_KEY, 0x00D6FF) & 0xFFFFFF;
+  appearance.analogCardinalAccentsEnabled =
+      preferences.getBool(APPEARANCE_ACCENTS_KEY, true);
+  appearance.monochromeWeatherIconColor =
+      preferences.getUInt(APPEARANCE_WEATHER_COLOR_KEY,
+                          defaultMonochromeWeatherIconColor) &
+      0xFFFFFF;
+  preferences.end();
+  return true;
+}
+
+bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
+  Preferences preferences;
+  if (!preferences.begin(APPEARANCE_NAMESPACE, false, CONFIG_PARTITION))
+    return false;
+  const uint8_t style = constrain(
+      appearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
+      static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
+  const bool styleSaved =
+      preferences.putUChar(APPEARANCE_STYLE_KEY, style) == sizeof(style);
+  const bool toneSaved =
+      preferences.putUInt(APPEARANCE_TONE_KEY,
+                          appearance.analogToneColor & 0xFFFFFF) ==
+      sizeof(uint32_t);
+  const bool accentsSaved =
+      preferences.putBool(APPEARANCE_ACCENTS_KEY,
+                          appearance.analogCardinalAccentsEnabled) ==
+      sizeof(bool);
+  const bool weatherColorSaved =
+      preferences.putUInt(APPEARANCE_WEATHER_COLOR_KEY,
+                          appearance.monochromeWeatherIconColor & 0xFFFFFF) ==
+      sizeof(uint32_t);
+  preferences.end();
+  return styleSaved && toneSaved && accentsSaved && weatherColorSaved;
 }
 
 void clockConfigCopy(char *destination, size_t destinationSize,

@@ -74,6 +74,18 @@ enum ClockDateFormat : uint8_t {
   CLOCK_DATE_FORMAT_HIDDEN = 4,
 };
 
+enum ClockStyle : uint8_t {
+  CLOCK_STYLE_DIGITAL = 0,
+  CLOCK_STYLE_ANALOG = 1,
+};
+
+struct ClockAppearanceConfig {
+  uint8_t style = CLOCK_STYLE_DIGITAL;
+  uint32_t analogToneColor = 0x00D6FF;
+  bool analogCardinalAccentsEnabled = true;
+  uint32_t monochromeWeatherIconColor = 0xFFFFFF;
+};
+
 struct ClockMetricConfig {
   bool custom = false;
   char preset[16] = "co2";
@@ -170,6 +182,9 @@ bool clockConfigLoad(ClockConfig &config);
 bool clockConfigSave(const ClockConfig &config);
 void clockConfigApplyDefaults(ClockConfig &config);
 bool clockConfigRadarAvailable(const ClockConfig &config);
+bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
+                         uint32_t defaultMonochromeWeatherIconColor = 0xFFFFFF);
+bool clockAppearanceSave(const ClockAppearanceConfig &appearance);
 
 void clockConfigCopy(char *destination, size_t destinationSize,
                      const String &value);

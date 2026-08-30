@@ -14,6 +14,11 @@ using DisplayPowerStatusCallback = bool (*)();
 using RadarRangeStateCallback = void (*)(uint16_t &savedRadiusKm,
                                          uint16_t &activeRadiusKm);
 using RadarRangePreviewCallback = bool (*)(uint16_t radiusKm);
+using ClockAppearanceStateCallback = void (*)(
+    ClockAppearanceConfig &savedAppearance,
+    ClockAppearanceConfig &activeAppearance);
+using ClockAppearanceChangeCallback = bool (*)(
+    const ClockAppearanceConfig &appearance);
 using DayNightStatusCallback = void (*)(bool &sunAvailable, bool &sunIsDay,
                                         bool &lightAvailable, bool &lightOn,
                                         bool &nightMode);
@@ -33,7 +38,10 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
                            DisplayPowerCallback displayPowerCallback,
                            DisplayPowerStatusCallback displayPowerStatusCallback,
                            RadarRangeStateCallback radarRangeStateCallback,
-                           RadarRangePreviewCallback radarRangePreviewCallback);
+                           RadarRangePreviewCallback radarRangePreviewCallback,
+                           ClockAppearanceStateCallback appearanceStateCallback,
+                           ClockAppearanceChangeCallback appearancePreviewCallback,
+                           ClockAppearanceChangeCallback appearanceSaveCallback);
 void configurationWebLoop();
 void configurationWebEnsureActive();
 void configurationWebExtendAvailability();
