@@ -15,13 +15,20 @@ are configured in a web interface without editing source code.
   <img src="screenshots/dashboard-night.png" alt="Waveshare Hodiny red night dashboard" width="46%">
 </p>
 
+<p align="center">
+  <img src="screenshots/dashboard-analog.png" alt="Waveshare Hodiny analog clock in day mode" width="30%">
+  <img src="screenshots/dashboard.png" alt="Waveshare Hodiny digital clock in day mode" width="30%">
+  <img src="screenshots/dashboard-radar.png" alt="CHMI precipitation radar on Waveshare Hodiny" width="30%">
+</p>
+
 The project is Czech and the firmware defaults to Czech. English can be selected
 in the device web configuration; the setting is stored persistently and also
 changes the system text and verbal date shown on the display.
 
 ## Features
 
-- large digital clock with Barlow, Liberation Sans, LCD DSEG and Doto fonts,
+- digital clock with Barlow, Liberation Sans, LCD DSEG and Doto fonts, or an
+  analog dial with a configurable tone and optional cardinal accents,
 - multiple date formats and an optional seconds ring,
 - NTP time synchronization and the Czech time zone with daylight saving time,
 - Open-Meteo support without an account or token,

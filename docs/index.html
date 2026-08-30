@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#05090d">
     <meta name="description" content="Waveshare Hodiny – český Home Assistant dashboard pro kulatý dotykový displej Waveshare ESP32-S3-Touch-LCD-2.1.">
     <title>Waveshare Hodiny</title>
-    <link rel="stylesheet" href="styles.css?v=d4eb5981e132">
+    <link rel="stylesheet" href="styles.css?v=dab2a3370044">
     <script type="module" src="vendor/esp-web-tools/install-button.js"></script>
-    <script type="module" src="app.js?v=9e5954efed88"></script>
+    <script type="module" src="app.js?v=bb8005d7778e"></script>
   </head>
   <body>
     <header class="site-header">
@@ -32,7 +32,7 @@
       <section class="hero section-shell">
         <div class="hero-copy">
           <p class="eyebrow">Open-source firmware pro ESP32-S3</p>
-          <h1>Chytré hodiny pro <span>Home Assistant</span></h1>
+          <h1>Chytré hodiny<br>pro <span>Home Assistant</span></h1>
           <p class="hero-lead">Čas, počasí, domácí senzory a srážkový radar ČHMÚ na jednom krásném kulatém displeji. Všechno nastavíte z prohlížeče, bez úpravy zdrojového kódu.</p>
           <div class="hero-actions">
             <a class="button button-primary" href="#instalace">Nainstalovat firmware</a>
@@ -40,14 +40,22 @@
           </div>
           <p class="hardware-note">Určeno výhradně pro Waveshare ESP32-S3-Touch-LCD-2.1</p>
         </div>
-        <div class="device-stage" aria-label="Denní a noční vzhled hodin">
-          <figure class="device device-day">
-            <img src="screenshots/dashboard.png" alt="Denní dashboard Waveshare Hodiny">
-            <figcaption>Denní režim</figcaption>
+        <div class="device-stage" aria-label="Digitální a analogový vzhled hodin s meteoradarem">
+          <figure class="device device-analog">
+            <img src="screenshots/dashboard-analog.png" alt="Analogový ciferník Waveshare Hodiny">
+            <figcaption>Analogový ciferník</figcaption>
+          </figure>
+          <figure class="device device-digital-day">
+            <img src="screenshots/dashboard.png" alt="Denní digitální dashboard Waveshare Hodiny">
+            <figcaption>Digitální</figcaption>
           </figure>
           <figure class="device device-night">
             <img src="screenshots/dashboard-night.png" alt="Červený noční dashboard Waveshare Hodiny">
-            <figcaption>Noční režim</figcaption>
+            <figcaption>Noc</figcaption>
+          </figure>
+          <figure class="device device-radar">
+            <img src="screenshots/dashboard-radar.png" alt="Meteoradar ČHMÚ na displeji Waveshare Hodiny">
+            <figcaption>Meteoradar</figcaption>
           </figure>
         </div>
       </section>
@@ -62,6 +70,37 @@
           <article><span class="feature-icon">⌁</span><h3>Meteoradar ČHMÚ</h3><p>Animace srážek, mapa ČR, města a pět volitelných rozsahů pro lokality v Česku.</p></article>
           <article><span class="feature-icon">☼</span><h3>Den a noc</h3><p>Ruční i automatický noční režim včetně červeného meteoradaru.</p></article>
           <article><span class="feature-icon">↻</span><h3>Aktualizace</h3><p>Bezpečné veřejné OTA z GitHub Pages s kontrolou velikosti a SHA-256.</p></article>
+        </div>
+      </section>
+
+      <section class="display-gallery section-shell section-block">
+        <div class="section-heading narrow">
+          <p class="eyebrow">Vzhled displeje</p>
+          <h2>Digitální nebo analogové. Ve dne i v noci.</h2>
+          <p>Vyberte si klasické digitální rozložení nebo nový analogový ciferník s vlastním barevným tónem. Oba vzhledy sdílejí naměřené hodnoty, počasí i automatický noční režim a doplňuje je animovaný meteoradar ČHMÚ.</p>
+        </div>
+        <div class="clock-gallery">
+          <figure>
+            <button class="image-zoom" type="button" data-full="screenshots/dashboard-analog.png" aria-label="Zobrazit denní analogový ciferník v plné velikosti">
+              <img src="screenshots/dashboard-analog.png" alt="Analogový ciferník Waveshare Hodiny v denním režimu">
+              <span>Zvětšit</span>
+            </button>
+            <figcaption>Analogový ciferník · denní režim</figcaption>
+          </figure>
+          <figure>
+            <button class="image-zoom" type="button" data-full="screenshots/dashboard.png" aria-label="Zobrazit denní digitální ciferník v plné velikosti">
+              <img src="screenshots/dashboard.png" alt="Digitální ciferník Waveshare Hodiny v denním režimu">
+              <span>Zvětšit</span>
+            </button>
+            <figcaption>Digitální ciferník · denní režim</figcaption>
+          </figure>
+          <figure>
+            <button class="image-zoom" type="button" data-full="screenshots/dashboard-radar.png" aria-label="Zobrazit meteoradar ČHMÚ v plné velikosti">
+              <img src="screenshots/dashboard-radar.png" alt="Meteoradar ČHMÚ na displeji Waveshare Hodiny">
+              <span>Zvětšit</span>
+            </button>
+            <figcaption>Meteoradar ČHMÚ · celá Česká republika</figcaption>
+          </figure>
         </div>
       </section>
 

@@ -14,14 +14,23 @@ i aktualizace se nastavují z webového rozhraní bez úpravy zdrojového kódu.
   <img src="screenshots/dashboard-night.png" alt="Hlavní obrazovka Waveshare Hodiny v červeném nočním režimu" width="46%">
 </p>
 
+<p align="center">
+  <img src="screenshots/dashboard-analog.png" alt="Analogový ciferník Waveshare Hodiny v denním režimu" width="30%">
+  <img src="screenshots/dashboard.png" alt="Digitální ciferník Waveshare Hodiny v denním režimu" width="30%">
+  <img src="screenshots/dashboard-radar.png" alt="Meteoradar ČHMÚ na displeji Waveshare Hodiny" width="30%">
+</p>
+
 V denním režimu mají místnosti a hodnoty vlastní barvy. Volitelný červený
 noční vzhled sjednotí dashboard i meteoradar do odstínů červené a sníží jas,
-aby displej v noci nerušil.
+aby displej v noci nerušil. Vedle klasického digitálního rozložení lze zvolit
+také analogový ciferník s vlastním barevným tónem a volitelnými akcenty na
+pozicích 12, 3, 6 a 9 hodin.
 
 ## Co firmware umí
 
-- velké digitální hodiny s fonty Barlow, Liberation Sans, LCD DSEG nebo Doto,
-  české nebo anglické datum v několika formátech a volitelný vteřinový prstenec,
+- digitální hodiny s fonty Barlow, Liberation Sans, LCD DSEG nebo Doto, nebo
+  analogový ciferník s nastavitelným tónem a volitelnými hlavními akcenty,
+- české nebo anglické datum v několika formátech a volitelný vteřinový prstenec,
 - synchronizaci času přes NTP a české časové pásmo včetně letního času,
 - dvě místnosti s vlastním názvem, teplotou, ikonou a barvou,
 - animované i statické ikony počasí založené na Meteocons,
