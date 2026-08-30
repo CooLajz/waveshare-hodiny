@@ -1595,8 +1595,8 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
   lv_obj_clear_flag(airArc, LV_OBJ_FLAG_CLICKABLE);
 
   makeDivider(content, 3, 34, 0, 28);
-  makeDivider(content, 3, 34, -98, 158);
-  makeDivider(content, 3, 34, 98, 158);
+  makeDivider(content, 3, 34, -97, 158);
+  makeDivider(content, 3, 34, 96, 158);
 
   co2TitleLabel = makeLabel(content, &clock_czech_16, COLOR_AIR);
   lv_label_set_text(co2TitleLabel, "CO₂");
