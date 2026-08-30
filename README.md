@@ -10,6 +10,17 @@ bez účtu nebo Home Assistant. Vzhled, zdroje dat, poloha, radar, jas, animace
 i aktualizace se nastavují z webového rozhraní bez úpravy zdrojového kódu.
 
 <p align="center">
+  <a href="https://coolajz.github.io/waveshare-hodiny/">
+    <img src="https://img.shields.io/badge/Nainstalovat_firmware_z_prohl%C3%AD%C5%BEe%C4%8De-00BBD4?style=for-the-badge&amp;logo=googlechrome&amp;logoColor=white" alt="Nainstalovat firmware z prohlížeče" height="46">
+  </a>
+</p>
+
+<p align="center">
+  <strong>Jednoduchá instalace přes USB bez stahování souborů.</strong><br>
+  Otevřete instalační stránku v desktopovém Chromu nebo Edge, připojte displej a pokračujte podle průvodce.
+</p>
+
+<p align="center">
   <img src="screenshots/dashboard.png" alt="Hlavní obrazovka Waveshare Hodiny v denním režimu" width="46%">
   <img src="screenshots/dashboard-night.png" alt="Hlavní obrazovka Waveshare Hodiny v červeném nočním režimu" width="46%">
 </p>
