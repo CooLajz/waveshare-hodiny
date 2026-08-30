@@ -4,8 +4,8 @@ const translations = {
   "Jazyk stránky": "Page language",
   "Funkce": "Features", "Instalace": "Installation", "Nastavení": "Configuration",
   "Open-source firmware pro ESP32-S3": "Open-source firmware for ESP32-S3",
-  "Chytré hodiny": "Smart clock", "pro": "for",
-  "Čas, počasí, domácí senzory a srážkový radar ČHMÚ na jednom krásném kulatém displeji. Všechno nastavíte z prohlížeče, bez úpravy zdrojového kódu.": "Time, weather, home sensors and Czech precipitation radar on one beautiful round display. Configure everything in your browser without editing source code.",
+  "Chytré hodiny": "Smart clock", "podle vás": "your way",
+  "Čas, počasí, vlastní senzory a srážkový radar ČHMÚ na jednom krásném kulatém displeji. Fungují samostatně s Open-Meteo a TMEP.cz nebo jako součást Home Assistantu.": "Time, weather, personal sensors and Czech precipitation radar on one beautiful round display. It works independently with Open-Meteo and TMEP.cz or as part of Home Assistant.",
   "Nainstalovat firmware": "Install firmware", "Prohlédnout si zdrojový kód": "View source code",
   "Určeno výhradně pro Waveshare ESP32-S3-Touch-LCD-2.1": "Designed exclusively for Waveshare ESP32-S3-Touch-LCD-2.1",
   "Digitální a analogový vzhled hodin s meteoradarem": "Digital and analog clock layouts with precipitation radar",
@@ -16,8 +16,10 @@ const translations = {
   "Červený noční dashboard Waveshare Hodiny": "Waveshare Hodiny red night dashboard",
   "Noc": "Night", "Meteoradar": "Radar",
   "Na první pohled": "At a glance", "Všechno důležité, bez zbytečností": "Everything important, nothing unnecessary",
-  "Čas a senzory": "Time and sensors",
-  "Počasí a hodnoty z Open-Meteo nebo Home Assistantu doplňují tři efekty vteřin.": "Weather and values from Open-Meteo or Home Assistant are complemented by three seconds effects.",
+  "Počasí a vlastní senzory": "Weather and personal sensors",
+  "Open-Meteo funguje bez účtu,": "Open-Meteo works without an account,",
+  "přidá hodnoty z vlastních čidel a Home Assistant nabídne další entity.": "adds values from your own sensors, while Home Assistant provides additional entities.",
+  "Navštívit TMEP.cz": "Visit TMEP.cz",
   "Meteoradar ČHMÚ": "Czech precipitation radar",
   "Animace srážek, mapa ČR, města a pět volitelných rozsahů pro lokality v Česku.": "Animated precipitation, a Czech map, cities and five selectable ranges for locations in Czechia.",
   "Den a noc": "Day and night", "Ruční i automatický noční režim včetně červeného meteoradaru.": "Manual and automatic night mode, including a red radar view.",
@@ -64,8 +66,8 @@ const translations = {
 };
 
 const messages = {
-  cs: { version: (version) => `Verze ${version}`, ready: "Firmware je připravený k instalaci.", unavailable: "Firmware zatím nebyl veřejně vydán", waiting: "Stránka je připravená. Instalaci zpřístupní první stabilní GitHub release.", log: "Instalátor není aktivní:", description: "Waveshare Hodiny – český Home Assistant dashboard pro kulatý dotykový displej Waveshare ESP32-S3-Touch-LCD-2.1." },
-  en: { version: (version) => `Version ${version}`, ready: "The firmware is ready to install.", unavailable: "The firmware has not been released publicly yet", waiting: "The page is ready. Installation will become available with the first stable GitHub release.", log: "Installer is not active:", description: "Waveshare Hodiny – an open-source Home Assistant dashboard for the round Waveshare ESP32-S3-Touch-LCD-2.1 display." },
+  cs: { version: (version) => `Verze ${version}`, ready: "Firmware je připravený k instalaci.", unavailable: "Firmware zatím nebyl veřejně vydán", waiting: "Stránka je připravená. Instalaci zpřístupní první stabilní GitHub release.", log: "Instalátor není aktivní:", description: "Waveshare Hodiny – chytré hodiny s Open-Meteo, TMEP.cz, Home Assistantem a meteoradarem ČHMÚ pro kulatý dotykový displej." },
+  en: { version: (version) => `Version ${version}`, ready: "The firmware is ready to install.", unavailable: "The firmware has not been released publicly yet", waiting: "The page is ready. Installation will become available with the first stable GitHub release.", log: "Installer is not active:", description: "Waveshare Hodiny – a smart clock with Open-Meteo, TMEP.cz, Home Assistant and Czech precipitation radar for a round touchscreen display." },
 };
 
 const originalText = new WeakMap();
@@ -89,7 +91,7 @@ function updateInstallerText() {
 function translateDocument(language) {
   currentLanguage = language;
   document.documentElement.lang = language;
-  document.title = language === "en" ? "Waveshare Hodiny – Smart clock for Home Assistant" : "Waveshare Hodiny";
+  document.title = language === "en" ? "Waveshare Hodiny – Smart clock, your way" : "Waveshare Hodiny – Chytré hodiny podle vás";
   document.querySelector('meta[name="description"]').content = messages[language].description;
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {

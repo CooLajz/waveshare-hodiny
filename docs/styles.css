@@ -71,6 +71,9 @@ h2 { margin-bottom: 18px; font-size: clamp(2rem, 4vw, 3.6rem); line-height: 1.04
 .feature-grid article { padding: 26px 24px; background: linear-gradient(145deg, rgba(17,29,38,.9), rgba(8,15,20,.9)); border: 1px solid var(--line); border-radius: var(--radius); }
 .feature-grid h3 { margin: 19px 0 7px; font-size: 1.05rem; }
 .feature-grid p { margin: 0; color: var(--muted); font-size: .9rem; }
+.feature-grid p a { color: var(--cyan); font-weight: 750; text-decoration: underline; text-decoration-color: rgba(48,215,232,.46); text-underline-offset: .18em; }
+.feature-grid p a:hover, .feature-grid p a:focus-visible { color: #8cecf5; text-decoration-color: currentColor; }
+.feature-grid p a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; border-radius: 2px; }
 .feature-icon { color: var(--cyan); font-size: 1.7rem; line-height: 1; }
 #funkce { padding-top: 62px; }
 .display-gallery { padding-top: 18px; }
