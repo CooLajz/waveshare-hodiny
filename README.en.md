@@ -21,6 +21,8 @@ are configured in a web interface without editing source code.
   Open the installer in desktop Chrome or Edge, connect the display and follow the guided steps.
 </p>
 
+---
+
 <p align="center">
   <img src="screenshots/dashboard.png" alt="Waveshare Hodiny day dashboard" width="46%">
   <img src="screenshots/dashboard-night.png" alt="Waveshare Hodiny red night dashboard" width="46%">
