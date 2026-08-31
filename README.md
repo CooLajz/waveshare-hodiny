@@ -125,7 +125,9 @@ Nová konfigurace používá Open-Meteo, polohu Brno a pohled meteoradaru na cel
 
 Open-Meteo je výchozí zdroj a nevyžaduje účet ani token. Poskytuje aktuální
 počasí a čtyři konfigurovatelné hodnoty. Vybrané město a jeho GPS souřadnice
-současně určují střed lokálních pohledů meteoradaru ČHMÚ.
+současně určují střed lokálních pohledů meteoradaru ČHMÚ. U každé ze čtyř
+pozic lze samostatně nastavit 0 až 2 desetinná místa; stejné nastavení platí
+i při výběru hodnoty TMEP.cz.
 
 ### TMEP.cz jako doplněk Open-Meteo
 

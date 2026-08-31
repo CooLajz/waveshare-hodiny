@@ -1558,6 +1558,13 @@ void handleSaveConfig() {
   for (size_t index = 0; index < 4; ++index) {
     const String prefix = String(F("openMeteoSlot")) + index;
     const String value = server.arg(prefix + F("Value"));
+    const String decimalsText = server.arg(prefix + F("Decimals"));
+    if (decimalsText != F("0") && decimalsText != F("1") &&
+        decimalsText != F("2")) {
+      sendError(400, F("Počet desetinných míst musí být od 0 do 2."));
+      return;
+    }
+    const uint8_t decimals = static_cast<uint8_t>(decimalsText.toInt());
     if (!parseHtmlColor(server.arg(prefix + F("Color")),
                         config.openMeteoSlots[index].color)) {
       sendError(400, F("Nastavení pozice Open-Meteo není platné."));
@@ -1570,11 +1577,9 @@ void handleSaveConfig() {
       const String field =
           separator > 5 ? value.substring(separator + 1) : String();
       const String unit = server.arg(prefix + F("Unit"));
-      const int decimals = server.arg(prefix + F("Decimals")).toInt();
       if (config.tmepExportId[0] == '\0' || config.tmepExportKey[0] == '\0' ||
           !validTmepSensorId(sensorId) ||
-          !tmepFieldSupported(field.c_str()) || !validTmepUnit(unit) ||
-          decimals < 0 || decimals > 2) {
+          !tmepFieldSupported(field.c_str()) || !validTmepUnit(unit)) {
         sendError(400, F("Nastavení hodnoty TMEP není platné."));
         return;
       }
@@ -1583,7 +1588,7 @@ void handleSaveConfig() {
       clockConfigCopy(tmepSlot.sensorId, sizeof(tmepSlot.sensorId), sensorId);
       clockConfigCopy(tmepSlot.field, sizeof(tmepSlot.field), field);
       clockConfigCopy(tmepSlot.unit, sizeof(tmepSlot.unit), unit);
-      tmepSlot.decimals = static_cast<uint8_t>(decimals);
+      tmepSlot.decimals = decimals;
     } else {
       if (!validOpenMeteoValue(value)) {
         sendError(400, F("Nastavení pozice Open-Meteo není platné."));
@@ -1592,6 +1597,7 @@ void handleSaveConfig() {
       clockConfigCopy(config.openMeteoSlots[index].value,
                       sizeof(config.openMeteoSlots[index].value), value);
       config.tmepSlots[index] = ClockTmepSlotConfig{};
+      config.tmepSlots[index].decimals = decimals;
     }
     clockConfigCopy(config.openMeteoSlots[index].name,
                     sizeof(config.openMeteoSlots[index].name),

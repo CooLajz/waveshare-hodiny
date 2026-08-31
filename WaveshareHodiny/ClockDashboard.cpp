@@ -39,6 +39,10 @@ constexpr float ANALOG_PI = 3.14159265358979323846f;
 constexpr int ANALOG_CENTER_X = 240;
 constexpr int ANALOG_CENTER_Y = 240;
 constexpr int ANALOG_RING_RADIUS = 239;
+// Jediný osový obdélník kolem šikmé ručičky může pokrýt desítky tisíc
+// pixelů. Pevné pásy omezí překreslení na okolí skutečného tahu a současně
+// udrží i starou a novou polohu všech ručiček pod 32 dirty oblastmi LVGL.
+constexpr lv_coord_t ANALOG_HAND_INVALIDATION_STRIP = 96;
 uint8_t activeClockStyle = CLOCK_STYLE_DIGITAL;
 uint32_t analogToneColor = 0x00D6FF;
 uint32_t analogHandToneColor = 0x00D6FF;
@@ -916,13 +920,57 @@ void invalidateAnalogHandArea(float angle, float rearLength,
   const lv_point_t from = analogPoint(center, angle + 180.0f, rearLength);
   const lv_point_t to = analogPoint(center, angle, frontLength);
   const lv_coord_t margin = width / 2 + 3;
-  lv_area_t area = {
-      static_cast<lv_coord_t>(min(from.x, to.x) - margin),
-      static_cast<lv_coord_t>(min(from.y, to.y) - margin),
-      static_cast<lv_coord_t>(max(from.x, to.x) + margin),
-      static_cast<lv_coord_t>(max(from.y, to.y) + margin),
+  const float deltaX = static_cast<float>(to.x - from.x);
+  const float deltaY = static_cast<float>(to.y - from.y);
+  const bool splitAlongX = std::fabs(deltaX) >= std::fabs(deltaY);
+  const float axisFrom = splitAlongX ? from.x : from.y;
+  const float axisTo = splitAlongX ? to.x : to.y;
+  const float otherFrom = splitAlongX ? from.y : from.x;
+  const float otherTo = splitAlongX ? to.y : to.x;
+  const float axisDelta = axisTo - axisFrom;
+  const float otherDelta = otherTo - otherFrom;
+  const lv_coord_t lineAxisMin = min(axisFrom, axisTo);
+  const lv_coord_t lineAxisMax = max(axisFrom, axisTo);
+  const lv_coord_t dirtyAxisMin = lineAxisMin - margin;
+  const lv_coord_t dirtyAxisMax = lineAxisMax + margin;
+  const lv_coord_t firstStrip =
+      (dirtyAxisMin / ANALOG_HAND_INVALIDATION_STRIP) *
+      ANALOG_HAND_INVALIDATION_STRIP;
+
+  auto otherCoordinate = [&](float axis) {
+    if (std::fabs(axisDelta) < 0.001f) return otherFrom;
+    return otherFrom + (axis - axisFrom) * otherDelta / axisDelta;
   };
-  lv_obj_invalidate_area(analogHandsLayer, &area);
+
+  for (lv_coord_t stripStart = firstStrip; stripStart <= dirtyAxisMax;
+       stripStart += ANALOG_HAND_INVALIDATION_STRIP) {
+    const lv_coord_t stripEnd =
+        stripStart + ANALOG_HAND_INVALIDATION_STRIP - 1;
+    const lv_coord_t areaAxisMin = max(dirtyAxisMin, stripStart);
+    const lv_coord_t areaAxisMax = min(dirtyAxisMax, stripEnd);
+    const float sampleAxisMin =
+        constrain(static_cast<float>(areaAxisMin),
+                  static_cast<float>(lineAxisMin),
+                  static_cast<float>(lineAxisMax));
+    const float sampleAxisMax =
+        constrain(static_cast<float>(areaAxisMax),
+                  static_cast<float>(lineAxisMin),
+                  static_cast<float>(lineAxisMax));
+    const float otherAtMin = otherCoordinate(sampleAxisMin);
+    const float otherAtMax = otherCoordinate(sampleAxisMax);
+    const lv_coord_t areaOtherMin = static_cast<lv_coord_t>(
+        std::floor(min(otherAtMin, otherAtMax) - margin));
+    const lv_coord_t areaOtherMax = static_cast<lv_coord_t>(
+        std::ceil(max(otherAtMin, otherAtMax) + margin));
+
+    lv_area_t area;
+    if (splitAlongX) {
+      area = {areaAxisMin, areaOtherMin, areaAxisMax, areaOtherMax};
+    } else {
+      area = {areaOtherMin, areaAxisMin, areaOtherMax, areaAxisMax};
+    }
+    lv_obj_invalidate_area(analogHandsLayer, &area);
+  }
 }
 
 void invalidateAnalogHands(bool hourAndMinute = true,
@@ -2806,24 +2854,13 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
       return "mm";
     return "";
   };
-  const auto openMeteoDecimals = [](const char *value) -> uint8_t {
-    return strcmp(value, "relative_humidity_2m") == 0 ||
-                   strcmp(value, "cloud_cover") == 0 ||
-                   strcmp(value, "pressure_msl") == 0 ||
-                   strcmp(value, "surface_pressure") == 0 ||
-                   strcmp(value, "wind_direction_10m") == 0
-               ? 0
-               : 1;
-  };
   const auto slotUnit = [&](size_t index) -> const char * {
     return config.tmepSlots[index].enabled
                ? config.tmepSlots[index].unit
                : openMeteoUnit(config.openMeteoSlots[index].value);
   };
   const auto slotDecimals = [&](size_t index) -> uint8_t {
-    return config.tmepSlots[index].enabled
-               ? config.tmepSlots[index].decimals
-               : openMeteoDecimals(config.openMeteoSlots[index].value);
+    return config.tmepSlots[index].decimals;
   };
   if (openMeteo) {
     clockConfigCopy(metricAConfig.name, sizeof(metricAConfig.name),

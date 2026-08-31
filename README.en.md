@@ -117,7 +117,9 @@ Republic radar view. Home Assistant is optional.
 
 Open-Meteo is the default source and requires no account or token. It supplies
 the current weather and four configurable values. The selected city coordinates
-also define the center of local CHMI radar views.
+also define the center of local CHMI radar views. Each of the four slots can
+independently display 0–2 decimal places; the same setting also applies when a
+TMEP.cz value is selected.
 
 ### TMEP.cz as an Open-Meteo extension
 
