@@ -19,11 +19,11 @@ ARDUINO_CONFIG_FILE="${ARDUINO_CONFIG_FILE:-$ROOT_DIR/WaveshareHodiny/local/ardu
 if [[ ! -f "$ARDUINO_CONFIG_FILE" ]]; then
   ARDUINO_CONFIG_FILE="$ROOT_DIR/arduino-cli.yaml"
 fi
-GENERATE_SECRETS_ARGS=()
 if [[ "$WIFI_PROFILE" == "work" ]]; then
-  GENERATE_SECRETS_ARGS+=(--work-wifi)
+  "$PYTHON_BIN" "$ROOT_DIR/tools/generate_secrets.py" --work-wifi
+else
+  "$PYTHON_BIN" "$ROOT_DIR/tools/generate_secrets.py"
 fi
-"$PYTHON_BIN" "$ROOT_DIR/tools/generate_secrets.py" "${GENERATE_SECRETS_ARGS[@]}"
 "$PYTHON_BIN" "$ROOT_DIR/tools/validate_weather_icon_parity.py"
 "$ARDUINO_CLI_BIN" \
   --config-file "$ARDUINO_CONFIG_FILE" \

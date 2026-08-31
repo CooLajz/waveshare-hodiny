@@ -47,7 +47,8 @@ changes the system text and verbal date shown on the display.
 - NTP time synchronization and the Czech time zone with daylight saving time,
 - Open-Meteo support without an account or token,
 - Home Assistant entities read through its REST API,
-- two room or outdoor values with individual names, icons and colors,
+- two generic top values with individual names, units, precision, icons and
+  smooth color scales,
 - static and animated weather icons based on Meteocons,
 - CHMI precipitation radar with a Czech map, cities and 1–15 frames,
 - 25, 50, 100 and 200 km radar ranges plus a full-country view,
@@ -165,8 +166,8 @@ Suggested entities:
 | --- | --- | --- |
 | Weather | `weather.home` | Text state or supported numeric code |
 | Sun | `sun.sun` | Controls automatic day/night mode |
-| Outdoor temperature | `sensor.outdoor_temperature` | Any numeric sensor |
-| Room temperature | `sensor.living_room_temperature` | Any numeric sensor |
+| Left value | `sensor.outdoor_temperature` | Temperature, CO₂, PM, pressure or any numeric sensor |
+| Right value | `sensor.living_room_co2` | Temperature, CO₂, PM, pressure or any numeric sensor |
 | Value A/B | `sensor.living_room_co2` | CO₂, VOC, PM, humidity, pressure, etc. |
 
 Unavailable or invalid values are displayed as `--`.
@@ -185,7 +186,8 @@ The web interface configures:
   the fixed web header provides flag buttons for changing it at any time,
 - the data source and shared geographic location,
 - Home Assistant URL, token, weather and sun entities,
-- left and right room values, names, icons and colors,
+- left and right top values with type, name, unit, precision, icon and color
+  scale,
 - `Monochrome`, `Flat` and `Line` animated weather icon styles,
 - CHMI radar range, map opacity, frame count, pause and automatic rotation,
 - custom values, units, precision and color scales,

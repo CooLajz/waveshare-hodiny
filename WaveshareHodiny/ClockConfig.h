@@ -24,9 +24,10 @@ constexpr size_t CLOCK_METRIC_COLOR_POINT_COUNT = 10;
 // Intermediate development schemas were never released.
 // Schema 27 adds optional TMEP credentials parsed from an export URL and a
 // TMEP source descriptor for each of the four Open-Meteo dashboard positions.
-// The schema 26 prefix stays
-// byte-for-byte unchanged so existing configuration can be migrated safely.
-constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 27;
+// Schema 28 appends generic formatting and color scales for the two top Home
+// Assistant values. The complete schema 27 prefix stays byte-for-byte
+// unchanged so existing temperature-only configuration can be migrated safely.
+constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 28;
 
 enum ClockLanguage : uint8_t {
   CLOCK_LANGUAGE_UNSET = 0,
@@ -119,6 +120,13 @@ struct ClockSideConfig {
   uint32_t color = 0xFFFFFF;
 };
 
+struct ClockSideValueConfig {
+  bool custom = false;
+  char preset[16] = "temperature";
+  char suffix[CLOCK_METRIC_SUFFIX_LENGTH] = "°C";
+  uint8_t decimals = 1;
+};
+
 struct ClockMetricColorPoint {
   float value = 0.0f;
   uint32_t color = 0xFFFFFF;
@@ -198,14 +206,20 @@ struct ClockConfig {
   char tmepExportKey[CLOCK_TMEP_EXPORT_KEY_LENGTH] = "";
   char tmepExportId[CLOCK_TMEP_EXPORT_ID_LENGTH] = "";
   ClockTmepSlotConfig tmepSlots[4];
+  ClockSideValueConfig leftValue;
+  ClockSideValueConfig rightValue;
+  ClockMetricColorScale leftValueColorScale;
+  ClockMetricColorScale rightValueColorScale;
 };
 
 static_assert(offsetof(ClockConfig, language) == 2106 &&
                   offsetof(ClockConfig, openMeteoCountry) == 2107 &&
                   offsetof(ClockConfig, tmepExportKey) == 2108 &&
+                  offsetof(ClockConfig, leftValue) == 2452 &&
                   sizeof(ClockTmepSlotConfig) == 50 &&
-                  sizeof(ClockConfig) == 2452,
-              "Schema 27 must preserve the complete schema 26 prefix.");
+                  sizeof(ClockSideValueConfig) == 34 &&
+                  sizeof(ClockConfig) == 2688,
+              "Schema 28 must preserve the complete schema 27 prefix.");
 
 bool clockConfigBegin();
 bool clockConfigLoad(ClockConfig &config);

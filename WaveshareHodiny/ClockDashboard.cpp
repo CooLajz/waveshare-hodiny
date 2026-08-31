@@ -198,8 +198,6 @@ uint32_t secondDotColor = 0xFFFFFF;
 uint32_t leftWeatherIconColor = 0xFFFFFF;
 uint32_t rightWeatherIconColor = 0xFFFFFF;
 uint8_t secondDotBrightness = 175;
-uint32_t outsideColor = 0x4CCBEC;
-uint32_t roomColor = 0xFFB843;
 uint32_t timeColor = 0xF6F6F6;
 uint32_t dateColor = 0xB5B5B5;
 uint8_t timeFont = CLOCK_TIME_FONT_BARLOW;
@@ -272,8 +270,12 @@ uint8_t timeColonEffect = CLOCK_TIME_COLON_STEADY;
 char displayedTimeText[6] = "--:--";
 uint32_t lastRenderedTimeColonColor = UINT32_MAX;
 ClockValues currentValues;
+ClockSideValueConfig leftValueConfig;
+ClockSideValueConfig rightValueConfig;
 ClockMetricConfig metricAConfig;
 ClockMetricConfig metricBConfig;
+ClockMetricColorScale leftValueColorScale;
+ClockMetricColorScale rightValueColorScale;
 ClockMetricColorScale metricAColorScale;
 ClockMetricColorScale metricBColorScale;
 BrightnessPreviewCallback brightnessPreviewCallback = nullptr;
@@ -1071,7 +1073,7 @@ void createAnalogLayout(lv_obj_t *content) {
   analogOutsideDecimalLabel =
       makeLabel(content, &lv_font_montserrat_28, COLOR_OUTSIDE);
   analogOutsideUnitLabel =
-      makeLabel(content, &lv_font_montserrat_28, COLOR_OUTSIDE);
+      makeLabel(content, &clock_unit_28, COLOR_OUTSIDE);
 
   analogRoomTitleLabel = makeLabel(content, &clock_czech_20, COLOR_ROOM);
   lv_obj_set_style_text_letter_space(analogRoomTitleLabel, 1, 0);
@@ -1080,7 +1082,7 @@ void createAnalogLayout(lv_obj_t *content) {
       makeLabel(content, &lv_font_montserrat_36, COLOR_ROOM);
   analogRoomDecimalLabel =
       makeLabel(content, &lv_font_montserrat_28, COLOR_ROOM);
-  analogRoomUnitLabel = makeLabel(content, &lv_font_montserrat_28, COLOR_ROOM);
+  analogRoomUnitLabel = makeLabel(content, &clock_unit_28, COLOR_ROOM);
 
   analogMetricATitleLabel = makeLabel(content, &clock_czech_16, COLOR_AIR);
   analogMetricAValueLabel =
@@ -1335,12 +1337,16 @@ void applyAnalogColors() {
   const lv_color_t unifiedColor = analogTone();
   const lv_color_t outside =
       redNight ? COLOR_ERROR
-               : analogMonochromeValuesEnabled ? unifiedColor
-                                                : configuredColor(outsideColor);
+               : analogMonochromeValuesEnabled
+                     ? unifiedColor
+                     : metricColorForValue(currentValues.leftTemperatureC,
+                                           leftValueColorScale);
   const lv_color_t room =
       redNight ? COLOR_ERROR
-               : analogMonochromeValuesEnabled ? unifiedColor
-                                                : configuredColor(roomColor);
+               : analogMonochromeValuesEnabled
+                     ? unifiedColor
+                     : metricColorForValue(currentValues.rightTemperatureC,
+                                           rightValueColorScale);
   const lv_color_t metricA =
       redNight ? COLOR_ERROR
                : analogMonochromeValuesEnabled
@@ -1471,14 +1477,14 @@ void setTopValue(float value, uint8_t decimals, int centerX,
   if (std::isnan(value)) {
     snprintf(valueText, sizeof(valueText), "--");
   } else {
-    snprintf(valueText, sizeof(valueText), decimals == 0 ? "%.0f" : "%.1f",
+    snprintf(valueText, sizeof(valueText), "%.*f", constrain(decimals, 0, 2),
              value);
   }
 
   char *decimalPoint = strchr(valueText, '.');
-  char decimalText[4] = "";
+  char decimalText[8] = "";
   if (decimalPoint != nullptr) {
-    snprintf(decimalText, sizeof(decimalText), ",%c", decimalPoint[1]);
+    snprintf(decimalText, sizeof(decimalText), ",%s", decimalPoint + 1);
     *decimalPoint = '\0';
   }
 
@@ -1971,8 +1977,12 @@ void applyDashboardColors() {
     lv_obj_set_style_img_recolor(roomWeatherAnimation, COLOR_ERROR, 0);
     lv_obj_set_style_img_recolor_opa(roomWeatherAnimation, LV_OPA_COVER, 0);
   } else {
-    const lv_color_t configuredOutsideColor = configuredColor(outsideColor);
-    const lv_color_t configuredRoomColor = configuredColor(roomColor);
+    const lv_color_t configuredOutsideColor =
+        metricColorForValue(currentValues.leftTemperatureC,
+                            leftValueColorScale);
+    const lv_color_t configuredRoomColor =
+        metricColorForValue(currentValues.rightTemperatureC,
+                            rightValueColorScale);
     setTextColor(timeLabel, configuredColor(timeColor));
     setTextColor(radarTitleLabel, COLOR_TEXT);
     setTextColor(radarStatusLabel, COLOR_OUTSIDE);
@@ -2673,24 +2683,24 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
   lv_label_set_text(dateLabel, "");
   alignCenter(dateLabel, 0, -43);
 
-  outsideTitleLabel = makeLabel(content, &clock_czech_18, COLOR_OUTSIDE);
+  outsideTitleLabel = makeLabel(content, &clock_czech_20, COLOR_OUTSIDE);
   lv_obj_set_style_text_letter_space(outsideTitleLabel, 2, 0);
   lv_label_set_text(outsideTitleLabel, "VENKU");
   alignCenter(outsideTitleLabel, -122, 5);
 
-  roomTitleLabel = makeLabel(content, &clock_czech_18, COLOR_ROOM);
+  roomTitleLabel = makeLabel(content, &clock_czech_20, COLOR_ROOM);
   lv_obj_set_style_text_letter_space(roomTitleLabel, 2, 0);
   lv_label_set_text(roomTitleLabel, "MÍSTNOST");
   alignCenter(roomTitleLabel, 127, 5);
 
   outsideIntegerLabel = makeLabel(content, &lv_font_montserrat_48, COLOR_OUTSIDE);
   outsideDecimalLabel = makeLabel(content, &lv_font_montserrat_32, COLOR_OUTSIDE);
-  outsideUnitLabel = makeLabel(content, &lv_font_montserrat_24, COLOR_OUTSIDE);
+  outsideUnitLabel = makeLabel(content, &clock_unit_24, COLOR_OUTSIDE);
   lv_label_set_text(outsideUnitLabel, "°C");
 
   roomIntegerLabel = makeLabel(content, &lv_font_montserrat_48, COLOR_ROOM);
   roomDecimalLabel = makeLabel(content, &lv_font_montserrat_32, COLOR_ROOM);
-  roomUnitLabel = makeLabel(content, &lv_font_montserrat_24, COLOR_ROOM);
+  roomUnitLabel = makeLabel(content, &clock_unit_24, COLOR_ROOM);
   lv_label_set_text(roomUnitLabel, "°C");
 
   weatherImage = lv_img_create(content);
@@ -2828,8 +2838,14 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   nightVisualMode = config.nightVisualMode;
   metricAConfig = config.metricA;
   metricBConfig = config.metricB;
+  leftValueConfig = config.leftValue;
+  rightValueConfig = config.rightValue;
+  normalizeMicroSign(leftValueConfig.suffix);
+  normalizeMicroSign(rightValueConfig.suffix);
   normalizeMicroSign(metricAConfig.suffix);
   normalizeMicroSign(metricBConfig.suffix);
+  leftValueColorScale = config.leftValueColorScale;
+  rightValueColorScale = config.rightValueColorScale;
   metricAColorScale = config.metricAColorScale;
   metricBColorScale = config.metricBColorScale;
   const bool openMeteo = config.dataSource == CLOCK_DATA_SOURCE_OPEN_METEO;
@@ -2877,15 +2893,19 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
     metricAColorScale.points[0].color = config.openMeteoSlots[2].color;
     metricBColorScale = ClockMetricColorScale{};
     metricBColorScale.points[0].color = config.openMeteoSlots[3].color;
+    leftValueColorScale = ClockMetricColorScale{};
+    leftValueColorScale.points[0].color = config.openMeteoSlots[0].color;
+    rightValueColorScale = ClockMetricColorScale{};
+    rightValueColorScale.points[0].color = config.openMeteoSlots[1].color;
     strlcpy(outsideUnit, slotUnit(0), sizeof(outsideUnit));
     strlcpy(roomUnit, slotUnit(1), sizeof(roomUnit));
     outsideDecimals = slotDecimals(0);
     roomDecimals = slotDecimals(1);
   } else {
-    strlcpy(outsideUnit, "°C", sizeof(outsideUnit));
-    strlcpy(roomUnit, "°C", sizeof(roomUnit));
-    outsideDecimals = 1;
-    roomDecimals = 1;
+    strlcpy(outsideUnit, leftValueConfig.suffix, sizeof(outsideUnit));
+    strlcpy(roomUnit, rightValueConfig.suffix, sizeof(roomUnit));
+    outsideDecimals = leftValueConfig.decimals;
+    roomDecimals = rightValueConfig.decimals;
   }
   automaticDayNightEnabled = config.automaticDayNight;
   const bool timeColonModeChanged =
@@ -2904,10 +2924,6 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   secondDotSize = constrain(config.secondDotSize, 1, 10);
   secondDotColor = config.secondDotColor & 0xFFFFFF;
   secondDotBrightness = config.secondDotBrightness;
-  outsideColor = (openMeteo ? config.openMeteoSlots[0].color
-                            : config.leftSide.color) & 0xFFFFFF;
-  roomColor = (openMeteo ? config.openMeteoSlots[1].color
-                         : config.rightSide.color) & 0xFFFFFF;
   timeColor = config.timeColor & 0xFFFFFF;
   dateColor = config.dateColor & 0xFFFFFF;
   timeFont = constrain(config.timeFont,
@@ -3256,6 +3272,23 @@ void clockDashboardUpdate(const ClockValues &values) {
               outsideIntegerLabel, outsideDecimalLabel, outsideUnitLabel);
   setTopValue(values.rightTemperatureC, roomDecimals, 367, roomIntegerLabel,
               roomDecimalLabel, roomUnitLabel);
+  const lv_color_t outsideValueColor =
+      redNightVisualEnabled()
+          ? COLOR_ERROR
+          : metricColorForValue(values.leftTemperatureC,
+                                leftValueColorScale);
+  const lv_color_t roomValueColor =
+      redNightVisualEnabled()
+          ? COLOR_ERROR
+          : metricColorForValue(values.rightTemperatureC,
+                                rightValueColorScale);
+  lv_obj_t *outsideValueLabels[] = {outsideTitleLabel, outsideIntegerLabel,
+                                    outsideDecimalLabel, outsideUnitLabel};
+  lv_obj_t *roomValueLabels[] = {roomTitleLabel, roomIntegerLabel,
+                                 roomDecimalLabel, roomUnitLabel};
+  for (lv_obj_t *label : outsideValueLabels)
+    setTextColor(label, outsideValueColor);
+  for (lv_obj_t *label : roomValueLabels) setTextColor(label, roomValueColor);
 
   formatMetricValue(text, sizeof(text), values.metricAValue,
                     metricAConfig.decimals);

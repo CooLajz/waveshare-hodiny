@@ -34,6 +34,7 @@ constexpr uint32_t PUBLIC_1_5_5_SCHEMA_VERSION = 20;
 constexpr uint32_t LANGUAGE_SCHEMA_VERSION = 25;
 constexpr uint32_t RADAR_SCHEMA_VERSION = 24;
 constexpr uint32_t TMEP_PREDECESSOR_SCHEMA_VERSION = 26;
+constexpr uint32_t SIDE_VALUES_PREDECESSOR_SCHEMA_VERSION = 27;
 
 // Firmware 1.5.5 stored the same prefix as ClockConfig up to dateFormat.
 // Keeping the payload as bytes preserves its exact released NVS layout and
@@ -55,6 +56,33 @@ struct ConfigRecordV26 {
   uint8_t config[SCHEMA_26_CONFIG_SIZE];
   uint32_t checksum;
 };
+
+constexpr size_t SCHEMA_27_CONFIG_SIZE = offsetof(ClockConfig, leftValue);
+
+struct ConfigRecordV27 {
+  uint32_t magic;
+  uint32_t schemaVersion;
+  uint8_t config[SCHEMA_27_CONFIG_SIZE];
+  uint32_t checksum;
+};
+
+void applyLegacySideValueDefaults(ClockConfig &config) {
+  config.leftValue = ClockSideValueConfig{};
+  config.rightValue = ClockSideValueConfig{};
+  // Původní levá a pravá teplota dovolovaly vlastní názvy. Zachováme je jako
+  // vlastní hodnoty, aby samotné uložení nové stránky nepřejmenovalo například
+  // VENKU nebo LOŽNICE na obecné TEPLOTA.
+  config.leftValue.custom = true;
+  config.rightValue.custom = true;
+  clockConfigCopy(config.leftValue.preset,
+                  sizeof(config.leftValue.preset), "custom");
+  clockConfigCopy(config.rightValue.preset,
+                  sizeof(config.rightValue.preset), "custom");
+  config.leftValueColorScale = ClockMetricColorScale{};
+  config.leftValueColorScale.points[0] = {0.0f, config.leftSide.color};
+  config.rightValueColorScale = ClockMetricColorScale{};
+  config.rightValueColorScale.points[0] = {0.0f, config.rightSide.color};
+}
 
 void applyOpenMeteoDefaults(ClockConfig &config) {
   config.dataSource = CLOCK_DATA_SOURCE_OPEN_METEO;
@@ -83,10 +111,15 @@ static_assert(PUBLIC_1_5_5_CONFIG_SIZE == 2096 &&
 static_assert(SCHEMA_26_CONFIG_SIZE == 2108 &&
                   sizeof(ConfigRecordV26) == 2120,
               "Migrační záznam schématu 26 musí zachovat přesnou velikost.");
+static_assert(SCHEMA_27_CONFIG_SIZE == 2452 &&
+                  sizeof(ConfigRecordV27) == 2464,
+              "Migrační záznam schématu 27 musí zachovat přesnou velikost.");
 static_assert(sizeof(ConfigRecordV155) <= sizeof(ConfigRecord),
               "Migrační záznam se musí vejít do společného pracovního bufferu.");
 static_assert(sizeof(ConfigRecordV26) <= sizeof(ConfigRecord),
               "Schéma 26 se musí vejít do společného pracovního bufferu.");
+static_assert(sizeof(ConfigRecordV27) <= sizeof(ConfigRecord),
+              "Schéma 27 se musí vejít do společného pracovního bufferu.");
 
 uint32_t bytesChecksum(const uint8_t *bytes, size_t size) {
   uint32_t hash = 2166136261u;
@@ -110,6 +143,8 @@ void normalizeConfig(ClockConfig &config) {
   config.sunsetOffsetMinutes = constrain(config.sunsetOffsetMinutes, -60, 60);
   config.metricA.decimals = constrain(config.metricA.decimals, 0, 2);
   config.metricB.decimals = constrain(config.metricB.decimals, 0, 2);
+  config.leftValue.decimals = constrain(config.leftValue.decimals, 0, 2);
+  config.rightValue.decimals = constrain(config.rightValue.decimals, 0, 2);
   config.secondRingBackgroundDotSize =
       constrain(config.secondRingBackgroundDotSize, 1, 10);
   config.secondDotSize = constrain(config.secondDotSize, 1, 10);
@@ -186,8 +221,9 @@ void normalizeConfig(ClockConfig &config) {
   config.dateColor &= 0xFFFFFF;
   config.leftWeatherIconColor &= 0xFFFFFF;
   config.rightWeatherIconColor &= 0xFFFFFF;
-  ClockMetricColorScale *scales[] = {&config.metricAColorScale,
-                                    &config.metricBColorScale};
+  ClockMetricColorScale *scales[] = {
+      &config.leftValueColorScale, &config.rightValueColorScale,
+      &config.metricAColorScale, &config.metricBColorScale};
   for (ClockMetricColorScale *scale : scales) {
     scale->count = constrain(scale->count, static_cast<uint8_t>(1),
                              static_cast<uint8_t>(CLOCK_METRIC_COLOR_POINT_COUNT));
@@ -356,6 +392,7 @@ void clockConfigApplyDefaults(ClockConfig &config) {
   config.metricAColorScale.points[0] = {0.0f, 0x65C744};
   config.metricBColorScale = ClockMetricColorScale{};
   config.metricBColorScale.points[0] = {0.0f, 0xFFB843};
+  applyLegacySideValueDefaults(config);
 }
 
 bool clockConfigBegin() {
@@ -373,6 +410,7 @@ bool clockConfigLoad(ClockConfig &config) {
   record = ConfigRecord{};
   const size_t storedSize = preferences.getBytesLength(CONFIG_KEY);
   const bool supportedSize = storedSize == sizeof(record) ||
+                             storedSize == sizeof(ConfigRecordV27) ||
                              storedSize == sizeof(ConfigRecordV26) ||
                              storedSize == sizeof(ConfigRecordV155);
   const bool readComplete =
@@ -390,6 +428,28 @@ bool clockConfigLoad(ClockConfig &config) {
     config = record.config;
     normalizeConfig(config);
     return true;
+  }
+
+  const ConfigRecordV27 &legacyV27 =
+      *reinterpret_cast<const ConfigRecordV27 *>(&record);
+  uint32_t embeddedSchemaV27 = 0;
+  if (readComplete && storedSize == sizeof(legacyV27)) {
+    memcpy(&embeddedSchemaV27, legacyV27.config,
+           sizeof(embeddedSchemaV27));
+  }
+  const bool validSchema27Record =
+      readComplete && storedSize == sizeof(legacyV27) &&
+      legacyV27.magic == CONFIG_MAGIC &&
+      legacyV27.schemaVersion == SIDE_VALUES_PREDECESSOR_SCHEMA_VERSION &&
+      embeddedSchemaV27 == SIDE_VALUES_PREDECESSOR_SCHEMA_VERSION &&
+      legacyV27.checksum ==
+          bytesChecksum(legacyV27.config, sizeof(legacyV27.config));
+  if (validSchema27Record) {
+    memcpy(&config, legacyV27.config, sizeof(legacyV27.config));
+    config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+    applyLegacySideValueDefaults(config);
+    normalizeConfig(config);
+    return clockConfigSave(config);
   }
 
   const ConfigRecordV26 &legacyV26 =

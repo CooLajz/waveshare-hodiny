@@ -520,16 +520,27 @@ String htmlColor(uint32_t value) {
   return String(color);
 }
 
-String sideJson(const ClockSideConfig &side) {
+String sideJson(const ClockSideConfig &side,
+                const ClockSideValueConfig &valueConfig) {
   String result = F("{\"name\":\"");
   result += jsonEscape(side.name);
+  result += F("\",\"entityId\":\"");
+  result += jsonEscape(side.temperatureEntityId);
   result += F("\",\"temperatureEntityId\":\"");
   result += jsonEscape(side.temperatureEntityId);
   result += F("\",\"icon\":\"");
   result += jsonEscape(side.icon);
   result += F("\",\"color\":\"");
   result += htmlColor(side.color);
-  result += F("\"}");
+  result += F("\",\"custom\":");
+  result += valueConfig.custom ? F("true") : F("false");
+  result += F(",\"preset\":\"");
+  result += jsonEscape(valueConfig.preset);
+  result += F("\",\"suffix\":\"");
+  result += jsonEscape(valueConfig.suffix);
+  result += F("\",\"decimals\":");
+  result += valueConfig.decimals;
+  result += '}';
   return result;
 }
 
@@ -993,6 +1004,7 @@ void applyPreset(ClockMetricConfig &metric, const String &preset) {
     uint8_t decimals;
   };
   static const Preset presets[] = {
+      {"temperature", "TEPLOTA", "°C", 1},
       {"co2", "CO₂", "ppm", 0},       {"voc", "VOC", "ppb", 0},
       {"pm25", "PM2.5", "µg/m³", 0}, {"pm10", "PM10", "µg/m³", 0},
       {"humidity", "VLHKOST", "%", 0}, {"pressure", "TLAK", "hPa", 0},
@@ -1030,17 +1042,35 @@ void readMetricFromForm(const char *prefix, ClockMetricConfig &metric) {
       constrain(server.arg(fieldPrefix + "Decimals").toInt(), 0, 2);
 }
 
-bool readSideFromForm(const char *prefix, ClockSideConfig &side) {
+void readSideFromForm(const char *prefix, ClockSideConfig &side,
+                      ClockSideValueConfig &valueConfig) {
   const String fieldPrefix(prefix);
-  clockConfigCopy(side.name, sizeof(side.name), server.arg(fieldPrefix + "Name"));
-  if (side.name[0] == '\0') {
-    clockConfigCopy(side.name, sizeof(side.name), "MÍSTNOST");
+  valueConfig.custom = server.arg(fieldPrefix + "Mode") == "custom";
+  clockConfigCopy(side.temperatureEntityId,
+                  sizeof(side.temperatureEntityId),
+                  server.arg(fieldPrefix + "Entity"));
+  if (valueConfig.custom) {
+    clockConfigCopy(valueConfig.preset, sizeof(valueConfig.preset), "custom");
+    clockConfigCopy(side.name, sizeof(side.name),
+                    server.arg(fieldPrefix + "Name"));
+    clockConfigCopy(valueConfig.suffix, sizeof(valueConfig.suffix),
+                    server.arg(fieldPrefix + "Suffix"));
+  } else {
+    ClockMetricConfig presetConfig;
+    applyPreset(presetConfig, server.arg(fieldPrefix + "Preset"));
+    clockConfigCopy(valueConfig.preset, sizeof(valueConfig.preset),
+                    presetConfig.preset);
+    clockConfigCopy(side.name, sizeof(side.name), presetConfig.name);
+    clockConfigCopy(valueConfig.suffix, sizeof(valueConfig.suffix),
+                    presetConfig.suffix);
   }
-  clockConfigCopy(side.temperatureEntityId, sizeof(side.temperatureEntityId),
-                  server.arg(fieldPrefix + "TemperatureEntity"));
+  if (side.name[0] == '\0') {
+    clockConfigCopy(side.name, sizeof(side.name), "HODNOTA");
+  }
+  valueConfig.decimals =
+      constrain(server.arg(fieldPrefix + "Decimals").toInt(), 0, 2);
   clockConfigCopy(side.icon, sizeof(side.icon),
                   normalizedRoomIcon(server.arg(fieldPrefix + "Icon")));
-  return parseHtmlColor(server.arg(fieldPrefix + "Color"), side.color);
 }
 
 template <typename Client>
@@ -1208,7 +1238,7 @@ void handleGetConfig() {
   ClockAppearanceConfig activeAppearance;
   appearanceState(savedAppearance, activeAppearance);
   String result;
-  result.reserve(3000);
+  result.reserve(5000);
   result = F("{\"ok\":true,\"homeAssistantUrl\":\"");
   result += jsonEscape(config.homeAssistantUrl);
   result += F("\",\"saveConfirmationId\":\"");
@@ -1349,9 +1379,9 @@ void handleGetConfig() {
   }
   result += '"';
   result += F(",\"leftSide\":");
-  result += sideJson(config.leftSide);
+  result += sideJson(config.leftSide, config.leftValue);
   result += F(",\"rightSide\":");
-  result += sideJson(config.rightSide);
+  result += sideJson(config.rightSide, config.rightValue);
   result += F(",\"metricA\":");
   result += metricJson(config.metricA);
   result += F(",\"metricB\":");
@@ -1360,6 +1390,10 @@ void handleGetConfig() {
   result += colorScaleJson(config.metricAColorScale);
   result += F(",\"metricBColorScale\":");
   result += colorScaleJson(config.metricBColorScale);
+  result += F(",\"leftValueColorScale\":");
+  result += colorScaleJson(config.leftValueColorScale);
+  result += F(",\"rightValueColorScale\":");
+  result += colorScaleJson(config.rightValueColorScale);
   result += F(",\"dayBrightness\":");
   result += config.dayBrightness;
   result += F(",\"nightBrightness\":");
@@ -1667,18 +1701,21 @@ void handleSaveConfig() {
     sendError(400, F("Styl animovaných ikon počasí není platný."));
     return;
   }
-  if (!readSideFromForm("left", config.leftSide) ||
-      !readSideFromForm("right", config.rightSide)) {
-    sendError(400, F("Barva místnosti není platná."));
-    return;
-  }
+  readSideFromForm("left", config.leftSide, config.leftValue);
+  readSideFromForm("right", config.rightSide, config.rightValue);
   readMetricFromForm("metricA", config.metricA);
   readMetricFromForm("metricB", config.metricB);
-  if (!readColorScaleFromForm("metricAColor", config.metricAColorScale) ||
+  if (!readColorScaleFromForm("leftValueColor",
+                              config.leftValueColorScale) ||
+      !readColorScaleFromForm("rightValueColor",
+                              config.rightValueColorScale) ||
+      !readColorScaleFromForm("metricAColor", config.metricAColorScale) ||
       !readColorScaleFromForm("metricBColor", config.metricBColorScale)) {
     sendError(400, F("Barevná škála musí obsahovat 1 až 10 platných bodů bez duplicitních hodnot."));
     return;
   }
+  config.leftSide.color = config.leftValueColorScale.points[0].color;
+  config.rightSide.color = config.rightValueColorScale.points[0].color;
   config.dayBrightness =
       constrain(server.arg("dayBrightness").toInt(), 1, 100);
   config.nightBrightness =

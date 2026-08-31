@@ -13,6 +13,8 @@ extern const lv_font_t clock_time_doto_98;
 extern const lv_font_t clock_czech_16;
 extern const lv_font_t clock_czech_18;
 extern const lv_font_t clock_czech_20;
+extern const lv_font_t clock_unit_24;
+extern const lv_font_t clock_unit_28;
 extern const lv_font_t clock_icons_42;
 
 #ifdef __cplusplus

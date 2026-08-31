@@ -34,7 +34,7 @@ z webového rozhraní bez úpravy zdrojového kódu.
   <img src="screenshots/dashboard-radar.png" alt="Meteoradar ČHMÚ na displeji Waveshare Hodiny" width="30%">
 </p>
 
-V denním režimu mají místnosti a hodnoty vlastní barvy. Volitelný červený
+V denním režimu mají jednotlivé hodnoty vlastní barvy. Volitelný červený
 noční vzhled sjednotí dashboard i meteoradar do odstínů červené a sníží jas,
 aby displej v noci nerušil. Vedle klasického digitálního rozložení lze zvolit
 také analogový ciferník s vlastním barevným tónem a volitelnými akcenty na
@@ -46,7 +46,8 @@ pozicích 12, 3, 6 a 9 hodin.
   analogový ciferník s nastavitelným tónem a volitelnými hlavními akcenty,
 - české nebo anglické datum v několika formátech a volitelný vteřinový prstenec,
 - synchronizaci času přes NTP a české časové pásmo včetně letního času,
-- dvě místnosti s vlastním názvem, teplotou, ikonou a barvou,
+- dvě univerzální horní hodnoty s vlastním názvem, jednotkou, přesností,
+  ikonou a plynulou barevnou škálou,
 - animované i statické ikony počasí založené na Meteocons,
 - srážkový radar ČHMÚ s mapou České republiky, městy a 1 až 15 snímky,
 - rozsahy 25, 50, 100 a 200 km nebo celou ČR ovládané svislým gestem swipe,
@@ -178,8 +179,8 @@ před aktivním útočníkem v síti. Používej firmware pouze v důvěryhodné
 | --- | --- | --- |
 | Počasí | `weather.domov` | Textový stav HA nebo podporovaný číselný kód |
 | Slunce | `sun.sun` | Řídí automatický denní/noční režim |
-| Venkovní teplota | `sensor.venkovni_teplota` | Libovolný číselný senzor |
-| Pokojová teplota | `sensor.obyvak_teplota` | Libovolný číselný senzor |
+| Hodnota vlevo | `sensor.venkovni_teplota` | Teplota, CO₂, PM, tlak nebo jiný číselný senzor |
+| Hodnota vpravo | `sensor.obyvak_co2` | Teplota, CO₂, PM, tlak nebo jiný číselný senzor |
 | Hodnota A/B | `sensor.obyvak_co2` | CO₂, VOC, PM, vlhkost, tlak a další |
 
 ID entit se zadávají ručně. Nedostupná nebo neplatná hodnota se na displeji
@@ -199,7 +200,8 @@ Web umožňuje nastavit:
   lze kdykoli přepnout vlajkami v pevném horním pruhu webu,
 - zdroj dat Open-Meteo nebo Home Assistant a společnou polohu zařízení,
 - Home Assistant URL, token, entitu počasí a entitu slunce,
-- levou a pravou místnost včetně názvu, teploty, ikony a barev,
+- levou a pravou horní hodnotu včetně typu, názvu, jednotky, přesnosti, ikony
+  a barevné škály,
 - styl animovaných ikon `Monochrome`, `Flat` nebo `Line`,
 - meteoradar ČHMÚ s obrysem ČR, městy, pohledy 25, 50, 100, 200 km nebo celá ČR a volbou 1 až 15 snímků,
 - měřené hodnoty A a B, jednotky, přesnost a barevné škály,
