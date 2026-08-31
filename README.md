@@ -420,6 +420,10 @@ ignorovaný soubor `WaveshareHodiny/local/arduino-cli.yaml` ji může přepsat.
 ./upload.sh
 ```
 
+`./build.sh` používá výchozí domácí údaje `WIFI_SSID` a `WIFI_PASSWORD`.
+Pracovní profil sestavíš pomocí `./build.sh work`; ten použije samostatné
+hodnoty `WIFI_WORK_SSID` a `WIFI_WORK_PASSWORD`.
+
 Volitelný port lze předat explicitně:
 
 ```sh
@@ -438,6 +442,8 @@ podporuje tyto lokální proměnné:
 ```dotenv
 WIFI_SSID=
 WIFI_PASSWORD=
+WIFI_WORK_SSID=
+WIFI_WORK_PASSWORD=
 HOME_ASSISTANT_URL=
 HOME_ASSISTANT_TOKEN=
 HA_ENTITY_WEATHER_CODE=

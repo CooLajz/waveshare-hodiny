@@ -12,7 +12,8 @@ ENV_FILE = ROOT / ".env"
 LOCAL_DIR = ROOT / "WaveshareHodiny" / "local"
 OUTPUT_FILE = LOCAL_DIR / "secrets.h"
 FIRMWARE_CONFIG_FILE = LOCAL_DIR / "firmware_config.h"
-REQUIRED_KEYS = ("WIFI_SSID", "WIFI_PASSWORD")
+HOME_WIFI_KEYS = ("WIFI_SSID", "WIFI_PASSWORD")
+WORK_WIFI_KEYS = ("WIFI_WORK_SSID", "WIFI_WORK_PASSWORD")
 FIRMWARE_KEYS = ("FIRMWARE_SERVER_URL", "FIRMWARE_PROJECT_SLUG")
 PUBLIC_FIRMWARE_CONFIG = {
     "FIRMWARE_SERVER_URL": "https://coolajz.github.io",
@@ -53,6 +54,7 @@ def main() -> None:
     LOCAL_DIR.mkdir(parents=True, exist_ok=True)
     release_build = "--release" in sys.argv[1:]
     public_release = "--public-release" in sys.argv[1:]
+    work_wifi = "--work-wifi" in sys.argv[1:]
     if public_release:
         firmware_lines = ["#pragma once", ""]
         firmware_lines.extend(
@@ -101,17 +103,22 @@ def main() -> None:
         else:
             print("Veřejná konfigurace Firmware Hubu byla připravena pro sestavení.")
         return
-    missing = [key for key in REQUIRED_KEYS if not values.get(key)]
+    wifi_keys = WORK_WIFI_KEYS if work_wifi else HOME_WIFI_KEYS
+    missing = [key for key in wifi_keys if not values.get(key)]
     if missing:
         OUTPUT_FILE.unlink(missing_ok=True)
-        print("V .env chybí Wi-Fi údaje; Wi-Fi a NTP zůstávají vypnuté.")
+        profile = "pracovní" if work_wifi else "domácí"
+        print(
+            f"V .env chybí {profile} Wi-Fi údaje; Wi-Fi a NTP zůstávají vypnuté."
+        )
         return
 
+    ssid_key, password_key = wifi_keys
     lines = [
         "#pragma once",
         "",
-        f"#define WIFI_SSID {cpp_string(values['WIFI_SSID'])}",
-        f"#define WIFI_PASSWORD {cpp_string(values['WIFI_PASSWORD'])}",
+        f"#define WIFI_SSID {cpp_string(values[ssid_key])}",
+        f"#define WIFI_PASSWORD {cpp_string(values[password_key])}",
     ]
     missing_home_assistant = [
         key for key in HOME_ASSISTANT_KEYS if not values.get(key)
@@ -136,9 +143,15 @@ def main() -> None:
     temporary_file.chmod(0o600)
     temporary_file.replace(OUTPUT_FILE)
     if missing_home_assistant:
-        print("Wi-Fi konfigurace byla připravena; Home Assistant zůstává vypnutý.")
+        profile = "Pracovní" if work_wifi else "Domácí"
+        print(
+            f"{profile} Wi-Fi konfigurace byla připravena; Home Assistant zůstává vypnutý."
+        )
     else:
-        print("Wi-Fi a Home Assistant konfigurace byly připraveny pro sestavení.")
+        profile = "pracovní" if work_wifi else "domácí"
+        print(
+            f"Wi-Fi profil {profile} a Home Assistant konfigurace byly připraveny pro sestavení."
+        )
     if missing_firmware:
         print("Konfigurace Firmware Hubu chybí; OTA zůstává vypnuté.")
     else:

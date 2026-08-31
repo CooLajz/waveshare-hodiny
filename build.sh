@@ -2,6 +2,11 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+WIFI_PROFILE="${1:-home}"
+if [[ "$WIFI_PROFILE" != "home" && "$WIFI_PROFILE" != "work" ]]; then
+  echo "Použití: ./build.sh [home|work]" >&2
+  exit 1
+fi
 BUILD_PATH="$ROOT_DIR/.arduino/build-waveshare-hodiny-develop"
 OUTPUT_DIR="$ROOT_DIR/build/waveshare-hodiny-develop"
 ARDUINO_CLI_BIN="${ARDUINO_CLI_BIN:-$(command -v arduino-cli || true)}"
@@ -14,7 +19,11 @@ ARDUINO_CONFIG_FILE="${ARDUINO_CONFIG_FILE:-$ROOT_DIR/WaveshareHodiny/local/ardu
 if [[ ! -f "$ARDUINO_CONFIG_FILE" ]]; then
   ARDUINO_CONFIG_FILE="$ROOT_DIR/arduino-cli.yaml"
 fi
-"$PYTHON_BIN" "$ROOT_DIR/tools/generate_secrets.py"
+GENERATE_SECRETS_ARGS=()
+if [[ "$WIFI_PROFILE" == "work" ]]; then
+  GENERATE_SECRETS_ARGS+=(--work-wifi)
+fi
+"$PYTHON_BIN" "$ROOT_DIR/tools/generate_secrets.py" "${GENERATE_SECRETS_ARGS[@]}"
 "$PYTHON_BIN" "$ROOT_DIR/tools/validate_weather_icon_parity.py"
 "$ARDUINO_CLI_BIN" \
   --config-file "$ARDUINO_CONFIG_FILE" \

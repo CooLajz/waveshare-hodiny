@@ -332,6 +332,10 @@ arduino-cli lib install PNGdec@1.0.1 --config-file arduino-cli.yaml
 ./upload.sh
 ```
 
+`./build.sh` uses the default home credentials from `WIFI_SSID` and
+`WIFI_PASSWORD`. Run `./build.sh work` to use the separate
+`WIFI_WORK_SSID` and `WIFI_WORK_PASSWORD` values.
+
 Pass a serial port explicitly when needed:
 
 ```bash
@@ -347,6 +351,13 @@ The entire `.env` file is ignored by Git. It can supply local Wi-Fi, Home
 Assistant and Firmware Hub variables used by the existing generators. Never
 commit real credentials. Generated headers belong only in the ignored
 `WaveshareHodiny/local/` directory.
+
+```dotenv
+WIFI_SSID=
+WIFI_PASSWORD=
+WIFI_WORK_SSID=
+WIFI_WORK_PASSWORD=
+```
 
 ### Release build
 
