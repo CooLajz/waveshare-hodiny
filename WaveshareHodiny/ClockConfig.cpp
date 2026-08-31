@@ -18,6 +18,7 @@ constexpr char APPEARANCE_ACCENT_COLOR_KEY[] = "accent-color";
 constexpr char APPEARANCE_ACCENTS_KEY[] = "accents";
 constexpr char APPEARANCE_OUTLINE_HANDS_KEY[] = "outline-hands";
 constexpr char APPEARANCE_MONO_VALUES_KEY[] = "mono-values";
+constexpr char APPEARANCE_VALUES_ABOVE_KEY[] = "values-above";
 constexpr char APPEARANCE_DATE_FORMAT_KEY[] = "date-format";
 constexpr char APPEARANCE_DATE_COLOR_KEY[] = "date-color";
 constexpr char APPEARANCE_WEATHER_COLOR_KEY[] = "weather-color";
@@ -240,6 +241,8 @@ bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
       preferences.getBool(APPEARANCE_OUTLINE_HANDS_KEY, false);
   appearance.analogMonochromeValuesEnabled =
       preferences.getBool(APPEARANCE_MONO_VALUES_KEY, false);
+  appearance.analogValuesAboveHandsEnabled =
+      preferences.getBool(APPEARANCE_VALUES_ABOVE_KEY, false);
   appearance.analogDateFormat = constrain(
       preferences.getUChar(APPEARANCE_DATE_FORMAT_KEY,
                            defaultAnalogDateFormat),
@@ -290,6 +293,10 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
       preferences.putBool(APPEARANCE_MONO_VALUES_KEY,
                           appearance.analogMonochromeValuesEnabled) ==
       sizeof(bool);
+  const bool valuesAboveSaved =
+      preferences.putBool(APPEARANCE_VALUES_ABOVE_KEY,
+                          appearance.analogValuesAboveHandsEnabled) ==
+      sizeof(bool);
   const uint8_t dateFormat = constrain(
       appearance.analogDateFormat,
       static_cast<uint8_t>(CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH),
@@ -308,7 +315,8 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
   preferences.end();
   return styleSaved && toneSaved && handToneSaved && accentColorSaved &&
          accentsSaved && outlineHandsSaved && monoValuesSaved &&
-         dateFormatSaved && dateColorSaved && weatherColorSaved;
+         valuesAboveSaved && dateFormatSaved && dateColorSaved &&
+         weatherColorSaved;
 }
 
 void clockConfigCopy(char *destination, size_t destinationSize,

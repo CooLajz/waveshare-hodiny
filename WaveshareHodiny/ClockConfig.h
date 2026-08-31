@@ -97,6 +97,7 @@ struct ClockAppearanceConfig {
   bool analogCardinalAccentsEnabled = true;
   bool analogOutlineHandsEnabled = false;
   bool analogMonochromeValuesEnabled = false;
+  bool analogValuesAboveHandsEnabled = false;
   uint8_t analogDateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;
   uint32_t analogDateColor = 0xB5B5B5;
   uint32_t monochromeWeatherIconColor = 0xFFFFFF;

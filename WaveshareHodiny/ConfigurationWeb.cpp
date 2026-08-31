@@ -860,6 +860,18 @@ bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
     appearance.analogMonochromeValuesEnabled =
         active.analogMonochromeValuesEnabled;
   }
+  if (server.hasArg("analogValuesAboveHandsEnabled")) {
+    const String valuesAboveHands =
+        server.arg("analogValuesAboveHandsEnabled");
+    if (valuesAboveHands != "0" && valuesAboveHands != "1") return false;
+    appearance.analogValuesAboveHandsEnabled = valuesAboveHands == "1";
+  } else if (currentAppearanceStateCallback != nullptr) {
+    ClockAppearanceConfig saved;
+    ClockAppearanceConfig active;
+    currentAppearanceStateCallback(saved, active);
+    appearance.analogValuesAboveHandsEnabled =
+        active.analogValuesAboveHandsEnabled;
+  }
   if (server.hasArg("analogDateFormat")) {
     if (!parseDateFormat(server.arg("analogDateFormat"),
                          appearance.analogDateFormat))
@@ -1284,6 +1296,12 @@ void handleGetConfig() {
                                                            : F("false");
   result += F(",\"activeAnalogMonochromeValuesEnabled\":");
   result += activeAppearance.analogMonochromeValuesEnabled ? F("true")
+                                                            : F("false");
+  result += F(",\"analogValuesAboveHandsEnabled\":");
+  result += savedAppearance.analogValuesAboveHandsEnabled ? F("true")
+                                                           : F("false");
+  result += F(",\"activeAnalogValuesAboveHandsEnabled\":");
+  result += activeAppearance.analogValuesAboveHandsEnabled ? F("true")
                                                             : F("false");
   result += F(",\"monochromeWeatherIconColor\":\"");
   result += htmlColor(savedAppearance.monochromeWeatherIconColor);
@@ -2020,6 +2038,10 @@ void handleClockAppearancePreview() {
   result += saved.analogMonochromeValuesEnabled ? F("true") : F("false");
   result += F(",\"activeAnalogMonochromeValuesEnabled\":");
   result += active.analogMonochromeValuesEnabled ? F("true") : F("false");
+  result += F(",\"analogValuesAboveHandsEnabled\":");
+  result += saved.analogValuesAboveHandsEnabled ? F("true") : F("false");
+  result += F(",\"activeAnalogValuesAboveHandsEnabled\":");
+  result += active.analogValuesAboveHandsEnabled ? F("true") : F("false");
   result += F(",\"monochromeWeatherIconColor\":\"");
   result += htmlColor(saved.monochromeWeatherIconColor);
   result += F("\",\"activeMonochromeWeatherIconColor\":\"");

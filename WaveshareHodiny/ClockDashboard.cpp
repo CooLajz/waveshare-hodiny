@@ -46,6 +46,7 @@ uint32_t analogCardinalAccentColor = 0xFFAB00;
 bool analogCardinalAccentsEnabled = true;
 bool analogOutlineHandsEnabled = false;
 bool analogMonochromeValuesEnabled = false;
+bool analogValuesAboveHandsEnabled = false;
 uint32_t analogDateColor = 0xB5B5B5;
 uint32_t monochromeWeatherIconColor = 0xFFFFFF;
 ClockConfig dashboardRuntimeConfig;
@@ -937,6 +938,60 @@ void invalidateAnalogHands(bool hourAndMinute = true,
   if (second) invalidateAnalogHandArea(secondAngle, 34.0f, 192.0f, 3);
 }
 
+void drawAnalogOutlinedLabelEvent(lv_event_t *event) {
+  if (lv_event_get_code(event) != LV_EVENT_DRAW_MAIN_BEGIN ||
+      !analogLayoutEnabled() || !analogValuesAboveHandsEnabled) {
+    return;
+  }
+
+  lv_obj_t *label = lv_event_get_target(event);
+  lv_draw_ctx_t *drawContext = lv_event_get_draw_ctx(event);
+  lv_draw_label_dsc_t descriptor;
+  lv_draw_label_dsc_init(&descriptor);
+  lv_obj_init_draw_label_dsc(label, LV_PART_MAIN, &descriptor);
+  descriptor.color = COLOR_BACKGROUND;
+  descriptor.opa = LV_OPA_COVER;
+  descriptor.flag = LV_TEXT_FLAG_FIT;
+
+  lv_area_t coordinates;
+  lv_obj_get_content_coords(label, &coordinates);
+  static constexpr int8_t OFFSETS[][2] = {
+      {-1, -1}, {0, -1}, {1, -1}, {-1, 0},
+      {1, 0},   {-1, 1}, {0, 1},  {1, 1},
+  };
+  const char *text = lv_label_get_text(label);
+  for (const auto &offset : OFFSETS) {
+    lv_area_t outlineCoordinates = coordinates;
+    lv_area_move(&outlineCoordinates, offset[0], offset[1]);
+    lv_draw_label(drawContext, &descriptor, &outlineCoordinates, text, nullptr);
+  }
+}
+
+void updateAnalogValueLayerOrder() {
+  if (analogHandsLayer == nullptr) return;
+  lv_obj_move_foreground(analogHandsLayer);
+  if (!analogValuesAboveHandsEnabled) return;
+
+  lv_obj_t *labels[] = {
+      dateLabel,
+      analogOutsideTitleLabel,
+      analogOutsideValueLabel,
+      analogOutsideDecimalLabel,
+      analogOutsideUnitLabel,
+      analogRoomTitleLabel,
+      analogRoomValueLabel,
+      analogRoomDecimalLabel,
+      analogRoomUnitLabel,
+      analogMetricATitleLabel,
+      analogMetricAValueLabel,
+      analogMetricAUnitLabel,
+      analogMetricBTitleLabel,
+      analogMetricBValueLabel,
+      analogMetricBUnitLabel,
+  };
+  for (lv_obj_t *label : labels) lv_obj_move_foreground(label);
+}
+
 void createAnalogLayout(lv_obj_t *content) {
   analogDialLayer = makeAnalogLayer(content, drawAnalogDialEvent);
   lv_obj_move_background(analogDialLayer);
@@ -1006,6 +1061,28 @@ void createAnalogLayout(lv_obj_t *content) {
 
   analogHandsLayer = makeAnalogLayer(content, drawAnalogHandsEvent);
   lv_obj_move_foreground(analogHandsLayer);
+  lv_obj_t *outlinedLabels[] = {
+      dateLabel,
+      analogOutsideTitleLabel,
+      analogOutsideValueLabel,
+      analogOutsideDecimalLabel,
+      analogOutsideUnitLabel,
+      analogRoomTitleLabel,
+      analogRoomValueLabel,
+      analogRoomDecimalLabel,
+      analogRoomUnitLabel,
+      analogMetricATitleLabel,
+      analogMetricAValueLabel,
+      analogMetricAUnitLabel,
+      analogMetricBTitleLabel,
+      analogMetricBValueLabel,
+      analogMetricBUnitLabel,
+  };
+  for (lv_obj_t *label : outlinedLabels) {
+    lv_obj_add_event_cb(label, drawAnalogOutlinedLabelEvent,
+                        LV_EVENT_DRAW_MAIN_BEGIN, nullptr);
+  }
+  updateAnalogValueLayerOrder();
   if (!analogLayoutEnabled()) {
     lv_obj_t *analogOnly[] = {
         analogDialLayer,          analogHandsLayer,
@@ -2978,6 +3055,8 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
   const bool outlineHandsEnabled = appearance.analogOutlineHandsEnabled;
   const bool monochromeValuesEnabled =
       appearance.analogMonochromeValuesEnabled;
+  const bool valuesAboveHandsEnabled =
+      appearance.analogValuesAboveHandsEnabled;
   const uint32_t appearanceDateColor =
       appearance.analogDateColor & 0xFFFFFF;
   const uint32_t weatherColor =
@@ -2988,12 +3067,15 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
       analogCardinalAccentsEnabled == accentsEnabled &&
       analogOutlineHandsEnabled == outlineHandsEnabled &&
       analogMonochromeValuesEnabled == monochromeValuesEnabled &&
+      analogValuesAboveHandsEnabled == valuesAboveHandsEnabled &&
       analogDateColor == appearanceDateColor &&
       monochromeWeatherIconColor == weatherColor &&
       dashboardContent != nullptr) {
     return;
   }
   const bool styleChanged = activeClockStyle != style;
+  const bool valueLayerChanged =
+      analogValuesAboveHandsEnabled != valuesAboveHandsEnabled;
   const bool dialAppearanceChanged = analogToneColor != tone ||
                                      analogCardinalAccentColor != accentColor ||
                                      analogCardinalAccentsEnabled !=
@@ -3005,14 +3087,17 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
   analogCardinalAccentsEnabled = accentsEnabled;
   analogOutlineHandsEnabled = outlineHandsEnabled;
   analogMonochromeValuesEnabled = monochromeValuesEnabled;
+  analogValuesAboveHandsEnabled = valuesAboveHandsEnabled;
   analogDateColor = appearanceDateColor;
   monochromeWeatherIconColor = weatherColor;
   if (dashboardContent == nullptr || !dashboardRuntimeConfigAvailable) return;
   clockDashboardApplyConfiguration(dashboardRuntimeConfig);
+  updateAnalogValueLayerOrder();
   if (analogLayoutEnabled() && (styleChanged || dialAppearanceChanged))
     rebuildAnalogDialCache();
   applyDashboardColors();
-  displayDriverSetPartialRefresh(analogLayoutEnabled());
+  displayDriverSetPartialRefresh(
+      analogLayoutEnabled(), analogLayoutEnabled() && valueLayerChanged);
   if (analogDialLayer != nullptr && analogLayoutEnabled())
     lv_obj_invalidate(analogDialLayer);
   invalidateAnalogHands();
