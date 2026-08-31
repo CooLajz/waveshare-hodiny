@@ -2570,6 +2570,14 @@ void createSettingsPage(lv_obj_t *screen) {
 }
 }  // namespace
 
+uint8_t clockDashboardWeatherIconStyle(uint8_t configuredStyle) {
+  const bool monochromeAnalogValues =
+      analogLayoutEnabled() && analogMonochromeValuesEnabled;
+  return redNightVisualEnabled() || monochromeAnalogValues
+             ? CLOCK_WEATHER_ICON_STYLE_MONOCHROME
+             : configuredStyle;
+}
+
 void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
                         uint8_t nightBrightness, bool automaticDayNight,
                         BrightnessPreviewCallback brightnessPreview,
@@ -3115,8 +3123,7 @@ void clockDashboardUpdate(const ClockValues &values) {
     lv_obj_add_flag(roomWeatherImage, LV_OBJ_FLAG_HIDDEN);
     char desiredAnimationKey[48] = "";
     const uint8_t effectiveWeatherIconStyle =
-        redNightVisualEnabled() ? CLOCK_WEATHER_ICON_STYLE_MONOCHROME
-                                : configuredWeatherIconStyle;
+        clockDashboardWeatherIconStyle(configuredWeatherIconStyle);
     const bool hasDesiredAnimation = weatherAnimationAssetKey(
         desiredAnimationKey, sizeof(desiredAnimationKey), values.weatherCode,
         values.weatherIsDay, effectiveWeatherIconStyle);
@@ -3170,8 +3177,7 @@ void clockDashboardUpdate(const ClockValues &values) {
   }
   char desiredAnimationKey[48] = "";
   const uint8_t effectiveWeatherIconStyle =
-      redNightVisualEnabled() ? CLOCK_WEATHER_ICON_STYLE_MONOCHROME
-                              : configuredWeatherIconStyle;
+      clockDashboardWeatherIconStyle(configuredWeatherIconStyle);
   const bool hasDesiredAnimation = weatherAnimationAssetKey(
       desiredAnimationKey, sizeof(desiredAnimationKey), values.weatherCode,
       values.weatherIsDay, effectiveWeatherIconStyle);

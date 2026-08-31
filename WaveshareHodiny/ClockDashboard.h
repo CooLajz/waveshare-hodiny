@@ -49,6 +49,7 @@ void clockDashboardShowSettings();
 void clockDashboardShowSettingsPage(uint8_t page);
 void clockDashboardSetNightMode(bool enabled);
 bool clockDashboardNightModeEnabled();
+uint8_t clockDashboardWeatherIconStyle(uint8_t configuredStyle);
 void clockDashboardHandleShortClick();
 bool clockDashboardRadarVisible();
 void clockDashboardSetRadarVisible(bool visible);

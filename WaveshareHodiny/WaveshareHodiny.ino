@@ -1659,13 +1659,8 @@ void loop() {
   maintainFirmwareDisplayStatus();
   applyPendingHomeAssistantValues();
   const ClockConfig animationConfig = runtimeConfigSnapshot();
-  const bool monochromeAnalogValues =
-      activeAppearance.style == CLOCK_STYLE_ANALOG &&
-      activeAppearance.analogMonochromeValuesEnabled;
   const uint8_t weatherIconStyle =
-      clockDashboardNightModeEnabled() || monochromeAnalogValues
-          ? CLOCK_WEATHER_ICON_STYLE_MONOCHROME
-          : animationConfig.weatherIconStyle;
+      clockDashboardWeatherIconStyle(animationConfig.weatherIconStyle);
   weatherAnimationServiceLoop(sampleValues.weatherCode,
                               sampleValues.weatherIsDay,
                               weatherIconStyle,
