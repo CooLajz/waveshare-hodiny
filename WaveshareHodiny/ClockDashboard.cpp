@@ -898,16 +898,68 @@ bool rebuildAnalogDialCache() {
   return true;
 }
 
-bool analogHandAngles(float &hourAngle, float &minuteAngle,
-                      float &secondAngle) {
+bool analogHandAnglesForSecond(uint8_t second, float &hourAngle,
+                               float &minuteAngle, float &secondAngle) {
   int hour = 0;
   int minute = 0;
   if (sscanf(displayedTimeText, "%d:%d", &hour, &minute) != 2) return false;
-  const uint8_t second = displayedSecond > 59 ? 0 : displayedSecond;
+  if (second > 59) second = 0;
   hourAngle = (hour % 12) * 30.0f + minute * 0.5f + second / 120.0f;
   minuteAngle = minute * 6.0f + second * 0.1f;
   secondAngle = second * 6.0f;
   return true;
+}
+
+bool analogHandAngles(float &hourAngle, float &minuteAngle,
+                      float &secondAngle) {
+  return analogHandAnglesForSecond(displayedSecond, hourAngle, minuteAngle,
+                                   secondAngle);
+}
+
+bool analogHandGeometryChanged(float oldAngle, float newAngle,
+                               float rearLength, float frontLength,
+                               lv_coord_t edgeWidth) {
+  const lv_point_t center = {0, 0};
+  const lv_coord_t sideOffset =
+      max(static_cast<lv_coord_t>(3),
+          static_cast<lv_coord_t>(edgeWidth / 2 - 1));
+  const float effectiveRearLength =
+      rearLength + (analogOutlineHandsEnabled ? sideOffset : 0);
+  const lv_point_t oldFrom =
+      analogPoint(center, oldAngle + 180.0f, effectiveRearLength);
+  const lv_point_t oldTo = analogPoint(center, oldAngle, frontLength);
+  const lv_point_t newFrom =
+      analogPoint(center, newAngle + 180.0f, effectiveRearLength);
+  const lv_point_t newTo = analogPoint(center, newAngle, frontLength);
+  if (oldFrom.x != newFrom.x || oldFrom.y != newFrom.y ||
+      oldTo.x != newTo.x || oldTo.y != newTo.y) {
+    return true;
+  }
+  if (!analogOutlineHandsEnabled) return false;
+
+  const lv_point_t oldLeftFrom =
+      analogPoint(oldFrom, oldAngle - 90.0f, sideOffset);
+  const lv_point_t oldLeftTo =
+      analogPoint(oldTo, oldAngle - 90.0f, sideOffset);
+  const lv_point_t oldRightFrom =
+      analogPoint(oldFrom, oldAngle + 90.0f, sideOffset);
+  const lv_point_t oldRightTo =
+      analogPoint(oldTo, oldAngle + 90.0f, sideOffset);
+  const lv_point_t newLeftFrom =
+      analogPoint(newFrom, newAngle - 90.0f, sideOffset);
+  const lv_point_t newLeftTo =
+      analogPoint(newTo, newAngle - 90.0f, sideOffset);
+  const lv_point_t newRightFrom =
+      analogPoint(newFrom, newAngle + 90.0f, sideOffset);
+  const lv_point_t newRightTo =
+      analogPoint(newTo, newAngle + 90.0f, sideOffset);
+  return oldLeftFrom.x != newLeftFrom.x || oldLeftFrom.y != newLeftFrom.y ||
+         oldLeftTo.x != newLeftTo.x || oldLeftTo.y != newLeftTo.y ||
+         oldRightFrom.x != newRightFrom.x ||
+         oldRightFrom.y != newRightFrom.y || oldRightTo.x != newRightTo.x ||
+         oldRightTo.y != newRightTo.y ||
+         static_cast<int>(std::round(oldAngle)) !=
+             static_cast<int>(std::round(newAngle));
 }
 
 void invalidateAnalogHandArea(float angle, float rearLength,
@@ -1023,7 +1075,6 @@ void updateAnalogValueLayerOrder() {
   if (!analogValuesAboveHandsEnabled) return;
 
   lv_obj_t *labels[] = {
-      dateLabel,
       analogOutsideTitleLabel,
       analogOutsideValueLabel,
       analogOutsideDecimalLabel,
@@ -1112,7 +1163,6 @@ void createAnalogLayout(lv_obj_t *content) {
   analogHandsLayer = makeAnalogLayer(content, drawAnalogHandsEvent);
   lv_obj_move_foreground(analogHandsLayer);
   lv_obj_t *outlinedLabels[] = {
-      dateLabel,
       analogOutsideTitleLabel,
       analogOutsideValueLabel,
       analogOutsideDecimalLabel,
@@ -3680,8 +3730,36 @@ void clockDashboardSetSecond(uint8_t second) {
   if (firmwareUpdateActive) return;
   if (second > SECOND_DOT_COUNT) second = SECOND_DOT_COUNT;
   if (displayedSecond == second) return;
+  const bool analogLayout = analogLayoutEnabled();
   const bool minuteRolledOver = displayedSecond >= 59 && second <= 1;
-  if (analogLayoutEnabled()) invalidateAnalogHands();
+  float oldHourAngle = 0.0f;
+  float oldMinuteAngle = 0.0f;
+  float oldSecondAngle = 0.0f;
+  float newHourAngle = 0.0f;
+  float newMinuteAngle = 0.0f;
+  float newSecondAngle = 0.0f;
+  bool anglesAvailable = false;
+  bool hourChanged = true;
+  bool minuteChanged = true;
+  if (analogLayout) {
+    anglesAvailable =
+        analogHandAngles(oldHourAngle, oldMinuteAngle, oldSecondAngle) &&
+        analogHandAnglesForSecond(second, newHourAngle, newMinuteAngle,
+                                  newSecondAngle);
+    if (anglesAvailable) {
+      hourChanged = analogHandGeometryChanged(
+          oldHourAngle, newHourAngle, 16.0f, 145.0f, 15);
+      minuteChanged = analogHandGeometryChanged(
+          oldMinuteAngle, newMinuteAngle, 20.0f, 178.0f, 12);
+      if (hourChanged)
+        invalidateAnalogHandArea(oldHourAngle, 22.0f, 145.0f, 21);
+      if (minuteChanged)
+        invalidateAnalogHandArea(oldMinuteAngle, 25.0f, 178.0f, 17);
+      invalidateAnalogHandArea(oldSecondAngle, 34.0f, 192.0f, 3);
+    } else {
+      invalidateAnalogHands();
+    }
+  }
   displayedSecond = second;
   secondTickStartedAt = millis();
   lastRenderedTimeColonColor = UINT32_MAX;
@@ -3690,9 +3768,17 @@ void clockDashboardSetSecond(uint8_t second) {
     secondFadeStartedAt = millis();
     lastSecondFadeFrameAt = 0;
   }
-  if (analogLayoutEnabled()) {
+  if (analogLayout) {
     secondFadeActive = false;
-    invalidateAnalogHands();
+    if (anglesAvailable) {
+      if (hourChanged)
+        invalidateAnalogHandArea(newHourAngle, 22.0f, 145.0f, 21);
+      if (minuteChanged)
+        invalidateAnalogHandArea(newMinuteAngle, 25.0f, 178.0f, 17);
+      invalidateAnalogHandArea(newSecondAngle, 34.0f, 192.0f, 3);
+    } else {
+      invalidateAnalogHands(false, true);
+    }
   } else {
     renderSecondRing(millis());
   }
