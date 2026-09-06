@@ -98,16 +98,24 @@ samostatný aplikační `.ota.bin` není factory obraz.
 
 ### Nastavení Wi-Fi
 
-Veřejný release neobsahuje přednastavené Wi-Fi údaje. Po instalaci připoj
-zařízení jedním z jeho USB-C konektorů a použij Improv Serial v instalační
-stránce. Zadané SSID a heslo se uloží do NVS a po restartu zůstanou zachované.
+Veřejný release neobsahuje přednastavené Wi-Fi údaje. Síť lze při instalaci
+nastavit přes Improv Serial z kteréhokoliv USB-C konektoru. Pokud se tento krok
+přeskočí nebo se uloženou síť nepodaří při startu připojit, hodiny zobrazí QR
+kód a spustí vlastní zabezpečenou Wi-Fi s captive portálem. V telefonu stačí
+QR kód naskenovat, vybrat nalezenou 2,4GHz síť a zadat její heslo.
+
+Nové údaje se nejprve uloží jako čekající a hodiny se restartují. Teprve po
+úspěšném připojení při dalším startu nahradí poslední ověřenou Wi-Fi. Při
+neúspěchu se znovu otevře onboarding a původní funkční údaje zůstanou
+zachované.
 
 Deska má USB–UART konektor přes CH343P a nativní USB konektor ESP32-S3.
 Produkční firmware obsluhuje Improv Serial na obou konektorech.
 
 ## První spuštění
 
-1. Nainstaluj firmware a nastav Wi-Fi přes Improv Serial.
+1. Nainstaluj firmware a nastav Wi-Fi přes Improv Serial, nebo tento krok
+   přeskoč a použij QR onboarding přímo na displeji hodin.
 2. Počkej na připojení; na displeji se zobrazí IP adresa a stavové ikony.
 3. Otevři `http://waveshare-hodiny.local/`. Pokud mDNS v síti nefunguje,
    použij IP adresu z nastavení na displeji.

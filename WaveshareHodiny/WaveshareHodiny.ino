@@ -25,6 +25,7 @@
 #include "NetworkCoordinator.h"
 #include "TCA9554PWR.h"
 #include "TmepService.h"
+#include "WifiOnboarding.h"
 #include "WifiProvisioning.h"
 #include "WeatherAnimationService.h"
 
@@ -684,7 +685,6 @@ void maintainDisplaySync() {
 }
 
 void initializeNetworkTime() {
-  wifiProvisioningBegin();
   configTzTime("CET-1CEST,M3.5.0/2,M10.5.0/3", "pool.ntp.org",
                "time.cloudflare.com");
   sntp_set_sync_interval(NTP_SYNC_INTERVAL_MS);
@@ -1594,12 +1594,21 @@ void setup() {
   activeAppearance = persistedAppearance;
   runtimeConfig = persistedConfig;
   applyDevelopmentDefaults(runtimeConfig);
+#if !FIRMWARE_RELEASE
   networkCoordinatorBegin();
   tmepServiceBegin();
+#endif
   LCD_Init();
   currentDisplayBrightness = runtimeConfig.dayBrightness;
   Set_Backlight(currentDisplayBrightness);
   displayDriverInit();
+#if FIRMWARE_RELEASE
+  improvSerialServiceInit(wifiProvisioningStart);
+  wifiProvisioningBegin();
+  wifiOnboardingRequireConnection();
+  networkCoordinatorBegin();
+  tmepServiceBegin();
+#endif
   clockDashboardApplyAppearance(activeAppearance);
   clockDashboardInit(sampleValues, runtimeConfig.dayBrightness,
                        runtimeConfig.nightBrightness,
@@ -1617,8 +1626,8 @@ void setup() {
       runtimeConfig.radarMapOpacity, runtimeConfig.radarPauseSeconds);
   clockDashboardSetSecond(60);
   displayResyncAt = millis() + 2000;
-#if FIRMWARE_RELEASE
-  improvSerialServiceInit(wifiProvisioningStart);
+#if !FIRMWARE_RELEASE
+  wifiProvisioningBegin();
 #endif
   initializeNetworkTime();
   xTaskCreatePinnedToCoreWithCaps(

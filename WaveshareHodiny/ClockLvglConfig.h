@@ -20,6 +20,7 @@
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
 
 #define LV_USE_GIF 1
+#define LV_USE_QRCODE 1
 
 // Malé objekty zůstávají v rychlé interní SRAM, velké grafické alokace jsou
 // směrovány do 8MB OPI PSRAM přes projektový allocator.

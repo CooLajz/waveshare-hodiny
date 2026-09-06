@@ -90,16 +90,25 @@ OTA image and must not be used as a factory image.
 
 ### Wi-Fi provisioning
 
-Public releases contain no preconfigured Wi-Fi credentials. After flashing,
-connect either USB-C port and configure the network through Improv Serial in the
-installer. The SSID and password are stored in NVS and survive a restart.
+Public releases contain no preconfigured Wi-Fi credentials. The installer can
+configure the network through Improv Serial on either USB-C connector. If that
+step is skipped or the stored network cannot be reached during startup, the
+clock displays a QR code and starts a secured Wi-Fi access point with a captive
+portal. Scan the code with a phone, select a discovered 2.4GHz network and enter
+its password.
+
+The new credentials are first stored as pending and the clock restarts. They
+replace the last verified network only after a successful connection on the
+next startup. If the connection fails, onboarding opens again and the previous
+working credentials remain available.
 
 The board exposes one USB–UART connector through CH343P and one native ESP32-S3
 USB connector. Production firmware handles Improv Serial on both transports.
 
 ## First start
 
-1. Install the firmware and provision Wi-Fi through Improv Serial.
+1. Install the firmware and provision Wi-Fi through Improv Serial, or skip that
+   step and use the QR onboarding screen on the clock.
 2. Wait for the device to connect; its IP address appears in the settings screen.
 3. Open `http://waveshare-hodiny.local/`. Use the displayed IP address if mDNS
    is unavailable on your network.
