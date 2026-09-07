@@ -1,6 +1,7 @@
 #include "ClockDashboard.h"
 #include "OpenWeatherIcons.h"
 #include "WeatherIconMapping.h"
+#include "RetroLcd.h"
 
 #include <lvgl.h>
 
@@ -118,6 +119,7 @@ lv_obj_t *settingsPreviousButton = nullptr;
 lv_obj_t *settingsNextButton = nullptr;
 lv_obj_t *settingsPageNumberLabel = nullptr;
 lv_obj_t *clockStyleTitleLabel = nullptr;
+lv_obj_t *retroClockStyleCard = nullptr;
 lv_obj_t *digitalClockStyleCard = nullptr;
 lv_obj_t *analogClockStyleCard = nullptr;
 lv_obj_t *digitalClockStyleLabel = nullptr;
@@ -284,6 +286,11 @@ uint32_t lastRenderedTimeColonColor = UINT32_MAX;
 ClockValues currentValues;
 ClockSideValueConfig leftValueConfig;
 ClockSideValueConfig rightValueConfig;
+uint8_t retroSources[2] = {2, 3};
+uint8_t retroProgressSource = 4;
+uint8_t retroProgressSegments = 10;
+float retroProgressMin = 0.0f, retroProgressMax = 100.0f;
+ClockMetricConfig retroSideConfigs[2];
 ClockMetricConfig metricAConfig;
 ClockMetricConfig metricBConfig;
 ClockMetricColorScale leftValueColorScale;
@@ -2050,7 +2057,7 @@ void renderSecondLine(unsigned long now) {
 }
 
 void renderSecondRing(unsigned long now) {
-  if (analogLayoutEnabled()) {
+  if (analogLayoutEnabled() || retroLcdEnabled()) {
     for (lv_obj_t *dot : secondDots) {
       if (dot != nullptr) lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
     }
@@ -2081,6 +2088,7 @@ void setTextColor(lv_obj_t *object, lv_color_t color) {
 }
 
 void renderTimeColon(unsigned long now, bool force = false) {
+  if (retroLcdEnabled()) return;
   if (timeLabel == nullptr) return;
   if (timeColonEffect == CLOCK_TIME_COLON_STEADY) {
     if (force || lastRenderedTimeColonColor != UINT32_MAX) {
@@ -2422,18 +2430,13 @@ void settingsNextEvent(lv_event_t *event) {
 void updateClockStyleCardSelection() {
   if (digitalClockStyleCard == nullptr || analogClockStyleCard == nullptr)
     return;
-  const bool digitalSelected =
-      settingsSelectedClockStyle == CLOCK_STYLE_DIGITAL;
-  lv_obj_set_style_border_width(digitalClockStyleCard,
-                                digitalSelected ? 4 : 1, 0);
-  lv_obj_set_style_border_color(
-      digitalClockStyleCard, digitalSelected ? COLOR_OUTSIDE : COLOR_DIVIDER,
-      0);
-  lv_obj_set_style_border_width(analogClockStyleCard,
-                                digitalSelected ? 1 : 4, 0);
-  lv_obj_set_style_border_color(
-      analogClockStyleCard, digitalSelected ? COLOR_DIVIDER : COLOR_OUTSIDE,
-      0);
+  lv_obj_t *cards[] = {digitalClockStyleCard, analogClockStyleCard, retroClockStyleCard};
+  for (uint8_t style=0; style<3; ++style) {
+    if (!cards[style]) continue;
+    const bool selected = settingsSelectedClockStyle == style;
+    lv_obj_set_style_border_width(cards[style], selected ? 4 : 1, 0);
+    lv_obj_set_style_border_color(cards[style], selected ? COLOR_OUTSIDE : COLOR_DIVIDER, 0);
+  }
 }
 
 void clockStyleCardEvent(lv_event_t *event) {
@@ -2457,6 +2460,7 @@ void drawClockStylePreviewEvent(lv_event_t *event) {
       reinterpret_cast<uintptr_t>(lv_event_get_user_data(event)));
   const AnalogDrawTarget target = {drawContext, nullptr};
 
+  if (style == CLOCK_STYLE_RETRO_LCD) return;
   drawAnalogCircle(target, center, 62, LV_COLOR_MAKE(8, 13, 17));
   drawAnalogArc(target, center, 60,
                 style == CLOCK_STYLE_ANALOG ? analogTone(0.65f)
@@ -2495,7 +2499,7 @@ void drawClockStylePreviewEvent(lv_event_t *event) {
 lv_obj_t *makeClockStyleCard(lv_obj_t *parent, uint8_t style, int x,
                              lv_obj_t **textLabel) {
   lv_obj_t *card = lv_btn_create(parent);
-  lv_obj_set_size(card, 180, 236);
+  lv_obj_set_size(card, 126, 236);
   alignCenter(card, x, 10);
   lv_obj_set_style_radius(card, 20, 0);
   lv_obj_set_style_bg_color(card, LV_COLOR_MAKE(13, 18, 22), 0);
@@ -2506,7 +2510,7 @@ lv_obj_t *makeClockStyleCard(lv_obj_t *parent, uint8_t style, int x,
                       reinterpret_cast<void *>(static_cast<uintptr_t>(style)));
 
   lv_obj_t *preview = lv_obj_create(card);
-  lv_obj_set_size(preview, 136, 136);
+  lv_obj_set_size(preview, 126, 136);
   alignCenter(preview, 0, -30);
   lv_obj_set_style_bg_opa(preview, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(preview, 0, 0);
@@ -2517,22 +2521,28 @@ lv_obj_t *makeClockStyleCard(lv_obj_t *parent, uint8_t style, int x,
       preview, drawClockStylePreviewEvent, LV_EVENT_DRAW_MAIN,
       reinterpret_cast<void *>(static_cast<uintptr_t>(style)));
 
-  if (style == CLOCK_STYLE_DIGITAL) {
-    lv_obj_t *time = makeLabel(preview, &lv_font_montserrat_28, COLOR_TEXT);
+  if (style != CLOCK_STYLE_ANALOG) {
+    if (style == CLOCK_STYLE_RETRO_LCD) {
+      lv_obj_set_style_bg_opa(preview, LV_OPA_COVER, 0);
+      lv_obj_set_style_bg_color(preview, lv_color_hex(0xB7C1A5), 0);
+      lv_obj_set_style_radius(preview, LV_RADIUS_CIRCLE, 0);
+    }
+    const lv_color_t textColor = style == CLOCK_STYLE_RETRO_LCD ? lv_color_hex(0x20261C) : COLOR_TEXT;
+    lv_obj_t *time = makeLabel(preview, &lv_font_montserrat_28, textColor);
     lv_label_set_text(time, "10:09");
     alignCenter(time, 0, -20);
-    lv_obj_t *date = makeLabel(preview, &lv_font_montserrat_12, COLOR_MUTED);
+    lv_obj_t *date = makeLabel(preview, &lv_font_montserrat_12, textColor);
     lv_label_set_text(date, "SO 30. 8.");
     alignCenter(date, 0, 7);
     lv_obj_t *values =
-        makeLabel(preview, &lv_font_montserrat_12, COLOR_OUTSIDE);
+        makeLabel(preview, &lv_font_montserrat_12, textColor);
     lv_label_set_text(values, "22.4°   45%");
     alignCenter(values, 0, 30);
   }
 
   lv_obj_t *label = makeLabel(card, &clock_czech_16, COLOR_TEXT);
   if (textLabel != nullptr) *textLabel = label;
-  lv_label_set_text(label, style == CLOCK_STYLE_ANALOG ? "ANALOGOVÉ"
+  lv_label_set_text(label, style == CLOCK_STYLE_RETRO_LCD ? "RETRO LCD" : style == CLOCK_STYLE_ANALOG ? "ANALOGOVÉ"
                                                        : "DIGITÁLNÍ");
   alignCenter(label, 0, 92);
   lv_obj_clear_flag(label, LV_OBJ_FLAG_CLICKABLE);
@@ -2668,9 +2678,11 @@ void createSettingsPage(lv_obj_t *screen) {
   lv_label_set_text(clockStyleTitleLabel, "TYP HODIN");
   alignCenter(clockStyleTitleLabel, 0, -132);
   digitalClockStyleCard = makeClockStyleCard(
-      settingsContent[0], CLOCK_STYLE_DIGITAL, -98, &digitalClockStyleLabel);
+      settingsContent[0], CLOCK_STYLE_DIGITAL, -138, &digitalClockStyleLabel);
   analogClockStyleCard = makeClockStyleCard(
-      settingsContent[0], CLOCK_STYLE_ANALOG, 98, &analogClockStyleLabel);
+      settingsContent[0], CLOCK_STYLE_ANALOG, 0, &analogClockStyleLabel);
+  retroClockStyleCard = makeClockStyleCard(
+      settingsContent[0], CLOCK_STYLE_RETRO_LCD, 138, nullptr);
   updateClockStyleCardSelection();
 
   dayBrightnessTitleLabel =
@@ -2970,6 +2982,10 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
   alignConnectionStatusIcons();
 
   createAnalogLayout(content);
+  if (activeClockStyle == CLOCK_STYLE_RETRO_LCD) {
+    retroLcdEnable(content, true);
+    retroLcdRaise();
+  }
 
   clockDashboardUpdate(values);
   makeChildrenTapThrough(dashboardContent);
@@ -3093,6 +3109,12 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
     strlcpy(roomUnit, rightValueConfig.suffix, sizeof(roomUnit));
     outsideDecimals = leftValueConfig.decimals;
     roomDecimals = rightValueConfig.decimals;
+  }
+  for (uint8_t i = 0; i < 2; ++i) {
+    clockConfigCopy(retroSideConfigs[i].name, sizeof(retroSideConfigs[i].name),
+                    openMeteo ? config.openMeteoSlots[i].name : (i == 0 ? config.leftSide.name : config.rightSide.name));
+    clockConfigCopy(retroSideConfigs[i].suffix, sizeof(retroSideConfigs[i].suffix), i == 0 ? outsideUnit : roomUnit);
+    retroSideConfigs[i].decimals = i == 0 ? outsideDecimals : roomDecimals;
   }
   automaticDayNightEnabled = config.automaticDayNight;
   const bool timeColonModeChanged =
@@ -3289,13 +3311,27 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   alignConnectionStatusIcons();
   renderSecondRing(millis());
   clockDashboardUpdate(currentValues);
+  retroLcdRaise();
+  if (retroLcdEnabled()) {
+    lv_timer_pause(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
+    lv_timer_pause(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
+  }
 }
 
 void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
   animatedScreenTransitions = appearance.animatedScreenTransitions;
+  retroProgressSource = constrain(appearance.retroProgressSource, 0, 4);
+  retroProgressSegments = constrain(appearance.retroProgressSegments, 5, 50);
+  retroProgressMin = appearance.retroProgressMin;
+  retroProgressMax = appearance.retroProgressMax;
+  retroSources[0] = constrain(appearance.retroLeftSource, 0, 3);
+  retroSources[1] = constrain(appearance.retroRightSource, 0, 3);
+  retroLcdSetDigitPlaces(appearance.retroMetricADigits, appearance.retroMetricBDigits);
+  retroLcdSetColors(appearance.retroBackgroundColor, appearance.retroForegroundColor);
+  retroLcdSetGhostOpacity(appearance.retroGhostOpacity);
   const uint8_t style = constrain(
       appearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
-      static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
+      static_cast<uint8_t>(CLOCK_STYLE_RETRO_LCD));
   const uint32_t tone = appearance.analogToneColor & 0xFFFFFF;
   const uint32_t handTone = appearance.analogHandToneColor & 0xFFFFFF;
   const uint32_t accentColor =
@@ -3323,6 +3359,7 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
     return;
   }
   const bool styleChanged = activeClockStyle != style;
+  if (styleChanged && dashboardContent) retroLcdEnable(dashboardContent, style == CLOCK_STYLE_RETRO_LCD);
   const bool valueLayerChanged =
       analogValuesAboveHandsEnabled != valuesAboveHandsEnabled;
   const bool dialAppearanceChanged = analogToneColor != tone ||
@@ -3342,6 +3379,11 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
   if (dashboardContent == nullptr || !dashboardRuntimeConfigAvailable) return;
   clockDashboardApplyConfiguration(dashboardRuntimeConfig);
   updateAnalogValueLayerOrder();
+  retroLcdRaise();
+  if (styleChanged && !retroLcdEnabled()) {
+    if (leftWeatherDecoderKey[0]) lv_timer_resume(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
+    if (rightWeatherDecoderKey[0]) lv_timer_resume(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
+  }
   if (analogLayoutEnabled() && (styleChanged || dialAppearanceChanged))
     rebuildAnalogDialCache();
   applyDashboardColors();
@@ -3352,10 +3394,28 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
   invalidateAnalogHands();
 }
 
+static void updateRetroValues(const ClockValues &values) {
+  const ClockMetricConfig *configs[] = {&retroSideConfigs[0], &retroSideConfigs[1], &metricAConfig, &metricBConfig};
+  const float numbers[] = {values.leftTemperatureC, values.rightTemperatureC, values.metricAValue, values.metricBValue};
+  retroLcdSetProgress(retroProgressSource < 4 ? configs[retroProgressSource] : nullptr,
+                      retroProgressSource < 4 ? numbers[retroProgressSource] : NAN, retroProgressMin, retroProgressMax, retroProgressSegments);
+  ClockValues mapped = values;
+  mapped.metricAValue = numbers[retroSources[0]];
+  mapped.metricBValue = numbers[retroSources[1]];
+  retroLcdUpdate(mapped, *configs[retroSources[0]], *configs[retroSources[1]], englishLanguage(),
+                 redNightVisualEnabled(), wifiConnected, webActive);
+}
+
 void clockDashboardUpdate(const ClockValues &values) {
   char text[32];
   currentValues = values;
   if (firmwareUpdateActive) return;
+  if (retroLcdEnabled()) {
+    lv_timer_pause(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
+    lv_timer_pause(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
+    updateRetroValues(values);
+    return;
+  }
 
   const lv_img_dsc_t *weatherIcon =
       openWeatherIconForCode(values.weatherCode, values.weatherIsDay);
@@ -3534,6 +3594,9 @@ void clockDashboardSetWeatherAnimation(const uint8_t *gifData, size_t size,
 void clockDashboardLoop() {
   if (firmwareUpdateActive) return;
   preparePageSlide();
+  if (retroLcdEnabled()) {
+    updateRetroValues(currentValues);
+  }
   const unsigned long now = millis();
   if (settingsVisible && settingsPageIndex == SETTINGS_PAGE_COUNT - 1 &&
       now - lastSettingsInfoRefreshAt >= 500) {
@@ -3617,11 +3680,11 @@ void clockDashboardLoop() {
     clockDashboardUpdate(currentValues);
   }
   const bool smoothSecondEffectActive =
-      !analogLayoutEnabled() && secondRingEnabled &&
+      !retroLcdEnabled() && !analogLayoutEnabled() && secondRingEnabled &&
       (secondEffect == CLOCK_SECOND_EFFECT_LINE ||
        secondEffect == CLOCK_SECOND_EFFECT_COMET);
   const bool smoothTimeColonActive =
-      !analogLayoutEnabled() &&
+      !retroLcdEnabled() && !analogLayoutEnabled() &&
       timeColonEffect == CLOCK_TIME_COLON_FADE;
   if (!secondFadeActive && !smoothSecondEffectActive &&
       !smoothTimeColonActive)
@@ -3869,6 +3932,7 @@ void clockDashboardSetDate(const char *dateText) {
 
 void clockDashboardSetSecond(uint8_t second) {
   if (firmwareUpdateActive) return;
+  if (retroLcdEnabled()) { displayedSecond = second; return; }
   if (second > SECOND_DOT_COUNT) second = SECOND_DOT_COUNT;
   if (displayedSecond == second) return;
   const bool analogLayout = analogLayoutEnabled();
@@ -3929,6 +3993,10 @@ void clockDashboardSetSecond(uint8_t second) {
 
 void clockDashboardSetTime(const char *timeText) {
   if (firmwareUpdateActive) return;
+  if (retroLcdEnabled()) {
+    strlcpy(displayedTimeText, timeText, sizeof(displayedTimeText));
+    return;
+  }
   if (analogLayoutEnabled() && strcmp(displayedTimeText, timeText) == 0) {
     lv_obj_add_flag(timeLabel, LV_OBJ_FLAG_HIDDEN);
     return;
@@ -3942,4 +4010,23 @@ void clockDashboardSetTime(const char *timeText) {
     return;
   }
   renderTimeColon(millis(), true);
+}
+
+void clockDashboardSetRetroPreview(bool enabled) {
+  if (firmwareUpdateActive || pageSlideActive || !dashboardContent ||
+      enabled == retroLcdEnabled()) return;
+  retroLcdEnable(dashboardContent, enabled);
+  if (enabled) {
+    lv_obj_set_pos(dashboardContent, 0, 0);
+    lv_timer_pause(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
+    lv_timer_pause(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
+    renderSecondRing(millis());
+    clockDashboardUpdate(currentValues);
+  } else if (dashboardRuntimeConfigAvailable) {
+    clockDashboardApplyConfiguration(dashboardRuntimeConfig);
+    if (leftWeatherDecoderKey[0]) lv_timer_resume(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
+    if (rightWeatherDecoderKey[0]) lv_timer_resume(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
+  }
+  displayDriverSetPartialRefresh(analogLayoutEnabled(), true);
+  lv_obj_invalidate(lv_scr_act());
 }

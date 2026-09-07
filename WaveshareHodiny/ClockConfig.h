@@ -88,9 +88,21 @@ enum ClockDateFormat : uint8_t {
 enum ClockStyle : uint8_t {
   CLOCK_STYLE_DIGITAL = 0,
   CLOCK_STYLE_ANALOG = 1,
+  CLOCK_STYLE_RETRO_LCD = 2,
 };
 
 struct ClockAppearanceConfig {
+  uint8_t retroMetricADigits = 3;
+  uint8_t retroMetricBDigits = 4;
+  uint32_t retroBackgroundColor = 0xB7C1A5;
+  uint32_t retroForegroundColor = 0x20261C;
+  uint8_t retroGhostOpacity = 5;
+  uint8_t retroLeftSource = 2; // Left, right, metric A, metric B.
+  uint8_t retroRightSource = 3;
+  uint8_t retroProgressSource = 4; // 0–3: existing values, 4: disabled.
+  uint8_t retroProgressSegments = 10;
+  float retroProgressMin = 0.0f;
+  float retroProgressMax = 100.0f;
   bool animatedScreenTransitions = true;
   uint8_t style = CLOCK_STYLE_DIGITAL;
   uint32_t analogToneColor = 0x00D6FF;

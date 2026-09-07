@@ -44,6 +44,8 @@ pozicích 12, 3, 6 a 9 hodin.
 
 - digitální hodiny s fonty Barlow, Liberation Sans, LCD DSEG nebo Doto, nebo
   analogový ciferník s nastavitelným tónem a volitelnými hlavními akcenty,
+- Retro LCD se segmentovým časem, dvěma hodnotami A/B, pevnými pozicemi
+  číslic a nastavitelnou barvou pozadí i popředí,
 - české nebo anglické datum v několika formátech a volitelný vteřinový prstenec,
 - synchronizaci času přes NTP a české časové pásmo včetně letního času,
 - dvě univerzální horní hodnoty s vlastním názvem, jednotkou, přesností,

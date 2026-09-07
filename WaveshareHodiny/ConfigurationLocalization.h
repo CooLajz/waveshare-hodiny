@@ -5,6 +5,23 @@
 const char CONFIGURATION_LOCALIZATION_JS[] PROGMEM = R"JS(
 (() => {
   const en = {
+    "Počet míst LCD":"LCD digit positions",
+    "Číslice před desetinnou tečkou. Mínus má vlastní segment navíc. Prázdná místa zůstanou zhasnutá.":"Digits before the decimal point. Minus has its own extra segment. Empty positions remain unlit.",
+    "Barva pozadí LCD":"LCD background color",
+    "Barva popředí LCD":"LCD foreground color",
+    "Levá hodnota LCD":"Left LCD value",
+    "Pravá hodnota LCD":"Right LCD value",
+    "Počet míst vlevo":"Left digit slots",
+    "Počet míst vpravo":"Right digit slots",
+    "Spodní A":"Bottom A",
+    "Spodní ukazatel LCD":"LCD bottom indicator",
+    "Počet dílků ukazatele":"Indicator segment count",
+    "Minimum ukazatele":"Indicator minimum",
+    "Maximum ukazatele":"Indicator maximum",
+    "Maximum musí být větší než minimum.":"Maximum must be greater than minimum.",
+    "Dílky ukazují zaplnění rozsahu. Pod ukazatelem je název s jednotkou, bez aktuálního čísla.":"Segments show the filled range. The name and unit appear below, without the current number.",
+    "Spodní B":"Bottom B",
+    "Intenzita podkresu LCD":"LCD inactive segment intensity",
     "Animovaný přechod obrazovek (hodiny/meteoradar)":"Animated screen transition (clock/radar)",
     "Plynulý posun při ručním i automatickém přepínání obrazovek.":"Smooth slide during manual and automatic screen switching.",
     "Příklad:":"Example:",

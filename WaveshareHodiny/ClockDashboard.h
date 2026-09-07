@@ -69,6 +69,7 @@ void clockDashboardUpdate(const ClockValues &values);
 void clockDashboardSetDate(const char *dateText);
 void clockDashboardSetSecond(uint8_t second);
 void clockDashboardSetTime(const char *timeText);
+void clockDashboardSetRetroPreview(bool enabled);
 void clockDashboardSetWeatherAnimation(const uint8_t *gifData, size_t size,
                                        const char *iconKey);
 void clockDashboardSetRadarSnapshot(const uint16_t *pixels,

@@ -10,6 +10,7 @@
 #include <time.h>
 
 #include "ClockDashboard.h"
+#include "RetroLcd.h"
 #include "ClockConfig.h"
 #include "ChmiRadarService.h"
 #include "ConfigurationWeb.h"
@@ -191,7 +192,7 @@ bool previewClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
   activeAppearance = appearance;
   activeAppearance.style = constrain(
       activeAppearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
-      static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
+      static_cast<uint8_t>(CLOCK_STYLE_RETRO_LCD));
   activeAppearance.analogToneColor &= 0xFFFFFF;
   activeAppearance.analogHandToneColor &= 0xFFFFFF;
   activeAppearance.analogCardinalAccentColor &= 0xFFFFFF;
@@ -210,7 +211,7 @@ bool saveClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
   ClockAppearanceConfig normalized = appearance;
   normalized.style = constrain(
       normalized.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
-      static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
+      static_cast<uint8_t>(CLOCK_STYLE_RETRO_LCD));
   normalized.analogToneColor &= 0xFFFFFF;
   normalized.analogHandToneColor &= 0xFFFFFF;
   normalized.analogCardinalAccentColor &= 0xFFFFFF;
@@ -580,7 +581,7 @@ void handleSettingsSave(uint8_t clockStyle, uint8_t dayBrightness,
     ClockAppearanceConfig appearance = persistedAppearance;
     appearance.style = constrain(
         clockStyle, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
-        static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
+        static_cast<uint8_t>(CLOCK_STYLE_RETRO_LCD));
     if (appearance.style != persistedAppearance.style)
       saveClockAppearanceFromWeb(appearance);
     configurationWebSetMode(static_cast<ConfigurationWebMode>(webMode));
@@ -609,6 +610,12 @@ void handleUsbCommands() {
         } else {
           screenshotTransferActive = true;
         }
+      } else if (usbCommand == "RETRO" && !screenshotTransferActive) {
+        clockDashboardSetRetroPreview(true);
+        Serial.println("RETRO_ON");
+      } else if (usbCommand == "RETROOFF" && !screenshotTransferActive) {
+        clockDashboardSetRetroPreview(false);
+        Serial.println("RETRO_OFF");
       } else if (usbCommand == "SETTINGS" && !screenshotTransferActive) {
         clockDashboardShowSettings();
         Serial.println("SETTINGS_OPEN");
@@ -764,6 +771,7 @@ void maintainNetworkTime() {
   localtime_r(&displayedNow, &localTime);
   if (localTime.tm_sec == lastDisplayedSecond) return;
   lastDisplayedSecond = localTime.tm_sec;
+  retroLcdSetTime(localTime);
 
   const ClockConfig config = runtimeConfigSnapshot();
   char timeText[6];

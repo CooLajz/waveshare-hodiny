@@ -261,7 +261,23 @@ bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
   appearance.style = constrain(
       preferences.getUChar(APPEARANCE_STYLE_KEY, CLOCK_STYLE_DIGITAL),
       static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
-      static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
+      static_cast<uint8_t>(CLOCK_STYLE_RETRO_LCD));
+  appearance.retroProgressSegments = constrain(preferences.getUChar("retroBarCount", 10), 5, 50);
+  appearance.retroProgressSource = constrain(preferences.getUChar("retroBarSrc", 4), 0, 4);
+  appearance.retroProgressMin = preferences.getFloat("retroBarMin", 0.0f);
+  appearance.retroProgressMax = preferences.getFloat("retroBarMax", 100.0f);
+  if (!std::isfinite(appearance.retroProgressMin) || !std::isfinite(appearance.retroProgressMax) ||
+      appearance.retroProgressMin >= appearance.retroProgressMax) {
+    appearance.retroProgressMin = 0.0f;
+    appearance.retroProgressMax = 100.0f;
+  }
+  appearance.retroLeftSource = constrain(preferences.getUChar("retroLeft", 2), 0, 3);
+  appearance.retroRightSource = constrain(preferences.getUChar("retroRight", 3), 0, 3);
+  appearance.retroGhostOpacity = constrain(preferences.getUChar("retroGhost", 5), 0, 50);
+  appearance.retroBackgroundColor = preferences.getUInt("retroBg", 0xB7C1A5) & 0xFFFFFF;
+  appearance.retroForegroundColor = preferences.getUInt("retroFg", 0x20261C) & 0xFFFFFF;
+  appearance.retroMetricADigits = constrain(preferences.getUChar("retroDigitsA", 3), 1, 4);
+  appearance.retroMetricBDigits = constrain(preferences.getUChar("retroDigitsB", 4), 1, 4);
   appearance.animatedScreenTransitions = preferences.getBool("screenSlide", true);
   appearance.analogToneColor =
       preferences.getUInt(APPEARANCE_TONE_KEY, 0x00D6FF) & 0xFFFFFF;
@@ -298,14 +314,29 @@ bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
 }
 
 bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
+  if (!std::isfinite(appearance.retroProgressMin) || !std::isfinite(appearance.retroProgressMax) ||
+      appearance.retroProgressMin >= appearance.retroProgressMax || appearance.retroProgressSource > 4 ||
+      appearance.retroProgressSegments < 5 || appearance.retroProgressSegments > 50) return false;
+
   Preferences preferences;
   if (!preferences.begin(APPEARANCE_NAMESPACE, false, CONFIG_PARTITION))
     return false;
   const uint8_t style = constrain(
       appearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
-      static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
+      static_cast<uint8_t>(CLOCK_STYLE_RETRO_LCD));
   const bool styleSaved =
       preferences.putUChar(APPEARANCE_STYLE_KEY, style) == sizeof(style);
+  const bool retroProgressSaved = preferences.putUChar("retroBarCount", appearance.retroProgressSegments) == sizeof(uint8_t) &&
+      preferences.putUChar("retroBarSrc", appearance.retroProgressSource) == sizeof(uint8_t) &&
+      preferences.putFloat("retroBarMin", appearance.retroProgressMin) == sizeof(float) &&
+      preferences.putFloat("retroBarMax", appearance.retroProgressMax) == sizeof(float);
+  const bool retroSourcesSaved = preferences.putUChar("retroLeft", constrain(appearance.retroLeftSource, 0, 3)) == sizeof(uint8_t) &&
+      preferences.putUChar("retroRight", constrain(appearance.retroRightSource, 0, 3)) == sizeof(uint8_t);
+  const bool retroGhostSaved = preferences.putUChar("retroGhost", constrain(appearance.retroGhostOpacity, 0, 50)) == sizeof(uint8_t);
+  const bool retroColorsSaved = preferences.putUInt("retroBg", appearance.retroBackgroundColor & 0xFFFFFF) == sizeof(uint32_t) &&
+      preferences.putUInt("retroFg", appearance.retroForegroundColor & 0xFFFFFF) == sizeof(uint32_t);
+  const bool digitsSavedA = preferences.putUChar("retroDigitsA", constrain(appearance.retroMetricADigits, 1, 4)) == sizeof(uint8_t);
+  const bool digitsSavedB = preferences.putUChar("retroDigitsB", constrain(appearance.retroMetricBDigits, 1, 4)) == sizeof(uint8_t);
   const bool transitionSaved = preferences.putBool(
       "screenSlide", appearance.animatedScreenTransitions) == sizeof(bool);
   const bool toneSaved =
@@ -352,10 +383,10 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
                           appearance.monochromeWeatherIconColor & 0xFFFFFF) ==
       sizeof(uint32_t);
   preferences.end();
-  return styleSaved && toneSaved && handToneSaved && accentColorSaved &&
+  return retroProgressSaved && retroSourcesSaved && retroGhostSaved && styleSaved && toneSaved && handToneSaved && accentColorSaved &&
          accentsSaved && outlineHandsSaved && monoValuesSaved &&
          valuesAboveSaved && dateFormatSaved && dateColorSaved &&
-         weatherColorSaved && transitionSaved;
+         weatherColorSaved && transitionSaved && digitsSavedA && digitsSavedB && retroColorsSaved;
 }
 
 void clockConfigCopy(char *destination, size_t destinationSize,

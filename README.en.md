@@ -43,6 +43,8 @@ changes the system text and verbal date shown on the display.
 
 - digital clock with Barlow, Liberation Sans, LCD DSEG and Doto fonts, or an
   analog dial with a configurable tone and optional cardinal accents,
+- Retro LCD with segmented time, two A/B values, fixed digit positions,
+  and configurable background and foreground colors,
 - multiple date formats and an optional seconds ring,
 - NTP time synchronization and the Czech time zone with daylight saving time,
 - Open-Meteo support without an account or token,

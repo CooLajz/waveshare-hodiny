@@ -811,22 +811,77 @@ void radarRangeState(uint16_t &savedRadiusKm, uint16_t &activeRadiusKm) {
     currentRadarRangeStateCallback(savedRadiusKm, activeRadiusKm);
 }
 
+bool parseFiniteFloat(const String &text, float &value);
+
 bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
   if (currentAppearanceStateCallback != nullptr) {
     ClockAppearanceConfig saved, active;
     currentAppearanceStateCallback(saved, active);
     appearance.animatedScreenTransitions = active.animatedScreenTransitions;
+    appearance.retroBackgroundColor = active.retroBackgroundColor;
+    appearance.retroForegroundColor = active.retroForegroundColor;
+    appearance.retroGhostOpacity = active.retroGhostOpacity;
+    appearance.retroLeftSource = active.retroLeftSource;
+    appearance.retroRightSource = active.retroRightSource;
+    appearance.retroProgressSource = active.retroProgressSource;
+    appearance.retroProgressSegments = active.retroProgressSegments;
+    appearance.retroProgressMin = active.retroProgressMin;
+    appearance.retroProgressMax = active.retroProgressMax;
+    appearance.retroMetricADigits = active.retroMetricADigits;
+    appearance.retroMetricBDigits = active.retroMetricBDigits;
   }
   if (server.hasArg("animatedScreenTransitions")) {
     const String value = server.arg("animatedScreenTransitions");
     if (value != "0" && value != "1") return false;
     appearance.animatedScreenTransitions = value == "1";
   }
+  if (server.hasArg("retroBackgroundColor") && !parseHtmlColor(server.arg("retroBackgroundColor"), appearance.retroBackgroundColor)) return false;
+  if (server.hasArg("retroForegroundColor") && !parseHtmlColor(server.arg("retroForegroundColor"), appearance.retroForegroundColor)) return false;
+  if (server.hasArg("retroGhostOpacity")) {
+    const String value = server.arg("retroGhostOpacity");
+    if (value.length() == 0 || value.length() > 2) return false;
+    for (unsigned i = 0; i < value.length(); ++i) if (value[i] < '0' || value[i] > '9') return false;
+    if (value.toInt() > 50) return false;
+    appearance.retroGhostOpacity = value.toInt();
+  }
+  if (server.hasArg("retroProgressSegments")) {
+    const String value = server.arg("retroProgressSegments");
+    if (value.length() == 0 || value.length() > 2) return false;
+    for (unsigned i = 0; i < value.length(); ++i) if (value[i] < '0' || value[i] > '9') return false;
+    if (value.toInt() < 5 || value.toInt() > 50) return false;
+    appearance.retroProgressSegments = value.toInt();
+  }
+  if (server.hasArg("retroProgressSource")) {
+    const String value = server.arg("retroProgressSource");
+    if (value.length() != 1 || value[0] < '0' || value[0] > '4') return false;
+    appearance.retroProgressSource = value[0] - '0';
+  }
+  if (server.hasArg("retroProgressMin") && !parseFiniteFloat(server.arg("retroProgressMin"), appearance.retroProgressMin)) return false;
+  if (server.hasArg("retroProgressMax") && !parseFiniteFloat(server.arg("retroProgressMax"), appearance.retroProgressMax)) return false;
+  if (appearance.retroProgressMin >= appearance.retroProgressMax) return false;
+  const char *sourceKeys[] = {"retroLeftSource", "retroRightSource"};
+  uint8_t *sourceFields[] = {&appearance.retroLeftSource, &appearance.retroRightSource};
+  for (uint8_t i = 0; i < 2; ++i) {
+    if (!server.hasArg(sourceKeys[i])) continue;
+    const String value = server.arg(sourceKeys[i]);
+    if (value.length() != 1 || value[0] < '0' || value[0] > '3') return false;
+    *sourceFields[i] = value[0] - '0';
+  }
+  const char *digitKeys[] = {"retroMetricADigits", "retroMetricBDigits"};
+  uint8_t *digitFields[] = {&appearance.retroMetricADigits, &appearance.retroMetricBDigits};
+  for (uint8_t i = 0; i < 2; ++i) {
+    if (!server.hasArg(digitKeys[i])) continue;
+    const String value = server.arg(digitKeys[i]);
+    if (value.length() != 1 || value[0] < '1' || value[0] > '4') return false;
+    *digitFields[i] = value[0] - '0';
+  }
   const String style = server.arg("clockStyle");
   if (style == "digital")
     appearance.style = CLOCK_STYLE_DIGITAL;
   else if (style == "analog")
     appearance.style = CLOCK_STYLE_ANALOG;
+  else if (style == "retro-lcd")
+    appearance.style = CLOCK_STYLE_RETRO_LCD;
   else
     return false;
   if (!parseHtmlColor(server.arg("analogToneColor"),
@@ -1295,11 +1350,51 @@ void handleGetConfig() {
   result += config.clockDisplaySeconds;
   result += F(",\"radarDisplaySeconds\":");
   result += config.radarDisplaySeconds;
+  result += F(",\"retroBackgroundColor\":\"");
+  result += htmlColor(savedAppearance.retroBackgroundColor);
+  result += F("\",\"retroForegroundColor\":\"");
+  result += htmlColor(savedAppearance.retroForegroundColor);
+  result += F("\",\"activeRetroBackgroundColor\":\"");
+  result += htmlColor(activeAppearance.retroBackgroundColor);
+  result += F("\",\"activeRetroForegroundColor\":\"");
+  result += htmlColor(activeAppearance.retroForegroundColor);
+  result += F("\",\"retroGhostOpacity\":");
+  result += savedAppearance.retroGhostOpacity;
+  result += F(",\"activeRetroGhostOpacity\":");
+  result += activeAppearance.retroGhostOpacity;
+  result += F(",\"retroLeftSource\":");
+  result += savedAppearance.retroLeftSource;
+  result += F(",\"retroRightSource\":");
+  result += savedAppearance.retroRightSource;
+  result += F(",\"activeRetroLeftSource\":");
+  result += activeAppearance.retroLeftSource;
+  result += F(",\"activeRetroRightSource\":");
+  result += activeAppearance.retroRightSource;
+  result += F(",\"retroProgressSource\":");
+  result += savedAppearance.retroProgressSource;
+  result += F(",\"retroProgressSegments\":");
+  result += savedAppearance.retroProgressSegments;
+  result += F(",\"retroProgressMin\":");
+  { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(savedAppearance.retroProgressMin)); result += value; }
+  result += F(",\"retroProgressMax\":");
+  { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(savedAppearance.retroProgressMax)); result += value; }
+  result += F(",\"activeRetroProgressSource\":");
+  result += activeAppearance.retroProgressSource;
+  result += F(",\"activeRetroProgressSegments\":");
+  result += activeAppearance.retroProgressSegments;
+  result += F(",\"activeRetroProgressMin\":");
+  { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(activeAppearance.retroProgressMin)); result += value; }
+  result += F(",\"activeRetroProgressMax\":");
+  { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(activeAppearance.retroProgressMax)); result += value; }
+  result += F(",\"retroMetricADigits\":");
+  result += savedAppearance.retroMetricADigits;
+  result += F(",\"retroMetricBDigits\":");
+  result += savedAppearance.retroMetricBDigits;
   result += F(",\"clockStyle\":\"");
-  result += savedAppearance.style == CLOCK_STYLE_ANALOG ? F("analog")
+  result += savedAppearance.style == CLOCK_STYLE_RETRO_LCD ? F("retro-lcd") : savedAppearance.style == CLOCK_STYLE_ANALOG ? F("analog")
                                                         : F("digital");
   result += F("\",\"activeClockStyle\":\"");
-  result += activeAppearance.style == CLOCK_STYLE_ANALOG ? F("analog")
+  result += activeAppearance.style == CLOCK_STYLE_RETRO_LCD ? F("retro-lcd") : activeAppearance.style == CLOCK_STYLE_ANALOG ? F("analog")
                                                          : F("digital");
   result += F("\",\"analogToneColor\":\"");
   result += htmlColor(savedAppearance.analogToneColor);
@@ -2058,10 +2153,46 @@ void handleClockAppearancePreview() {
   ClockAppearanceConfig active;
   appearanceState(saved, active);
   String result = F("{\"ok\":true,\"clockStyle\":\"");
-  result += saved.style == CLOCK_STYLE_ANALOG ? F("analog") : F("digital");
+  result += saved.style == CLOCK_STYLE_RETRO_LCD ? F("retro-lcd") : saved.style == CLOCK_STYLE_ANALOG ? F("analog") : F("digital");
   result += F("\",\"activeClockStyle\":\"");
-  result += active.style == CLOCK_STYLE_ANALOG ? F("analog") : F("digital");
-  result += F("\",\"analogToneColor\":\"");
+  result += active.style == CLOCK_STYLE_RETRO_LCD ? F("retro-lcd") : active.style == CLOCK_STYLE_ANALOG ? F("analog") : F("digital");
+  result += F("\",\"retroBackgroundColor\":\"");
+  result += htmlColor(saved.retroBackgroundColor);
+  result += F("\",\"retroForegroundColor\":\"");
+  result += htmlColor(saved.retroForegroundColor);
+  result += F("\",\"activeRetroBackgroundColor\":\"");
+  result += htmlColor(active.retroBackgroundColor);
+  result += F("\",\"activeRetroForegroundColor\":\"");
+  result += htmlColor(active.retroForegroundColor);
+  result += F("\",\"retroGhostOpacity\":");
+  result += saved.retroGhostOpacity;
+  result += F(",\"activeRetroGhostOpacity\":");
+  result += active.retroGhostOpacity;
+  result += F(",\"retroLeftSource\":");
+  result += saved.retroLeftSource;
+  result += F(",\"retroRightSource\":");
+  result += saved.retroRightSource;
+  result += F(",\"activeRetroLeftSource\":");
+  result += active.retroLeftSource;
+  result += F(",\"activeRetroRightSource\":");
+  result += active.retroRightSource;
+  result += F(",\"retroProgressSource\":");
+  result += saved.retroProgressSource;
+  result += F(",\"retroProgressSegments\":");
+  result += saved.retroProgressSegments;
+  result += F(",\"retroProgressMin\":");
+  { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(saved.retroProgressMin)); result += value; }
+  result += F(",\"retroProgressMax\":");
+  { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(saved.retroProgressMax)); result += value; }
+  result += F(",\"activeRetroProgressSource\":");
+  result += active.retroProgressSource;
+  result += F(",\"activeRetroProgressSegments\":");
+  result += active.retroProgressSegments;
+  result += F(",\"activeRetroProgressMin\":");
+  { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(active.retroProgressMin)); result += value; }
+  result += F(",\"activeRetroProgressMax\":");
+  { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(active.retroProgressMax)); result += value; }
+  result += F(",\"analogToneColor\":\"");
   result += htmlColor(saved.analogToneColor);
   result += F("\",\"activeAnalogToneColor\":\"");
   result += htmlColor(active.analogToneColor);
