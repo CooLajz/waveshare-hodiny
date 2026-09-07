@@ -812,6 +812,16 @@ void radarRangeState(uint16_t &savedRadiusKm, uint16_t &activeRadiusKm) {
 }
 
 bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
+  if (currentAppearanceStateCallback != nullptr) {
+    ClockAppearanceConfig saved, active;
+    currentAppearanceStateCallback(saved, active);
+    appearance.animatedScreenTransitions = active.animatedScreenTransitions;
+  }
+  if (server.hasArg("animatedScreenTransitions")) {
+    const String value = server.arg("animatedScreenTransitions");
+    if (value != "0" && value != "1") return false;
+    appearance.animatedScreenTransitions = value == "1";
+  }
   const String style = server.arg("clockStyle");
   if (style == "digital")
     appearance.style = CLOCK_STYLE_DIGITAL;
@@ -1279,6 +1289,8 @@ void handleGetConfig() {
   result += config.radarPauseSeconds;
   result += F(",\"automaticRadarRotation\":");
   result += config.automaticRadarRotation ? F("true") : F("false");
+  result += F(",\"animatedScreenTransitions\":");
+  result += savedAppearance.animatedScreenTransitions ? F("true") : F("false");
   result += F(",\"clockDisplaySeconds\":");
   result += config.clockDisplaySeconds;
   result += F(",\"radarDisplaySeconds\":");

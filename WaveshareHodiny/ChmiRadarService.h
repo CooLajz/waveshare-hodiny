@@ -47,6 +47,7 @@ struct ChmiRadarDiagnostics {
 };
 
 void chmiRadarServiceBegin();
+void chmiRadarServiceHoldPlayback(bool hold);
 void chmiRadarServicePrepareForFirmwareUpdate();
 void chmiRadarServiceSetActive(bool visible, bool backgroundRefresh,
                                float latitude, float longitude,

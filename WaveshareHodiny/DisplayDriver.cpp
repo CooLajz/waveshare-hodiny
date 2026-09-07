@@ -17,7 +17,7 @@ void *frameBuffer1 = nullptr;
 void *frameBuffer2 = nullptr;
 uint8_t *screenshotBuffer = nullptr;
 size_t screenshotOffset = 0;
-bool horizontalSwipePending = false;
+int8_t horizontalSwipePending = 0;
 bool horizontalSwipeLatched = false;
 int8_t verticalSwipePending = 0;
 bool verticalSwipeLatched = false;
@@ -92,7 +92,7 @@ void readTouch(lv_indev_drv_t *, lv_indev_data_t *data) {
   if (horizontalSwipe) {
     if (!horizontalSwipeLatched) {
       horizontalSwipeLatched = true;
-      horizontalSwipePending = true;
+      horizontalSwipePending = touch_data.gesture == SWIPE_LEFT ? -1 : 1;
     }
     if (lv_indev_get_obj_act() != nullptr)
       lv_indev_wait_release(lv_indev_get_act());
@@ -210,10 +210,10 @@ void displayDriverSetPartialRefresh(bool enabled, bool rebuildBuffers) {
   displayDriverRefresh();
 }
 
-bool displayDriverTakeHorizontalSwipe() {
-  if (!horizontalSwipePending) return false;
-  horizontalSwipePending = false;
-  return true;
+int8_t displayDriverTakeHorizontalSwipe() {
+  const int8_t direction = horizontalSwipePending;
+  horizontalSwipePending = 0;
+  return direction;
 }
 
 int8_t displayDriverTakeVerticalSwipe() {

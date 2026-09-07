@@ -262,6 +262,7 @@ bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
       preferences.getUChar(APPEARANCE_STYLE_KEY, CLOCK_STYLE_DIGITAL),
       static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
       static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
+  appearance.animatedScreenTransitions = preferences.getBool("screenSlide", true);
   appearance.analogToneColor =
       preferences.getUInt(APPEARANCE_TONE_KEY, 0x00D6FF) & 0xFFFFFF;
   appearance.analogHandToneColor =
@@ -305,6 +306,8 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
       static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
   const bool styleSaved =
       preferences.putUChar(APPEARANCE_STYLE_KEY, style) == sizeof(style);
+  const bool transitionSaved = preferences.putBool(
+      "screenSlide", appearance.animatedScreenTransitions) == sizeof(bool);
   const bool toneSaved =
       preferences.putUInt(APPEARANCE_TONE_KEY,
                           appearance.analogToneColor & 0xFFFFFF) ==
@@ -352,7 +355,7 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
   return styleSaved && toneSaved && handToneSaved && accentColorSaved &&
          accentsSaved && outlineHandsSaved && monoValuesSaved &&
          valuesAboveSaved && dateFormatSaved && dateColorSaved &&
-         weatherColorSaved;
+         weatherColorSaved && transitionSaved;
 }
 
 void clockConfigCopy(char *destination, size_t destinationSize,

@@ -10,6 +10,7 @@
 
 #include "ClockFonts.h"
 #include "DisplayDriver.h"
+#include "ChmiRadarService.h"
 #include "FirmwareUpdateService.h"
 
 namespace {
@@ -84,6 +85,17 @@ lv_obj_t *wifiStatusLabel = nullptr;
 lv_obj_t *statusLabel = nullptr;
 lv_obj_t *webStatusLabel = nullptr;
 lv_obj_t *dashboardContent = nullptr;
+lv_obj_t *clockPage = nullptr;
+bool pageSlideActive = false;
+bool animatedScreenTransitions = true;
+int8_t pageSlideDirection = -1;
+lv_obj_t *pageSlideOverlay = nullptr;
+lv_color_t *pageSlideOld = nullptr;
+lv_color_t *pageSlideNew = nullptr;
+int32_t pageSlideDistance = 0;
+bool pageSlidePreparing = false;
+uint32_t pageSlidePrepareAt = 0;
+uint32_t pageSlideStartedAt = 0;
 lv_obj_t *radarPage = nullptr;
 lv_obj_t *radarCanvas = nullptr;
 lv_obj_t *radarTitleLabel = nullptr;
@@ -373,10 +385,76 @@ void applyDashboardLanguage() {
   displayedFirmwareStatus[0] = '\0';
 }
 
-void setRadarVisible(bool visible) {
+void drawPageSlide(lv_event_t *event) {
+  if (lv_event_get_code(event) == LV_EVENT_COVER_CHECK) {
+    auto *info = static_cast<lv_cover_check_info_t *>(lv_event_get_param(event));
+    info->res = LV_COVER_RES_COVER;
+    return;
+  }
+  if (lv_event_get_code(event) != LV_EVENT_DRAW_MAIN || !pageSlideOld) return;
+  lv_draw_ctx_t *ctx = lv_event_get_draw_ctx(event);
+  lv_area_t screen = {0, 0, 479, 479};
+  lv_area_t clip;
+  if (!_lv_area_intersect(&clip, ctx->clip_area, &screen)) return;
+  const int distance = pageSlidePreparing ? 0 : pageSlideDistance;
+  const int split = pageSlideDirection < 0 ? 480 - distance : distance;
+  auto *destination = static_cast<lv_color_t *>(ctx->buf);
+  const int stride = lv_area_get_width(ctx->buf_area);
+  // Dvě souvislé kopie na řádek, bez alfa prolínání či vektorového renderu.
+  for (int y = clip.y1; y <= clip.y2; ++y) {
+    for (int part = 0; part < 2; ++part) {
+      const int first = max(static_cast<int>(clip.x1), part == 0 ? 0 : split);
+      const int last = min(static_cast<int>(clip.x2), part == 0 ? split - 1 : 479);
+      if (first > last) continue;
+      const bool old = pageSlideDirection < 0 ? part == 0 : part == 1;
+      const int offset = pageSlideDirection < 0
+          ? (old ? distance : distance - 480)
+          : (old ? -distance : 480 - distance);
+      const lv_color_t *source = old ? pageSlideOld : pageSlideNew;
+      memcpy(destination + (y - ctx->buf_area->y1) * stride + first - ctx->buf_area->x1,
+             source + y * 480 + first + offset,
+             (last - first + 1) * sizeof(lv_color_t));
+    }
+  }
+}
+
+void slidePages(void *, int32_t distance) {
+  pageSlideDistance = distance;
+  if (pageSlideOverlay) lv_obj_invalidate(pageSlideOverlay);
+}
+
+void finishPageSlide(lv_anim_t *) {
+  if (pageSlideOverlay) lv_obj_del(pageSlideOverlay);
+  pageSlideOverlay = nullptr;
+  heap_caps_free(pageSlideOld);
+  heap_caps_free(pageSlideNew);
+  pageSlideOld = pageSlideNew = nullptr;
+  pageSlidePreparing = false;
+  pageSlideActive = false;
+  chmiRadarServiceHoldPlayback(false);
+  lv_timer_set_period(lv_disp_get_default()->refr_timer, LV_DISP_DEF_REFR_PERIOD);
+  displayDriverSetPartialRefresh(analogLayoutEnabled(),
+                                 analogLayoutEnabled());
+}
+
+void setRadarVisible(bool visible, int8_t direction = -1) {
   if (visible && !radarFeatureAvailable) return;
-  if (radarVisible == visible || settingsVisible) return;
+  if (radarVisible == visible || settingsVisible || pageSlideActive) return;
+  constexpr size_t bytes = 480U * 480U * sizeof(lv_color_t);
+  if (animatedScreenTransitions) {
+    pageSlideOld = static_cast<lv_color_t *>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    pageSlideNew = static_cast<lv_color_t *>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  }
+  lv_img_dsc_t snapshot = {};
+  const bool canSlide = pageSlideOld && pageSlideNew &&
+      lv_snapshot_take_to_buf(lv_scr_act(), LV_IMG_CF_TRUE_COLOR,
+                              &snapshot, pageSlideOld, bytes) == LV_RES_OK;
   radarVisible = visible;
+  pageSlideActive = canSlide;
+  chmiRadarServiceHoldPlayback(canSlide);
+  lv_timer_set_period(lv_disp_get_default()->refr_timer, 16);
+  pageSlideDirection = direction > 0 ? 1 : -1;
+  displayDriverSetPartialRefresh(false);
   if (visible) {
     // Při návratu na radar neodkrývej snímek, který zůstal v canvasu z
     // předchozího cyklu. Canvas znovu zobrazí až první snapshot nové animace.
@@ -391,6 +469,56 @@ void setRadarVisible(bool visible) {
     lv_obj_move_foreground(dashboardContent);
   }
   if (radarVisibilityCallback != nullptr) radarVisibilityCallback(visible);
+  if (!canSlide) {
+    finishPageSlide(nullptr);
+    return;
+  }
+  pageSlidePreparing = true;
+  pageSlideDistance = 0;
+  pageSlidePrepareAt = millis();
+  pageSlideOverlay = lv_obj_create(lv_scr_act());
+  lv_obj_remove_style_all(pageSlideOverlay);
+  lv_obj_set_size(pageSlideOverlay, 480, 480);
+  lv_obj_set_pos(pageSlideOverlay, 0, 0);
+  // Celou plochu vyplní vlastní kopie; obecné vyplnění pozadí by ji
+  // zbytečně zapisovalo do PSRAM podruhé. COVER_CHECK přesto zakryje scénu.
+  lv_obj_set_style_bg_opa(pageSlideOverlay, LV_OPA_TRANSP, 0);
+  lv_obj_clear_flag(pageSlideOverlay, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_event_cb(pageSlideOverlay, drawPageSlide, LV_EVENT_ALL, nullptr);
+}
+
+void preparePageSlide() {
+  if (!pageSlideActive) return;
+  if (!pageSlidePreparing) {
+    constexpr uint32_t durationMs = 500;
+    const uint32_t elapsed = millis() - pageSlideStartedAt;
+    if (elapsed >= durationMs) {
+      finishPageSlide(nullptr);
+      return;
+    }
+    const float progress = static_cast<float>(elapsed) / durationMs;
+    const float eased = progress * progress * (3.0f - 2.0f * progress);
+    const int32_t distance = static_cast<int32_t>(std::round(480.0f * eased));
+    if (distance != pageSlideDistance) slidePages(nullptr, distance);
+    return;
+  }
+  if (radarVisible && lv_obj_has_flag(radarCanvas, LV_OBJ_FLAG_HIDDEN) &&
+      millis() - pageSlidePrepareAt < 700) return;
+  lv_obj_add_flag(pageSlideOverlay, LV_OBJ_FLAG_HIDDEN);
+  lv_img_dsc_t snapshot = {};
+  const bool captured = lv_snapshot_take_to_buf(
+      lv_scr_act(), LV_IMG_CF_TRUE_COLOR, &snapshot, pageSlideNew,
+      480U * 480U * sizeof(lv_color_t)) == LV_RES_OK;
+  if (!captured) {
+    finishPageSlide(nullptr);
+    return;
+  }
+  pageSlidePreparing = false;
+  lv_obj_clear_flag(pageSlideOverlay, LV_OBJ_FLAG_HIDDEN);
+  // LVGL 8 sdílí čas posledního animačního průchodu. Při aktivní liště
+  // radaru by první krok zahrnul i nákladné pořízení snapshotů. Vlastní
+  // začátek až po zachycení snímků zaručí celou délku přechodu.
+  pageSlideStartedAt = millis();
 }
 
 void setObjectVisible(lv_obj_t *object, bool visible) {
@@ -2096,6 +2224,7 @@ void updateBrightnessLabel(lv_obj_t *label, int brightness, int x, int y) {
 }
 
 void showSettings() {
+  if (pageSlideActive) return;
   if (settingsVisible) return;
   if (settingsOpenCallback != nullptr) settingsOpenCallback();
   lv_slider_set_value(dayBrightnessSlider, savedDayBrightness, LV_ANIM_OFF);
@@ -2710,9 +2839,17 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
-  makeSecondRing(screen);
+  // Prstenec digitálu i jeho obsah se při gestu pohybují jako jedna stránka.
+  clockPage = lv_obj_create(screen);
+  lv_obj_remove_style_all(clockPage);
+  lv_obj_set_size(clockPage, 480, 480);
+  lv_obj_set_pos(clockPage, 0, 0);
+  lv_obj_clear_flag(clockPage, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_color(clockPage, COLOR_BACKGROUND, 0);
+  lv_obj_set_style_bg_opa(clockPage, LV_OPA_COVER, 0);
+  makeSecondRing(clockPage);
 
-  dashboardContent = lv_obj_create(screen);
+  dashboardContent = lv_obj_create(clockPage);
   lv_obj_set_size(dashboardContent, 480, 480);
   lv_obj_set_pos(dashboardContent, 0, analogLayoutEnabled() ? 0 : -10);
   lv_obj_set_style_bg_opa(dashboardContent, LV_OPA_TRANSP, 0);
@@ -3155,6 +3292,7 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
 }
 
 void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
+  animatedScreenTransitions = appearance.animatedScreenTransitions;
   const uint8_t style = constrain(
       appearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
       static_cast<uint8_t>(CLOCK_STYLE_ANALOG));
@@ -3395,6 +3533,7 @@ void clockDashboardSetWeatherAnimation(const uint8_t *gifData, size_t size,
 
 void clockDashboardLoop() {
   if (firmwareUpdateActive) return;
+  preparePageSlide();
   const unsigned long now = millis();
   if (settingsVisible && settingsPageIndex == SETTINGS_PAGE_COUNT - 1 &&
       now - lastSettingsInfoRefreshAt >= 500) {
@@ -3538,10 +3677,12 @@ void clockDashboardHandleShortClick() {
 
 bool clockDashboardRadarVisible() { return radarVisible; }
 
-void clockDashboardSetRadarVisible(bool visible) { setRadarVisible(visible); }
+void clockDashboardSetRadarVisible(bool visible, int8_t direction) {
+  setRadarVisible(visible, direction);
+}
 
 bool clockDashboardAutomaticRotationAllowed() {
-  return !settingsVisible && !firmwareUpdateActive;
+  return !settingsVisible && !firmwareUpdateActive && !pageSlideActive;
 }
 
 void clockDashboardSetRadarSnapshot(const uint16_t *pixels,

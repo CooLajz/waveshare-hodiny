@@ -91,6 +91,7 @@ enum ClockStyle : uint8_t {
 };
 
 struct ClockAppearanceConfig {
+  bool animatedScreenTransitions = true;
   uint8_t style = CLOCK_STYLE_DIGITAL;
   uint32_t analogToneColor = 0x00D6FF;
   uint32_t analogHandToneColor = 0x00D6FF;

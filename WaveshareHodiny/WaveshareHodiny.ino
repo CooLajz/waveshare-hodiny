@@ -479,9 +479,11 @@ void maintainAutomaticRadarRotation() {
 void maintainDisplayGestures() {
   const bool radarAvailable =
       clockConfigRadarAvailable(runtimeConfigSnapshot());
-  if (displayDriverTakeHorizontalSwipe() &&
+  const int8_t horizontalSwipeDirection = displayDriverTakeHorizontalSwipe();
+  if (horizontalSwipeDirection != 0 &&
       radarAvailable && clockDashboardAutomaticRotationAllowed()) {
-    clockDashboardSetRadarVisible(!clockDashboardRadarVisible());
+    clockDashboardSetRadarVisible(!clockDashboardRadarVisible(),
+                                  horizontalSwipeDirection);
   }
   const int8_t verticalSwipeDirection = displayDriverTakeVerticalSwipe();
   if (verticalSwipeDirection != 0 && radarAvailable &&

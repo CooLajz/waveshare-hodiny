@@ -52,7 +52,7 @@ bool clockDashboardNightModeEnabled();
 uint8_t clockDashboardWeatherIconStyle(uint8_t configuredStyle);
 void clockDashboardHandleShortClick();
 bool clockDashboardRadarVisible();
-void clockDashboardSetRadarVisible(bool visible);
+void clockDashboardSetRadarVisible(bool visible, int8_t direction = -1);
 bool clockDashboardAutomaticRotationAllowed();
 void clockDashboardSetWifiAddress(const char *ipAddress);
 void clockDashboardSetFirmwareVersion(const char *version,

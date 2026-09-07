@@ -1455,8 +1455,14 @@ bool showPreparedFrame(size_t index, unsigned long now) {
   return true;
 }
 
+bool playbackHeld = false;
+
 void advanceAnimation(unsigned long now) {
   portENTER_CRITICAL(&stateMux);
+  if (playbackHeld) {
+    portEXIT_CRITICAL(&stateMux);
+    return;
+  }
   const bool isVisible = visible;
   const bool canAnimate = ready && animationFrameCount > 1 &&
                           displayedFrame >= 0;
@@ -1676,6 +1682,16 @@ void chmiRadarServicePrepareForFirmwareUpdate() {
   loading = false;
   preparationInProgress = false;
   fullPreparationInProgress = false;
+}
+
+void chmiRadarServiceHoldPlayback(bool hold) {
+  portENTER_CRITICAL(&stateMux);
+  playbackHeld = hold;
+  if (!hold) {
+    lastAnimationStepAt = millis();
+    if (animationPause) animationPauseStartedAt = millis();
+  }
+  portEXIT_CRITICAL(&stateMux);
 }
 
 void chmiRadarServiceSetActive(bool requestedVisible, bool backgroundRefresh,

@@ -5,6 +5,8 @@
 const char CONFIGURATION_LOCALIZATION_JS[] PROGMEM = R"JS(
 (() => {
   const en = {
+    "Animovaný přechod obrazovek (hodiny/meteoradar)":"Animated screen transition (clock/radar)",
+    "Plynulý posun při ručním i automatickém přepínání obrazovek.":"Smooth slide during manual and automatic screen switching.",
     "Příklad:":"Example:",
     "Barva monochromatické ikony":"Monochrome icon color","Společná pro digitální i analogové hodiny.":"Shared by digital and analog clocks.","Barva ikony místnosti":"Room icon color","Použije se pro ikony jiné než počasí.":"Used for icons other than weather.",
     "Uložit změny":"Save changes","Načítám konfiguraci…":"Loading configuration…","Čekám na aktuální nastavení zařízení.":"Waiting for the current device settings.","Zkusit znovu":"Try again",
