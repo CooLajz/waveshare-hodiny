@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include "ClockTimezone.h"
 
 constexpr size_t CLOCK_ROOM_NAME_LENGTH = 32;
 constexpr size_t CLOCK_HA_URL_LENGTH = 192;
@@ -27,7 +28,8 @@ constexpr size_t CLOCK_METRIC_COLOR_POINT_COUNT = 10;
 // Schema 28 appends generic formatting and color scales for the two top Home
 // Assistant values. The complete schema 27 prefix stays byte-for-byte
 // unchanged so existing temperature-only configuration can be migrated safely.
-constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 28;
+// Schema 29 appends the IANA time zone associated with the saved location.
+constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 29;
 
 enum ClockLanguage : uint8_t {
   CLOCK_LANGUAGE_UNSET = 0,
@@ -225,6 +227,7 @@ struct ClockConfig {
   ClockSideValueConfig rightValue;
   ClockMetricColorScale leftValueColorScale;
   ClockMetricColorScale rightValueColorScale;
+  char timeZone[CLOCK_TIMEZONE_LENGTH] = "Europe/Prague";
 };
 
 static_assert(offsetof(ClockConfig, language) == 2106 &&
@@ -233,8 +236,9 @@ static_assert(offsetof(ClockConfig, language) == 2106 &&
                   offsetof(ClockConfig, leftValue) == 2452 &&
                   sizeof(ClockTmepSlotConfig) == 50 &&
                   sizeof(ClockSideValueConfig) == 34 &&
-                  sizeof(ClockConfig) == 2688,
-              "Schema 28 must preserve the complete schema 27 prefix.");
+                  offsetof(ClockConfig, timeZone) == 2688 &&
+                  sizeof(ClockConfig) == 2752,
+              "Schema 29 must preserve the complete schema 28 prefix.");
 
 bool clockConfigBegin();
 bool clockConfigLoad(ClockConfig &config);

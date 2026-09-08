@@ -248,6 +248,8 @@ void applyPendingRuntimeConfiguration() {
   xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
   dashboardConfigBuffer = runtimeConfig;
   xSemaphoreGive(runtimeConfigMutex);
+  clockTimezoneSet(dashboardConfigBuffer.timeZone);
+  lastDisplayedSecond = -1;
   clockDashboardApplyConfiguration(dashboardConfigBuffer);
   const bool radarAvailable =
       clockConfigRadarAvailable(dashboardConfigBuffer);
@@ -695,7 +697,8 @@ void maintainDisplaySync() {
 }
 
 void initializeNetworkTime() {
-  configTzTime("CET-1CEST,M3.5.0/2,M10.5.0/3", "pool.ntp.org",
+  clockTimezoneSet(runtimeConfig.timeZone);
+  configTzTime("UTC0", "pool.ntp.org",
                "time.cloudflare.com");
   sntp_set_sync_interval(NTP_SYNC_INTERVAL_MS);
 #if !FIRMWARE_RELEASE
@@ -716,16 +719,15 @@ void maintainNetworkTime() {
     }
     if (wifiWasConnected) clockDashboardSetWifiConnected(false);
     wifiWasConnected = false;
-    return;
   }
 
-  const String wifiIp = WiFi.localIP().toString();
+  const String wifiIp = wifiConnected ? WiFi.localIP().toString() : String();
   if (wifiIp != displayedWifiIp) {
     displayedWifiIp = wifiIp;
     clockDashboardSetWifiAddress(displayedWifiIp.c_str());
   }
 
-  if (!wifiWasConnected) {
+  if (wifiConnected && !wifiWasConnected) {
     wifiWasConnected = true;
     clockDashboardSetWifiConnected(true);
     displayResyncAt = millis() + 2000;
@@ -769,7 +771,7 @@ void maintainNetworkTime() {
   displayedNow += displayTimeOffsetSeconds;
 #endif
   struct tm localTime;
-  localtime_r(&displayedNow, &localTime);
+  clockLocaltime(&displayedNow, &localTime);
   if (localTime.tm_sec == lastDisplayedSecond) return;
   lastDisplayedSecond = localTime.tm_sec;
   retroLcdSetTime(localTime);
@@ -895,11 +897,11 @@ void maintainAutomaticFirmwareUpdate() {
     return;
   }
   const ClockConfig config = runtimeConfigSnapshot();
-  if (!config.automaticFirmwareUpdate) return;
+  if (!config.automaticFirmwareUpdate || config.timeZone[0] == '\0') return;
   time_t now;
   time(&now);
   struct tm localTime;
-  localtime_r(&now, &localTime);
+  clockLocaltime(&now, &localTime);
   if (localTime.tm_hour < 4 ||
       (localTime.tm_hour == 4 && localTime.tm_min < 10)) {
     return;
@@ -1240,13 +1242,7 @@ bool parseIso8601Timestamp(const String &value, time_t &timestamp) {
 
 bool previousLocalDayTimestamp(time_t nextTimestamp,
                                time_t &previousTimestamp) {
-  if (nextTimestamp <= 0) return false;
-  struct tm localTransition;
-  if (localtime_r(&nextTimestamp, &localTransition) == nullptr) return false;
-  --localTransition.tm_mday;
-  localTransition.tm_isdst = -1;
-  previousTimestamp = mktime(&localTransition);
-  return previousTimestamp > 0 && previousTimestamp < nextTimestamp;
+  return clockPreviousLocalDay(nextTimestamp, previousTimestamp);
 }
 
 bool applySunState(const ClockConfig &config, const String &payload,
@@ -1436,11 +1432,75 @@ int weatherCodeForState(const String &state) {
   return -1;
 }
 
+// Resolve legacy locations even when Home Assistant supplies the weather.
+// Network work stays in the worker; only loopTask persists/applies a result.
+portMUX_TYPE resolvedTimezoneMux = portMUX_INITIALIZER_UNLOCKED;
+char resolvedTimezone[CLOCK_TIMEZONE_LENGTH] = "";
+float resolvedTimezoneLatitude = 0;
+float resolvedTimezoneLongitude = 0;
+bool resolvedTimezonePending = false;
+
+bool resolveLocationTimezone(const ClockConfig &config) {
+  NetworkOperationGuard networkGuard(HOME_ASSISTANT_RESPONSE_TIMEOUT_MS);
+  if (!networkGuard) return false;
+  String url = F("https://api.open-meteo.com/v1/forecast?latitude=");
+  url += String(config.openMeteoLatitude, 5);
+  url += F("&longitude=");
+  url += String(config.openMeteoLongitude, 5);
+  url += F("&timezone=auto&forecast_days=1");
+  WiFiClientSecure client;
+  client.setCACert(FIRMWARE_RELEASE_ROOT_CA);
+  HTTPClient http;
+  http.setConnectTimeout(HOME_ASSISTANT_CONNECT_TIMEOUT_MS);
+  http.setTimeout(HOME_ASSISTANT_RESPONSE_TIMEOUT_MS);
+  if (!http.begin(client, url)) return false;
+  const int status = http.GET();
+  String payload;
+  if (status == HTTP_CODE_OK) payload = http.getString();
+  http.end();
+  String name;
+  if (status != HTTP_CODE_OK ||
+      !extractJsonStringField(payload, "timezone", name) ||
+      !clockTimezoneSupported(name.c_str())) return false;
+  portENTER_CRITICAL(&resolvedTimezoneMux);
+  clockConfigCopy(resolvedTimezone, sizeof(resolvedTimezone), name);
+  resolvedTimezoneLatitude = config.openMeteoLatitude;
+  resolvedTimezoneLongitude = config.openMeteoLongitude;
+  resolvedTimezonePending = true;
+  portEXIT_CRITICAL(&resolvedTimezoneMux);
+  return true;
+}
+
+void applyResolvedTimezone() {
+  char name[CLOCK_TIMEZONE_LENGTH];
+  float latitude, longitude;
+  portENTER_CRITICAL(&resolvedTimezoneMux);
+  const bool pending = resolvedTimezonePending;
+  if (pending) {
+    memcpy(name, resolvedTimezone, sizeof(name));
+    latitude = resolvedTimezoneLatitude;
+    longitude = resolvedTimezoneLongitude;
+    resolvedTimezonePending = false;
+  }
+  portEXIT_CRITICAL(&resolvedTimezoneMux);
+  if (!pending) return;
+  static ClockConfig config;
+  loadRuntimeConfigForWeb(config);
+  // Discard stale replies after the user selects another city or imports settings.
+  if (config.timeZone[0] != '\0' ||
+      config.openMeteoLatitude != latitude ||
+      config.openMeteoLongitude != longitude) return;
+  clockConfigCopy(config.timeZone, sizeof(config.timeZone), name);
+  saveRuntimeConfig(config, false);
+}
+
 void homeAssistantTask(void *) {
   ClockValues lastAvailableValues;
   unsigned long nextOpenMeteoRefreshAt = 0;
   unsigned long nextTmepRefreshAt = 0;
   bool tmepCatalogPrimed = false;
+  unsigned long nextTimezoneResolveAt = 0;
+  float timezoneLatitude = 1000, timezoneLongitude = 1000;
   for (;;) {
     const ClockConfig config = runtimeConfigSnapshot();
     ClockValues values = lastAvailableValues;
@@ -1451,6 +1511,19 @@ void homeAssistantTask(void *) {
       publishHomeAssistantValues(ClockValues{});
       ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(HOME_ASSISTANT_RETRY_MS));
       continue;
+    }
+
+    if (config.openMeteoLatitude != timezoneLatitude ||
+        config.openMeteoLongitude != timezoneLongitude) {
+      timezoneLatitude = config.openMeteoLatitude;
+      timezoneLongitude = config.openMeteoLongitude;
+      nextTimezoneResolveAt = 0;
+    }
+    if (config.timeZone[0] == '\0' &&
+        (nextTimezoneResolveAt == 0 ||
+         static_cast<long>(millis() - nextTimezoneResolveAt) >= 0)) {
+      resolveLocationTimezone(config);
+      nextTimezoneResolveAt = millis() + 60000;
     }
 
     if (config.dataSource == CLOCK_DATA_SOURCE_OPEN_METEO) {
@@ -1674,6 +1747,7 @@ void loop() {
 #endif
   wifiProvisioningLoop();
   applyFirmwareUpdateDisplayRequest();
+  applyResolvedTimezone();
   maintainNetworkTime();
   maintainAutomaticFirmwareUpdate();
   maintainFirmwareDisplayStatus();

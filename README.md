@@ -51,7 +51,7 @@ pozicích 12, 3, 6 a 9 hodin.
 - Retro LCD se segmentovým časem, dvěma hodnotami A/B, pevnými pozicemi
   číslic a nastavitelnou barvou pozadí i popředí,
 - české nebo anglické datum v několika formátech a volitelný vteřinový prstenec,
-- synchronizaci času přes NTP a české časové pásmo včetně letního času,
+- synchronizaci času přes NTP a časové pásmo podle polohy včetně automatických přechodů letního času,
 - dvě univerzální horní hodnoty s vlastním názvem, jednotkou, přesností,
   ikonou a plynulou barevnou škálou,
 - animované i statické ikony počasí založené na Meteocons,
@@ -126,7 +126,7 @@ Produkční firmware obsluhuje Improv Serial na obou konektorech.
 3. Otevři `http://waveshare-hodiny.local/`. Pokud mDNS v síti nefunguje,
    použij IP adresu z nastavení na displeji.
 4. V záložce **Zdroj a poloha** vyber Open-Meteo s TMEP.cz nebo Home Assistant
-   a vyhledej město. Poloha je společná pro počasí Open-Meteo i meteoradar.
+   a vyhledej město. Poloha určuje časové pásmo hodin, místo pro počasí Open-Meteo i střed meteoradaru. Platí také při použití Home Assistantu.
 5. Při použití Home Assistantu zadej jeho adresu a long-lived access token a
    tlačítkem **Otestovat připojení** ověř spojení.
 6. Uprav vzhled, radar a jas a zvol **Uložit změny**.
@@ -606,3 +606,22 @@ licence a zdrojové odkazy jsou uvedené v
 původní licenční podmínky nenahrazuje.
 
 Digitální a Retro LCD ciferník podporují společnou volbu 24/12 hodin s AM/PM, nezávislou na jazyku; výchozí je 24 hodin. Volba úvodní nuly je také společná; LCD při jejím vypnutí zachovává podkres první číslice.
+
+## Časové pásmo podle polohy
+
+Při vyhledání města se z Open-Meteo převezme jeho časové pásmo a uloží se
+společně s polohou. Jazyk rozhraní na časové pásmo nemá vliv. Letní čas se
+přepíná automaticky podle pravidel dané oblasti; ruční přepínač není potřeba.
+Hodiny, čas snímků radaru a denní kontrola aktualizací používají stejné pásmo.
+NTP nadále synchronizuje skutečný čas v UTC.
+
+Při aktualizaci starší konfigurace nebo importu starší zálohy se chybějící
+pásmo dohledá podle uložených souřadnic, i když je zdrojem dat Home Assistant.
+Do úspěšného dohledání zůstává původní české pásmo a automatická kontrola
+aktualizací čeká. Nová konfigurace začíná s Brnem a pásmem `Europe/Prague`.
+
+Po synchronizaci běží čas i během výpadku Wi-Fi a uložená pravidla zajistí
+přechody bez internetu. Po restartu je pro získání přesného času potřeba NTP.
+Vestavěná data IANA 2026c pokrývají roky 2020–2100 včetně nepravidelných
+přechodů; pozdější legislativní změny vyžadují aktualizaci databáze ve firmwaru.
+Generátor a zdroj databáze jsou popsané v `tools/generate_timezones.py`.

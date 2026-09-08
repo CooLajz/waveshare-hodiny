@@ -59,6 +59,15 @@ struct ConfigRecordV26 {
 
 constexpr size_t SCHEMA_27_CONFIG_SIZE = offsetof(ClockConfig, leftValue);
 
+constexpr size_t SCHEMA_28_CONFIG_SIZE = offsetof(ClockConfig, timeZone);
+struct ConfigRecordV28 {
+  uint32_t magic;
+  uint32_t schemaVersion;
+  uint8_t config[SCHEMA_28_CONFIG_SIZE];
+  uint32_t checksum;
+};
+static_assert(sizeof(ConfigRecordV28) == 2700, "Preserve schema 28 NVS layout.");
+
 struct ConfigRecordV27 {
   uint32_t magic;
   uint32_t schemaVersion;
@@ -137,6 +146,8 @@ uint32_t configChecksum(const ClockConfig &config) {
 
 void normalizeConfig(ClockConfig &config) {
   config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+  config.timeZone[sizeof(config.timeZone) - 1] = '\0';
+  if (!clockTimezoneSupported(config.timeZone)) config.timeZone[0] = '\0';
   config.dayBrightness = constrain(config.dayBrightness, 1, 100);
   config.nightBrightness = constrain(config.nightBrightness, 1, 100);
   config.sunriseOffsetMinutes = constrain(config.sunriseOffsetMinutes, -60, 60);
@@ -201,6 +212,7 @@ void normalizeConfig(ClockConfig &config) {
       config.openMeteoLongitude < -180.0f || config.openMeteoLongitude > 180.0f) {
     config.openMeteoLatitude = 49.1951f;
     config.openMeteoLongitude = 16.6068f;
+    clockConfigCopy(config.timeZone, sizeof(config.timeZone), "Europe/Prague");
   }
   config.secondRingBackgroundColor &= 0xFFFFFF;
   config.secondDotColor &= 0xFFFFFF;
@@ -448,6 +460,7 @@ bool clockConfigLoad(ClockConfig &config) {
   record = ConfigRecord{};
   const size_t storedSize = preferences.getBytesLength(CONFIG_KEY);
   const bool supportedSize = storedSize == sizeof(record) ||
+                             storedSize == sizeof(ConfigRecordV28) ||
                              storedSize == sizeof(ConfigRecordV27) ||
                              storedSize == sizeof(ConfigRecordV26) ||
                              storedSize == sizeof(ConfigRecordV155);
@@ -466,6 +479,24 @@ bool clockConfigLoad(ClockConfig &config) {
     config = record.config;
     normalizeConfig(config);
     return true;
+  }
+
+  // Older records contain a location, but no zone. Resolve it asynchronously
+  // from its coordinates; keep the previous Czech clock until that succeeds.
+  config.timeZone[0] = '\0';
+  const ConfigRecordV28 &legacyV28 =
+      *reinterpret_cast<const ConfigRecordV28 *>(&record);
+  uint32_t embeddedSchemaV28 = 0;
+  if (readComplete && storedSize == sizeof(legacyV28))
+    memcpy(&embeddedSchemaV28, legacyV28.config, sizeof(embeddedSchemaV28));
+  if (readComplete && storedSize == sizeof(legacyV28) &&
+      legacyV28.magic == CONFIG_MAGIC && legacyV28.schemaVersion == 28 &&
+      embeddedSchemaV28 == 28 &&
+      legacyV28.checksum == bytesChecksum(legacyV28.config, sizeof(legacyV28.config))) {
+    memcpy(&config, legacyV28.config, sizeof(legacyV28.config));
+    config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+    normalizeConfig(config);
+    return clockConfigSave(config);
   }
 
   const ConfigRecordV27 &legacyV27 =
@@ -568,7 +599,10 @@ bool clockConfigLoad(ClockConfig &config) {
       legacy.schemaVersion == PUBLIC_1_5_5_SCHEMA_VERSION &&
       embeddedSchemaVersion == PUBLIC_1_5_5_SCHEMA_VERSION &&
       legacy.checksum == bytesChecksum(legacy.config, sizeof(legacy.config));
-  if (!validPublic155Record) return clockConfigSave(config);
+  if (!validPublic155Record) {
+    clockConfigApplyDefaults(config);
+    return clockConfigSave(config);
+  }
 
   memcpy(&config, legacy.config, sizeof(legacy.config));
   config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;

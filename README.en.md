@@ -50,7 +50,7 @@ changes the system text and verbal date shown on the display.
 - Retro LCD with segmented time, two A/B values, fixed digit positions,
   and configurable background and foreground colors,
 - multiple date formats and an optional seconds ring,
-- NTP time synchronization and the Czech time zone with daylight saving time,
+- NTP time synchronization and a location-based time zone with automatic daylight saving time,
 - Open-Meteo support without an account or token,
 - Home Assistant entities read through its REST API,
 - two generic top values with individual names, units, precision, icons and
@@ -119,7 +119,8 @@ USB connector. Production firmware handles Improv Serial on both transports.
 3. Open `http://waveshare-hodiny.local/`. Use the displayed IP address if mDNS
    is unavailable on your network.
 4. Select Open-Meteo with TMEP.cz or Home Assistant and search for the device
-   location.
+   location. It determines the clock time zone, Open-Meteo weather location
+   and radar center, including when Home Assistant supplies the data.
 5. For Home Assistant, enter its URL and a long-lived access token, then test
    the connection.
 6. Configure the dashboard, radar and brightness and save the changes.
@@ -451,3 +452,23 @@ The project is licensed under the [MIT License](LICENSE). Third-party components
 and assets are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Digital and Retro LCD faces support a shared 24/12-hour format with AM/PM, independent of language; the default is 24-hour time. The leading hour zero setting is shared too; LCD retains the first digit’s inactive segments when it is disabled.
+
+## Location-based time zone
+
+Selecting a city retrieves its time zone from Open-Meteo and saves it with
+the location. The interface language does not affect the time zone. Daylight
+saving time changes automatically according to regional rules; no manual
+switch is needed. The clock, radar frame times and daily update checks use
+the same zone. NTP continues to synchronize the underlying UTC time.
+
+When upgrading an older configuration or importing an older backup, a missing
+zone is resolved from the saved coordinates, including with Home Assistant
+as the data source. Until resolution succeeds, the previous Czech zone remains
+active and automatic update checks wait. A fresh configuration starts with
+Brno and `Europe/Prague`.
+
+Once synchronized, the clock keeps running during Wi-Fi outages and saved
+rules allow offline transitions. After a restart, NTP is needed to obtain the
+correct time. Embedded IANA 2026c data covers 2020–2100, including irregular
+transitions; subsequent legislative changes require a firmware database
+update. See `tools/generate_timezones.py` for the source and generator.

@@ -1,3 +1,4 @@
+#include "ClockTimezone.h"
 #include "ChmiRadarService.h"
 
 #include <HTTPClient.h>
@@ -144,7 +145,7 @@ unsigned long millisecondsUntilNextRefreshSlot() {
   const time_t now = time(nullptr);
   if (now < VALID_TIME_THRESHOLD) return REFRESH_INTERVAL_MS;
   struct tm localTime = {};
-  if (localtime_r(&now, &localTime) == nullptr) return REFRESH_INTERVAL_MS;
+  if (clockLocaltime(&now, &localTime) == nullptr) return REFRESH_INTERVAL_MS;
 
   // ČHMÚ publikuje pravidelné snímky po pěti minutách. Kontrolujeme je
   // pevně o minutu později (:01, :06, :11, ...), aby se interval neposouval
@@ -883,7 +884,7 @@ void frameTimeFromName(const char *fileName, char *output) {
       static_cast<time_t>(daysFromCivil(year, month, day)) * 86400L +
       hour * 3600L + minute * 60L;
   struct tm localTime = {};
-  localtime_r(&epoch, &localTime);
+  clockLocaltime(&epoch, &localTime);
   snprintf(output, 6, "%02d:%02d", localTime.tm_hour, localTime.tm_min);
 }
 

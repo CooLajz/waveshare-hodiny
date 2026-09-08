@@ -1337,6 +1337,8 @@ void handleGetConfig() {
   result += config.language == CLOCK_LANGUAGE_ENGLISH ? F("en") : F("cs");
   result += F("\",\"openMeteoCity\":\"");
   result += jsonEscape(config.openMeteoCity);
+  result += F("\",\"timeZone\":\"");
+  result += jsonEscape(config.timeZone);
   result += F("\",\"openMeteoLatitude\":");
   result += String(config.openMeteoLatitude, 5);
   result += F(",\"openMeteoLongitude\":");
@@ -1651,6 +1653,14 @@ void handleSaveConfig() {
     sendError(400, F("Nejprve vyhledej platnou polohu zařízení."));
     return;
   }
+  String timeZone = server.arg("timeZone");
+  timeZone.trim();
+  if (!timeZone.isEmpty() && !clockTimezoneSupported(timeZone.c_str())) {
+    sendError(400, F("Časové pásmo není podporované. Vyhledejte polohu znovu."));
+    return;
+  }
+  // Missing zones in older backups are resolved from the saved coordinates.
+  clockConfigCopy(config.timeZone, sizeof(config.timeZone), timeZone);
   clockConfigCopy(config.openMeteoCity, sizeof(config.openMeteoCity),
                   openMeteoCity);
   config.openMeteoLatitude = openMeteoLatitude;
