@@ -8,7 +8,7 @@ const translations = {
   "Čas, počasí, vlastní senzory a srážkový radar ČHMÚ na jednom krásném kulatém displeji. Fungují samostatně s Open-Meteo a TMEP.cz nebo jako součást Home Assistantu.": "Time, weather, personal sensors and Czech precipitation radar on one beautiful round display. It works independently with Open-Meteo and TMEP.cz or as part of Home Assistant.",
   "Nainstalovat firmware": "Install firmware", "Prohlédnout si zdrojový kód": "View source code",
   "Určeno výhradně pro Waveshare ESP32-S3-Touch-LCD-2.1": "Designed exclusively for Waveshare ESP32-S3-Touch-LCD-2.1",
-  "Analogový, digitální a Retro LCD vzhled hodin": "Analog, digital and Retro LCD clock layouts",
+  "Analogový, digitální a Retro LCD vzhled hodin s meteoradarem": "Analog, digital and Retro LCD clock layouts with precipitation radar",
   "Analogový ciferník Waveshare Hodiny": "Waveshare Hodiny analog dial",
   "Analogový ciferník": "Analog dial",
   "Denní digitální dashboard Waveshare Hodiny": "Waveshare Hodiny digital day dashboard",
