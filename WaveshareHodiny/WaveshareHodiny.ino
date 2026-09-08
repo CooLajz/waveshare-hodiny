@@ -1,3 +1,4 @@
+#include "ClockTimeFormat.h"
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <ESPmDNS.h>
@@ -777,8 +778,8 @@ void maintainNetworkTime() {
   char timeText[6];
   snprintf(timeText, sizeof(timeText), config.showLeadingHourZero ? "%02d:%02d"
                                                                   : "%d:%02d",
-           localTime.tm_hour, localTime.tm_min);
-  clockDashboardSetTime(timeText);
+           clockDisplayHour(localTime.tm_hour, activeAppearance.use12HourFormat), localTime.tm_min);
+  clockDashboardSetTime(timeText, activeAppearance.use12HourFormat ? clockTimePeriod(localTime.tm_hour) : "");
   clockDashboardSetSecond(static_cast<uint8_t>(localTime.tm_sec));
 
   char dateText[64];

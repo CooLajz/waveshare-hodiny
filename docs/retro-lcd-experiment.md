@@ -64,3 +64,6 @@ Weather uses a fixed 26 × 26 matrix with 3 × 3 px dots and 1 px gaps (103 × 1
 
 Převod používá přesné plošné vážení průhlednosti, včetně zlomkového překryvu okrajových pixelů. Hranice vzorků se nezaokrouhlují, takže převod zachovává zrcadlovou symetrii.
 Rasterization uses exact area-weighted alpha, including fractional boundary coverage, preserving mirror symmetry without rounded sampling boundaries.
+
+Formát 24/12 hodin je společný pro digitální a LCD ciferník, nezávislý na jazyku. Ve 12h formátu je půlnoc 12 AM a poledne 12 PM. LCD zobrazuje segmentové AM/PM nad vteřinami, digitální ciferník menší popisek vpravo dole u času. Formát se ukládá samostatným klíčem vzhledu a je součástí záloh.
+A shared, language-independent 24/12-hour format uses 12 AM at midnight and 12 PM at noon. LCD places segmented AM/PM above seconds; digital uses a smaller caption at the lower right of the time. The format is stored in appearance preferences and included in backups. The leading hour zero setting is shared with digital. LCD formats a blank first digit with inactive segments, preserving all digit positions.

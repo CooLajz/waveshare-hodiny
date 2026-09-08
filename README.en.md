@@ -445,3 +445,5 @@ that made this integration possible.
 
 The project is licensed under the [MIT License](LICENSE). Third-party components
 and assets are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Digital and Retro LCD faces support a shared 24/12-hour format with AM/PM, independent of language; the default is 24-hour time. The leading hour zero setting is shared too; LCD retains the first digit’s inactive segments when it is disabled.

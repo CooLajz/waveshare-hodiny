@@ -821,6 +821,7 @@ bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
     appearance.retroBackgroundColor = active.retroBackgroundColor;
     appearance.retroForegroundColor = active.retroForegroundColor;
     appearance.retroGhostOpacity = active.retroGhostOpacity;
+    appearance.use12HourFormat = active.use12HourFormat;
     appearance.retroWeatherRaster = active.retroWeatherRaster;
     appearance.retroLeftSource = active.retroLeftSource;
     appearance.retroRightSource = active.retroRightSource;
@@ -838,6 +839,11 @@ bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
   }
   if (server.hasArg("retroBackgroundColor") && !parseHtmlColor(server.arg("retroBackgroundColor"), appearance.retroBackgroundColor)) return false;
   if (server.hasArg("retroForegroundColor") && !parseHtmlColor(server.arg("retroForegroundColor"), appearance.retroForegroundColor)) return false;
+  if (server.hasArg("use12HourFormat")) {
+    const String value = server.arg("use12HourFormat");
+    if (value != "0" && value != "1") return false;
+    appearance.use12HourFormat = value == "1";
+  }
   if (server.hasArg("retroWeatherRaster")) {
     const String value = server.arg("retroWeatherRaster");
     if (value != "0" && value != "1") return false;
@@ -1381,6 +1387,8 @@ void handleGetConfig() {
   result += savedAppearance.retroProgressSource;
   result += F(",\"retroProgressSegments\":");
   result += savedAppearance.retroProgressSegments;
+  result += F(",\"use12HourFormat\":");
+  result += savedAppearance.use12HourFormat ? F("true") : F("false");
   result += F(",\"retroWeatherRaster\":");
   result += savedAppearance.retroWeatherRaster ? F("true") : F("false");
   result += F(",\"retroProgressMin\":");
@@ -1391,6 +1399,8 @@ void handleGetConfig() {
   result += activeAppearance.retroProgressSource;
   result += F(",\"activeRetroProgressSegments\":");
   result += activeAppearance.retroProgressSegments;
+  result += F(",\"activeUse12HourFormat\":");
+  result += activeAppearance.use12HourFormat ? F("true") : F("false");
   result += F(",\"activeRetroWeatherRaster\":");
   result += activeAppearance.retroWeatherRaster ? F("true") : F("false");
   result += F(",\"activeRetroProgressMin\":");
@@ -2191,6 +2201,8 @@ void handleClockAppearancePreview() {
   result += saved.retroProgressSource;
   result += F(",\"retroProgressSegments\":");
   result += saved.retroProgressSegments;
+  result += F(",\"use12HourFormat\":");
+  result += saved.use12HourFormat ? F("true") : F("false");
   result += F(",\"retroWeatherRaster\":");
   result += saved.retroWeatherRaster ? F("true") : F("false");
   result += F(",\"retroProgressMin\":");
@@ -2201,6 +2213,8 @@ void handleClockAppearancePreview() {
   result += active.retroProgressSource;
   result += F(",\"activeRetroProgressSegments\":");
   result += active.retroProgressSegments;
+  result += F(",\"activeUse12HourFormat\":");
+  result += active.use12HourFormat ? F("true") : F("false");
   result += F(",\"activeRetroWeatherRaster\":");
   result += active.retroWeatherRaster ? F("true") : F("false");
   result += F(",\"activeRetroProgressMin\":");

@@ -273,6 +273,7 @@ bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
   }
   appearance.retroLeftSource = constrain(preferences.getUChar("retroLeft", 2), 0, 4);
   appearance.retroRightSource = constrain(preferences.getUChar("retroRight", 3), 0, 4);
+  appearance.use12HourFormat = preferences.getBool("time12h", false);
   appearance.retroWeatherRaster = preferences.getBool("retroWxRaster", true);
   appearance.retroGhostOpacity = constrain(preferences.getUChar("retroGhost", 5), 0, 50);
   appearance.retroBackgroundColor = preferences.getUInt("retroBg", 0xB7C1A5) & 0xFFFFFF;
@@ -333,6 +334,7 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
       preferences.putFloat("retroBarMax", appearance.retroProgressMax) == sizeof(float);
   const bool retroSourcesSaved = preferences.putUChar("retroLeft", constrain(appearance.retroLeftSource, 0, 4)) == sizeof(uint8_t) &&
       preferences.putUChar("retroRight", constrain(appearance.retroRightSource, 0, 4)) == sizeof(uint8_t);
+  const bool timeFormatSaved = preferences.putBool("time12h", appearance.use12HourFormat) == sizeof(bool);
   const bool retroWeatherSaved = preferences.putBool("retroWxRaster", appearance.retroWeatherRaster) == sizeof(bool);
   const bool retroGhostSaved = preferences.putUChar("retroGhost", constrain(appearance.retroGhostOpacity, 0, 50)) == sizeof(uint8_t);
   const bool retroColorsSaved = preferences.putUInt("retroBg", appearance.retroBackgroundColor & 0xFFFFFF) == sizeof(uint32_t) &&
@@ -385,7 +387,7 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
                           appearance.monochromeWeatherIconColor & 0xFFFFFF) ==
       sizeof(uint32_t);
   preferences.end();
-  return retroWeatherSaved && retroProgressSaved && retroSourcesSaved && retroGhostSaved && styleSaved && toneSaved && handToneSaved && accentColorSaved &&
+  return timeFormatSaved && retroWeatherSaved && retroProgressSaved && retroSourcesSaved && retroGhostSaved && styleSaved && toneSaved && handToneSaved && accentColorSaved &&
          accentsSaved && outlineHandsSaved && monoValuesSaved &&
          valuesAboveSaved && dateFormatSaved && dateColorSaved &&
          weatherColorSaved && transitionSaved && digitsSavedA && digitsSavedB && retroColorsSaved;

@@ -1,5 +1,6 @@
 #include "RetroLcd.h"
 #include "ClockFonts.h"
+#include "ClockTimeFormat.h"
 #include "RetroLcdFormat.h"
 #include <cmath>
 #include <cstring>
@@ -9,6 +10,8 @@ namespace {
 lv_obj_t *face = nullptr;
 tm clockTime = {};
 bool timeAvailable = false;
+bool use12HourFormat = false;
+bool showLeadingHourZero = true;
 bool english = false, night = false, wifi = false, web = false, ha = false;
 char names[2][CLOCK_METRIC_NAME_LENGTH] = {};
 char units[2][CLOCK_METRIC_SUFFIX_LENGTH] = {};
@@ -221,12 +224,13 @@ void draw(lv_event_t *event) {
   char date[16]="--.--.----", time[8]="--:--", seconds[4]="--";
   if(timeAvailable) {
     snprintf(date,sizeof(date),"%02d.%02d.%04d",clockTime.tm_mday,clockTime.tm_mon+1,clockTime.tm_year+1900);
-    snprintf(time,sizeof(time),"%02d:%02d",clockTime.tm_hour,clockTime.tm_min);
+    snprintf(time,sizeof(time),showLeadingHourZero ? "%02d:%02d" : "%2d:%02d",clockDisplayHour(clockTime.tm_hour,use12HourFormat),clockTime.tm_min);
     snprintf(seconds,sizeof(seconds),"%02d",clockTime.tm_sec);
   }
   p.text(date,(480-p.width(date,16,5))/2,109,16,29,5);
   p.text(time,50,154,60,112,12);
   p.text(seconds,372,216,27,50,7);
+  if (use12HourFormat && timeAvailable) p.text(clockTimePeriod(clockTime.tm_hour),380,169,18,32,8,true);
   p.rect(38,278,404,1,ink());
   p.rect(240,291,1,69,ink());
   for(int i=0;i<2;++i) {
@@ -360,11 +364,24 @@ void retroLcdSetProgress(const ClockMetricConfig *config, float value, float min
   }
 }
 
+void retroLcdSetLeadingHourZero(bool enabled) {
+  if (showLeadingHourZero == enabled) return;
+  showLeadingHourZero = enabled;
+  invalidate(43,138,320,133);
+}
+
+void retroLcdSet12HourFormat(bool enabled) {
+  if (use12HourFormat == enabled) return;
+  use12HourFormat = enabled;
+  if (face) lv_obj_invalidate(face);
+}
+
 void retroLcdSetTime(const tm &value) {
   if(!timeAvailable || value.tm_yday!=clockTime.tm_yday || value.tm_year!=clockTime.tm_year)
     invalidate(65,50,350,92);
   if(!timeAvailable || value.tm_hour!=clockTime.tm_hour || value.tm_min!=clockTime.tm_min)
     invalidate(43,138,320,133);
+  if(!timeAvailable || value.tm_hour!=clockTime.tm_hour) invalidate(377,164,50,42);
   if(!timeAvailable || value.tm_sec!=clockTime.tm_sec) invalidate(367,185,73,85);
   clockTime=value;
   timeAvailable=true;

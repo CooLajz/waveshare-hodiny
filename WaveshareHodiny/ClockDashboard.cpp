@@ -61,6 +61,8 @@ bool dashboardRuntimeConfigAvailable = false;
 bool analogLayoutEnabled() { return activeClockStyle == CLOCK_STYLE_ANALOG; }
 
 lv_obj_t *timeLabel = nullptr;
+lv_obj_t *timePeriodLabel = nullptr;
+char displayedTimePeriod[3] = {};
 lv_obj_t *dateLabel = nullptr;
 lv_obj_t *outsideTitleLabel = nullptr;
 lv_obj_t *outsideIntegerLabel = nullptr;
@@ -1234,7 +1236,7 @@ void createAnalogLayout(lv_obj_t *content) {
   rebuildAnalogDialCache();
 
   lv_obj_t *digitalOnly[] = {
-      timeLabel,          outsideTitleLabel,   outsideIntegerLabel,
+      timeLabel, timePeriodLabel, outsideTitleLabel,   outsideIntegerLabel,
       outsideDecimalLabel, outsideUnitLabel,   roomTitleLabel,
       roomIntegerLabel,   roomDecimalLabel,    roomUnitLabel,
       outsideIconLabel,   co2TitleLabel,       co2ValueLabel,
@@ -2087,6 +2089,17 @@ void setTextColor(lv_obj_t *object, lv_color_t color) {
   lv_obj_set_style_text_color(object, color, 0);
 }
 
+void updateTimePeriod() {
+  if (!timePeriodLabel) return;
+  const bool visible = !retroLcdEnabled() && !analogLayoutEnabled() && displayedTimePeriod[0];
+  setObjectVisible(timePeriodLabel, visible);
+  if (!visible) return;
+  lv_label_set_text(timePeriodLabel, displayedTimePeriod);
+  setTextColor(timePeriodLabel, configuredColor(timeColor));
+  lv_obj_update_layout(timeLabel);
+  lv_obj_align_to(timePeriodLabel, timeLabel, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, 0);
+}
+
 void renderTimeColon(unsigned long now, bool force = false) {
   if (retroLcdEnabled()) return;
   if (timeLabel == nullptr) return;
@@ -2094,6 +2107,7 @@ void renderTimeColon(unsigned long now, bool force = false) {
     if (force || lastRenderedTimeColonColor != UINT32_MAX) {
       lv_label_set_text(timeLabel, displayedTimeText);
       alignCenter(timeLabel, 0, -105);
+      updateTimePeriod();
       lastRenderedTimeColonColor = UINT32_MAX;
     }
     return;
@@ -2129,6 +2143,7 @@ void renderTimeColon(unsigned long now, bool force = false) {
            green, blue, colon + 1);
   lv_label_set_text(timeLabel, renderedText);
   alignCenter(timeLabel, 0, -105);
+  updateTimePeriod();
   lastRenderedTimeColonColor = renderedColor;
 }
 
@@ -2137,7 +2152,7 @@ void applyDashboardColors() {
       strncmp(weatherAnimationKey, "monochrome-", 11) == 0;
   if (redNightVisualEnabled()) {
     lv_obj_t *coloredLabels[] = {
-        timeLabel,          dateLabel,          outsideTitleLabel,
+        timeLabel, timePeriodLabel, dateLabel,          outsideTitleLabel,
         outsideIntegerLabel, outsideDecimalLabel, outsideUnitLabel,
         roomTitleLabel, roomIntegerLabel, roomDecimalLabel,
         roomUnitLabel,  outsideIconLabel,     roomIconLabel,
@@ -2170,6 +2185,7 @@ void applyDashboardColors() {
         metricColorForValue(currentValues.rightTemperatureC,
                             rightValueColorScale);
     setTextColor(timeLabel, configuredColor(timeColor));
+    setTextColor(timePeriodLabel, configuredColor(timeColor));
     setTextColor(radarTitleLabel, COLOR_TEXT);
     setTextColor(radarStatusLabel, COLOR_OUTSIDE);
     if (radarProgressBar != nullptr) {
@@ -2872,6 +2888,8 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
   lv_obj_add_flag(dashboardContent, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_t *content = dashboardContent;
 
+  timePeriodLabel = makeLabel(content, &clock_czech_16, COLOR_TEXT);
+  lv_obj_add_flag(timePeriodLabel, LV_OBJ_FLAG_HIDDEN);
   timeLabel = makeLabel(content, &lv_font_montserrat_48, COLOR_TEXT);
   lv_label_set_recolor(timeLabel, true);
   lv_label_set_text(timeLabel, "--:--");
@@ -3020,6 +3038,7 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
 }
 
 void clockDashboardApplyConfiguration(const ClockConfig &config) {
+  retroLcdSetLeadingHourZero(config.showLeadingHourZero);
   dashboardRuntimeConfig = config;
   dashboardRuntimeConfigAvailable = true;
   radarFeatureAvailable = clockConfigRadarAvailable(config);
@@ -3262,7 +3281,7 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
     setObjectVisible(analogMetricBUnitLabel, metricBConfigured);
 
     lv_obj_t *digitalOnly[] = {
-        timeLabel,          outsideTitleLabel,   outsideIntegerLabel,
+        timeLabel, timePeriodLabel, outsideTitleLabel,   outsideIntegerLabel,
         outsideDecimalLabel, outsideUnitLabel,   roomTitleLabel,
         roomIntegerLabel,   roomDecimalLabel,    roomUnitLabel,
         outsideIconLabel,   co2TitleLabel,       co2ValueLabel,
@@ -3319,6 +3338,7 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
 }
 
 void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
+  retroLcdSet12HourFormat(appearance.use12HourFormat);
   animatedScreenTransitions = appearance.animatedScreenTransitions;
   retroProgressSource = constrain(appearance.retroProgressSource, 0, 4);
   retroProgressSegments = constrain(appearance.retroProgressSegments, 5, 50);
@@ -3996,8 +4016,10 @@ void clockDashboardSetSecond(uint8_t second) {
     renderTimeColon(millis(), true);
 }
 
-void clockDashboardSetTime(const char *timeText) {
+void clockDashboardSetTime(const char *timeText, const char *period) {
   if (firmwareUpdateActive) return;
+  strlcpy(displayedTimePeriod, period ? period : "", sizeof(displayedTimePeriod));
+  updateTimePeriod();
   if (retroLcdEnabled()) {
     strlcpy(displayedTimeText, timeText, sizeof(displayedTimeText));
     return;

@@ -600,3 +600,5 @@ knihovny, fonty a grafické assety s vlastními licencemi; jejich autoři,
 licence a zdrojové odkazy jsou uvedené v
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). MIT licence projektu jejich
 původní licenční podmínky nenahrazuje.
+
+Digitální a Retro LCD ciferník podporují společnou volbu 24/12 hodin s AM/PM, nezávislou na jazyku; výchozí je 24 hodin. Volba úvodní nuly je také společná; LCD při jejím vypnutí zachovává podkres první číslice.

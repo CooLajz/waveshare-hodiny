@@ -92,6 +92,7 @@ enum ClockStyle : uint8_t {
 };
 
 struct ClockAppearanceConfig {
+  bool use12HourFormat = false;
   uint8_t retroMetricADigits = 3;
   uint8_t retroMetricBDigits = 4;
   uint32_t retroBackgroundColor = 0xB7C1A5;
