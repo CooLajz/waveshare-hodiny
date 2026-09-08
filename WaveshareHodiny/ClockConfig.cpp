@@ -1,6 +1,6 @@
 #include "ClockConfig.h"
 
-#include <Preferences.h>
+#include "SettingsStore.h"
 #include <nvs_flash.h>
 
 #include <cmath>
@@ -267,7 +267,7 @@ bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
   appearance = ClockAppearanceConfig{};
   appearance.monochromeWeatherIconColor =
       defaultMonochromeWeatherIconColor & 0xFFFFFF;
-  Preferences preferences;
+  SettingsPreferences preferences;
   if (!preferences.begin(APPEARANCE_NAMESPACE, true, CONFIG_PARTITION))
     return false;
   appearance.style = constrain(
@@ -332,9 +332,13 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
       appearance.retroProgressMin >= appearance.retroProgressMax || appearance.retroProgressSource > 4 ||
       appearance.retroProgressSegments < 5 || appearance.retroProgressSegments > 50) return false;
 
-  Preferences preferences;
-  if (!preferences.begin(APPEARANCE_NAMESPACE, false, CONFIG_PARTITION))
+  const bool ownTransaction = !settingsTransactionActive();
+  if (ownTransaction && !settingsTransactionBegin()) return false;
+  SettingsPreferences preferences;
+  if (!preferences.begin(APPEARANCE_NAMESPACE, false, CONFIG_PARTITION)) {
+    if (ownTransaction) settingsTransactionAbort();
     return false;
+  }
   const uint8_t style = constrain(
       appearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
       static_cast<uint8_t>(CLOCK_STYLE_RETRO_LCD));
@@ -399,10 +403,12 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
                           appearance.monochromeWeatherIconColor & 0xFFFFFF) ==
       sizeof(uint32_t);
   preferences.end();
-  return timeFormatSaved && retroWeatherSaved && retroProgressSaved && retroSourcesSaved && retroGhostSaved && styleSaved && toneSaved && handToneSaved && accentColorSaved &&
+  const bool ok = timeFormatSaved && retroWeatherSaved && retroProgressSaved && retroSourcesSaved && retroGhostSaved && styleSaved && toneSaved && handToneSaved && accentColorSaved &&
          accentsSaved && outlineHandsSaved && monoValuesSaved &&
          valuesAboveSaved && dateFormatSaved && dateColorSaved &&
          weatherColorSaved && transitionSaved && digitsSavedA && digitsSavedB && retroColorsSaved;
+  if (!ok) { if (ownTransaction) settingsTransactionAbort(); return false; }
+  return !ownTransaction || settingsTransactionCommit();
 }
 
 void clockConfigCopy(char *destination, size_t destinationSize,
@@ -446,29 +452,104 @@ void clockConfigApplyDefaults(ClockConfig &config) {
 }
 
 bool clockConfigBegin() {
-  return nvs_flash_init_partition(CONFIG_PARTITION) == ESP_OK;
+  return nvs_flash_init_partition(CONFIG_PARTITION) == ESP_OK && settingsStoreBegin();
+}
+
+bool clockConfigSchemaSupported(uint32_t schema) {
+  return schema == CLOCK_CONFIG_SCHEMA_VERSION || schema == 20 ||
+         schema == 24 || schema == 25 || schema == 26 || schema == 27 || schema == 28;
+}
+
+bool clockConfigValidate(const ClockConfig &c) {
+  // Inspect bool representations before reading them; imported bytes are untrusted.
+#define VALID_BOOL(field) if (*reinterpret_cast<const uint8_t *>(&c.field) > 1) return false
+#define VALID_TEXT(field) if (!memchr(c.field, 0, sizeof(c.field))) return false
+  VALID_BOOL(animatedWeatherIcons); VALID_BOOL(automaticDayNight);
+  VALID_BOOL(automaticFirmwareUpdate); VALID_BOOL(secondRingEnabled);
+  VALID_BOOL(showLeadingHourZero); VALID_BOOL(automaticRadarRotation);
+  VALID_BOOL(metricA.custom); VALID_BOOL(metricB.custom);
+  VALID_BOOL(leftValue.custom); VALID_BOOL(rightValue.custom);
+  VALID_TEXT(homeAssistantUrl); VALID_TEXT(homeAssistantToken);
+  VALID_TEXT(weatherEntityId); VALID_TEXT(sunEntityId); VALID_TEXT(dayNightLightEntityId);
+  VALID_TEXT(leftSide.name); VALID_TEXT(leftSide.temperatureEntityId); VALID_TEXT(leftSide.icon);
+  VALID_TEXT(rightSide.name); VALID_TEXT(rightSide.temperatureEntityId); VALID_TEXT(rightSide.icon);
+  VALID_TEXT(metricA.preset); VALID_TEXT(metricA.name); VALID_TEXT(metricA.entityId); VALID_TEXT(metricA.suffix);
+  VALID_TEXT(metricB.preset); VALID_TEXT(metricB.name); VALID_TEXT(metricB.entityId); VALID_TEXT(metricB.suffix);
+  VALID_TEXT(leftValue.preset); VALID_TEXT(leftValue.suffix);
+  VALID_TEXT(rightValue.preset); VALID_TEXT(rightValue.suffix);
+  VALID_TEXT(openMeteoCity); VALID_TEXT(timeZone); VALID_TEXT(tmepExportKey); VALID_TEXT(tmepExportId);
+  for (size_t i = 0; i < 4; ++i) {
+    VALID_BOOL(tmepSlots[i].enabled);
+    VALID_TEXT(tmepSlots[i].sensorId); VALID_TEXT(tmepSlots[i].field); VALID_TEXT(tmepSlots[i].unit);
+    VALID_TEXT(openMeteoSlots[i].value); VALID_TEXT(openMeteoSlots[i].name);
+    if (c.tmepSlots[i].decimals > 2 || c.openMeteoSlots[i].color > 0xFFFFFF) return false;
+    if (c.tmepSlots[i].enabled && (!c.tmepSlots[i].sensorId[0] ||
+        !c.tmepSlots[i].field[0] || !c.tmepSlots[i].unit[0])) return false;
+  }
+#undef VALID_BOOL
+#undef VALID_TEXT
+  if (c.schemaVersion != CLOCK_CONFIG_SCHEMA_VERSION || c.dataSource > 1 ||
+      c.weatherIconStyle > 2 || c.nightVisualMode > 1 || c.timeFont > 3 ||
+      c.dateFormat > 5 || c.timeColonEffect > 2 || c.secondEffect > 2 ||
+      c.language > 2 || c.openMeteoCountry > 2 || c.dayBrightness < 1 || c.dayBrightness > 100 ||
+      c.nightBrightness < 1 || c.nightBrightness > 100 ||
+      c.sunriseOffsetMinutes < -60 || c.sunriseOffsetMinutes > 60 || c.sunriseOffsetMinutes % 15 ||
+      c.sunsetOffsetMinutes < -60 || c.sunsetOffsetMinutes > 60 || c.sunsetOffsetMinutes % 15 ||
+      c.metricA.decimals > 2 || c.metricB.decimals > 2 || c.leftValue.decimals > 2 || c.rightValue.decimals > 2 ||
+      c.radarFrameCount < 1 || c.radarFrameCount > 15 || c.radarMapOpacity > 100 || c.radarPauseSeconds > 30 ||
+      c.clockDisplaySeconds < 10 || c.clockDisplaySeconds > 3600 ||
+      c.radarDisplaySeconds < 10 || c.radarDisplaySeconds > 3600 ||
+      c.secondRingBackgroundDotSize < 1 || c.secondRingBackgroundDotSize > 10 ||
+      c.secondDotSize < 1 || c.secondDotSize > 10) return false;
+  if (c.radarRadiusKm != 0 && c.radarRadiusKm != 25 && c.radarRadiusKm != 50 &&
+      c.radarRadiusKm != 100 && c.radarRadiusKm != 200) return false;
+  if (!std::isfinite(c.openMeteoLatitude) || c.openMeteoLatitude < -90 || c.openMeteoLatitude > 90 ||
+      !std::isfinite(c.openMeteoLongitude) || c.openMeteoLongitude < -180 || c.openMeteoLongitude > 180 ||
+      !c.openMeteoCity[0] || (c.timeZone[0] && !clockTimezoneSupported(c.timeZone))) return false;
+  if (c.homeAssistantUrl[0] && strncmp(c.homeAssistantUrl, "http://", 7) &&
+      strncmp(c.homeAssistantUrl, "https://", 8)) return false;
+  const uint32_t colors[] = {c.timeColor, c.dateColor, c.leftWeatherIconColor, c.rightWeatherIconColor,
+      c.leftSide.color, c.rightSide.color, c.secondRingBackgroundColor, c.secondDotColor};
+  for (uint32_t color : colors) if (color > 0xFFFFFF) return false;
+  for (const ClockMetricColorScale *scale : {&c.metricAColorScale, &c.metricBColorScale,
+                                            &c.leftValueColorScale, &c.rightValueColorScale}) {
+    if (!scale->count || scale->count > CLOCK_METRIC_COLOR_POINT_COUNT) return false;
+    for (size_t i = 0; i < scale->count; ++i) {
+      if (!std::isfinite(scale->points[i].value) || scale->points[i].color > 0xFFFFFF) return false;
+      for (size_t j = 0; j < i; ++j)
+        if (scale->points[j].value == scale->points[i].value) return false;
+    }
+  }
+  return true;
 }
 
 bool clockConfigLoad(ClockConfig &config) {
-  clockConfigApplyDefaults(config);
-  Preferences preferences;
-  if (!preferences.begin(CONFIG_NAMESPACE, false, CONFIG_PARTITION)) return false;
+  SettingsPreferences preferences;
+  if (!preferences.begin(CONFIG_NAMESPACE, true, CONFIG_PARTITION)) return false;
+  static uint8_t record[sizeof(ConfigRecord)];
+  const size_t size = preferences.getBytesLength(CONFIG_KEY);
+  if (size == 0) {
+    clockConfigApplyDefaults(config);
+    return clockConfigSave(config);
+  }
+  if (size > sizeof(record) || preferences.getBytes(CONFIG_KEY, record, sizeof(record)) != size)
+    return false;
+  if (!clockConfigDecodeRecord(record, size, config)) return false;
+  uint32_t schema;
+  memcpy(&schema, record + 4, sizeof(schema));
+  return schema == CLOCK_CONFIG_SCHEMA_VERSION || clockConfigSave(config);
+}
 
-  // Aktuální i jediný podporovaný migrační záznam sdílejí jeden statický
-  // buffer. Konfigurace je velká a nemá ležet na zásobníku loopTask.
+bool clockConfigDecodeRecord(const void *data, size_t storedSize, ClockConfig &config) {
+  clockConfigApplyDefaults(config);
   static ConfigRecord record;
   record = ConfigRecord{};
-  const size_t storedSize = preferences.getBytesLength(CONFIG_KEY);
   const bool supportedSize = storedSize == sizeof(record) ||
-                             storedSize == sizeof(ConfigRecordV28) ||
-                             storedSize == sizeof(ConfigRecordV27) ||
-                             storedSize == sizeof(ConfigRecordV26) ||
-                             storedSize == sizeof(ConfigRecordV155);
-  const bool readComplete =
-      supportedSize && preferences.getBytes(CONFIG_KEY, &record, storedSize) ==
-                           storedSize;
-  preferences.end();
-
+      storedSize == sizeof(ConfigRecordV28) || storedSize == sizeof(ConfigRecordV27) ||
+      storedSize == sizeof(ConfigRecordV26) || storedSize == sizeof(ConfigRecordV155);
+  const bool readComplete = data && supportedSize;
+  if (!readComplete) return false;
+  memcpy(&record, data, storedSize);
   const bool currentRecord =
       readComplete && storedSize == sizeof(record) &&
       record.magic == CONFIG_MAGIC &&
@@ -477,6 +558,7 @@ bool clockConfigLoad(ClockConfig &config) {
       record.checksum == configChecksum(record.config);
   if (currentRecord) {
     config = record.config;
+    if (!clockConfigValidate(config)) return false;
     normalizeConfig(config);
     return true;
   }
@@ -495,8 +577,9 @@ bool clockConfigLoad(ClockConfig &config) {
       legacyV28.checksum == bytesChecksum(legacyV28.config, sizeof(legacyV28.config))) {
     memcpy(&config, legacyV28.config, sizeof(legacyV28.config));
     config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
+    if (!clockConfigValidate(config)) return false;
     normalizeConfig(config);
-    return clockConfigSave(config);
+    return true;
   }
 
   const ConfigRecordV27 &legacyV27 =
@@ -517,8 +600,9 @@ bool clockConfigLoad(ClockConfig &config) {
     memcpy(&config, legacyV27.config, sizeof(legacyV27.config));
     config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
     applyLegacySideValueDefaults(config);
+    if (!clockConfigValidate(config)) return false;
     normalizeConfig(config);
-    return clockConfigSave(config);
+    return true;
   }
 
   const ConfigRecordV26 &legacyV26 =
@@ -545,8 +629,9 @@ bool clockConfigLoad(ClockConfig &config) {
     config.tmepExportId[0] = '\0';
     for (ClockTmepSlotConfig &slot : config.tmepSlots)
       slot = ClockTmepSlotConfig{};
+    if (!clockConfigValidate(config)) return false;
     normalizeConfig(config);
-    return clockConfigSave(config);
+    return true;
   }
 
   // Schema 25 used 0 for Czech and 1 for English. Preserve that explicit
@@ -565,8 +650,9 @@ bool clockConfigLoad(ClockConfig &config) {
     config.tmepExportId[0] = '\0';
     for (ClockTmepSlotConfig &slot : config.tmepSlots)
       slot = ClockTmepSlotConfig{};
+    if (!clockConfigValidate(config)) return false;
     normalizeConfig(config);
-    return clockConfigSave(config);
+    return true;
   }
 
   // Schema 24 has the same binary size. The language byte occupied trailing
@@ -582,8 +668,9 @@ bool clockConfigLoad(ClockConfig &config) {
     config.tmepExportId[0] = '\0';
     for (ClockTmepSlotConfig &slot : config.tmepSlots)
       slot = ClockTmepSlotConfig{};
+    if (!clockConfigValidate(config)) return false;
     normalizeConfig(config);
-    return clockConfigSave(config);
+    return true;
   }
 
   const ConfigRecordV155 &legacy =
@@ -600,8 +687,7 @@ bool clockConfigLoad(ClockConfig &config) {
       embeddedSchemaVersion == PUBLIC_1_5_5_SCHEMA_VERSION &&
       legacy.checksum == bytesChecksum(legacy.config, sizeof(legacy.config));
   if (!validPublic155Record) {
-    clockConfigApplyDefaults(config);
-    return clockConfigSave(config);
+    return false;
   }
 
   memcpy(&config, legacy.config, sizeof(legacy.config));
@@ -619,8 +705,9 @@ bool clockConfigLoad(ClockConfig &config) {
   config.tmepExportId[0] = '\0';
   for (ClockTmepSlotConfig &slot : config.tmepSlots)
     slot = ClockTmepSlotConfig{};
+  if (!clockConfigValidate(config)) return false;
   normalizeConfig(config);
-  return clockConfigSave(config);
+  return true;
 }
 
 bool clockConfigSave(const ClockConfig &config) {
@@ -632,20 +719,10 @@ bool clockConfigSave(const ClockConfig &config) {
   normalizeConfig(record.config);
   record.checksum = configChecksum(record.config);
 
-  Preferences preferences;
+  SettingsPreferences preferences;
   if (!preferences.begin(CONFIG_NAMESPACE, false, CONFIG_PARTITION)) return false;
   bool ok =
       preferences.putBytes(CONFIG_KEY, &record, sizeof(record)) == sizeof(record);
-  if (!ok && preferences.remove(CONFIG_KEY)) {
-    // Velký konfigurační blob při mnoha změnách schématu může zaplnit NVS
-    // historickými verzemi. Odstranění pouze tohoto klíče umožní NVS staré
-    // blobové stránky zkompaktovat; ostatní namespace v clockcfg zůstávají.
-    preferences.end();
-    if (!preferences.begin(CONFIG_NAMESPACE, false, CONFIG_PARTITION))
-      return false;
-    ok = preferences.putBytes(CONFIG_KEY, &record, sizeof(record)) ==
-         sizeof(record);
-  }
   preferences.end();
   return ok;
 }

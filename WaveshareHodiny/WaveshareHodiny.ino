@@ -230,6 +230,26 @@ bool saveClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
   return true;
 }
 
+// Called only after the complete settings transaction has committed.
+void applyCommittedSettingsFromWeb() {
+  ClockConfig &saved = configSaveBuffer;
+  if (!clockConfigLoad(saved)) return;
+  clockAppearanceLoad(persistedAppearance, saved.leftWeatherIconColor,
+                      saved.dateFormat, saved.dateColor);
+  activeAppearance = persistedAppearance;
+  pendingAppearance = persistedAppearance;
+  clockAppearanceApplyPending = true;
+  xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
+  persistedConfig = saved;
+  runtimeConfig = saved;
+  applyDevelopmentDefaults(runtimeConfig);
+  xSemaphoreGive(runtimeConfigMutex);
+  radarRadiusApplyPending = false;
+  runtimeConfigurationApplyPending = true;
+  runtimeConfigurationApplyAt = millis() + 750;
+  if (homeAssistantTaskHandle != nullptr) xTaskNotifyGive(homeAssistantTaskHandle);
+}
+
 void applyPendingClockAppearance() {
   if (!clockAppearanceApplyPending) return;
   clockAppearanceApplyPending = false;
@@ -1728,7 +1748,7 @@ void setup() {
                         displayPowerForcedOff, loadRadarRangeStateForWeb,
                         previewRadarRangeFromWeb, loadClockAppearanceForWeb,
                         previewClockAppearanceFromWeb,
-                        saveClockAppearanceFromWeb);
+                        saveClockAppearanceFromWeb, applyCommittedSettingsFromWeb);
   clockDashboardSetWebMode(configurationWebMode());
 
   const esp_task_wdt_config_t watchdogConfig = {

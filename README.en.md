@@ -155,7 +155,7 @@ at most once per page load. Open-Meteo continues to refresh independently every
 
 The firmware extracts the ID and export key and always builds the request with
 `extended=1&all=1`. These credentials remain stored on the device and are never
-returned by the configuration API or backup. **Remove TMEP.cz** clears the URL,
+returned by the configuration API. They are included in the encrypted full backup. **Remove TMEP.cz** clears the URL,
 catalog, diagnostics and TMEP assignments; affected slots return to their
 default Open-Meteo values.
 
@@ -271,7 +271,7 @@ disabled completely. Use it only on a trusted network; the dashboard gear icon
 indicates an active configuration server. An optional 6–20 character password
 protects web settings. The **System** tab shows an unprotected state in red and
 an active password in green. Only a derived hash is stored, and the password is
-not included in backups.
+included only in encrypted full backups.
 
 ### Diagnostics and backups
 
@@ -279,9 +279,35 @@ The read-only `/diagnostics` page reports firmware, CPU, flash, current display
 pixel clock, current and minimum internal RAM and PSRAM, Wi-Fi, Home Assistant,
 Open-Meteo and TMEP.cz runtime state. Radar details include the selected city, GPS,
 range, prepared-frame count and time span, last successful refresh, next check,
-HTTP status and the file currently being processed. Exported JSON backups
-contain appearance and entity IDs but intentionally omit the Home Assistant
-token, TMEP.cz export URL, web password and control API secret.
+HTTP status and the file currently being processed. Encrypted `.whbackup` files contain the stored clock settings, appearance,
+Home Assistant URL/token, TMEP credentials, web password verification record
+and control API secret. Filenames include the source firmware version and export
+date/time. **Wi-Fi is excluded and remains unchanged on restore.**
+Export requires a confirmed password of 8–128 characters, at most 256 UTF-8
+bytes. AES-256-GCM encryption/decryption runs in firmware on a worker task.
+The password is not persisted; without it the backup cannot be restored.
+Unsaved form changes and temporary previews are not exported. The password
+still travels over local HTTP; encryption protects the file, not that transport.
+
+The import dialog supports file selection and drag and drop. Its readable
+header shows the source firmware version, configuration schema and creation
+time (when synchronized). The header is authenticated with the encrypted
+payload. A newer source firmware is a warning; schema support determines
+compatibility. Supported older configurations migrate in memory before any
+write. Unknown schemas, incorrect passwords and corrupt files are rejected.
+
+Settings are written to an inactive copy, read back and atomically activated
+with a persistent operation receipt. The UI verifies the receipt after restart,
+including when restored authentication or web mode changes access. An uncertain
+network result is not reported as success or automatically resubmitted.
+
+Legacy unencrypted JSON format 2 remains importable without a backup password,
+but cannot restore missing credentials. An existing HA token is retained only
+for the same URL; missing TMEP credentials do not block saving its slots.
+Firmware predating the new settings store can only read the legacy settings
+left before the transition. Later changes do not migrate backwards automatically;
+keep a suitable backup before downgrading.
+See [the backup format and storage contract](docs/configuration-backup.md).
 
 ## Touchscreen settings
 

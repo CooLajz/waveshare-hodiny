@@ -159,7 +159,7 @@ z TMEP.cz. Open-Meteo se nezávisle obnovuje jednou za 10 minut.
 
 Firmware si z vložené URL bezpečně vybere ID a exportní klíč a požadavek vždy
 skládá s `extended=1&all=1`. Citlivé údaje zůstávají uložené v zařízení a API
-ani záloha je nevracejí. Volbou **Odebrat TMEP.cz** se smaže URL, katalog,
+ani běžný konfigurační JSON je nevracejí. Kompletní šifrovaná záloha je obsahuje. Volbou **Odebrat TMEP.cz** se smaže URL, katalog,
 diagnostický stav i přiřazení TMEP; dotčené pozice se vrátí na výchozí hodnoty
 Open-Meteo.
 
@@ -302,8 +302,8 @@ kola na dashboardu.
 
 Webové nastavení lze chránit heslem o délce 6 až 20 znaků. Stav bez hesla je
 v záložce **Systém** označený červeně, aktivní ochrana zeleně. Heslo je uložené
-v zařízení jako odvozený hash, nelze je zpětně zobrazit a není součástí
-exportované zálohy.
+v zařízení jako odvozený hash, nelze je zpětně zobrazit a je součástí pouze
+šifrované kompletní zálohy.
 
 ### Diagnostika
 
@@ -317,10 +317,43 @@ další plánovanou kontrolu, HTTP stav a právě zpracovávaný soubor.
 
 ### Záloha konfigurace
 
-Exportovaná JSON záloha obsahuje vzhled a ID entit, ale neobsahuje Home
-Assistant token, exportní URL TMEP.cz, heslo webu ani secret ovládacího API. Po importu proto může
-být nutné citlivé hodnoty zadat znovu. Restart zařízení uložené nastavení
-nemaže.
+Kompletní záloha se stahuje jako soubor `.whbackup`; název obsahuje verzi FW
+a datum i čas exportu. Při exportu zadej
+heslo a jeho potvrzení (alespoň 8 znaků, nejvýše 128 znaků / 256 UTF-8 bajtů).
+Firmware šifruje uložené nastavení pomocí AES-256-GCM; heslo se v hodinách
+trvale neukládá. Neuložené změny a dočasné náhledy nejsou součástí exportu.
+
+Záloha obsahuje nastavení hodin a vzhledu, HA URL a token, TMEP přístupové
+údaje, ověřovací záznam hesla webu a secret ovládacího API. **Wi-Fi není
+součástí zálohy a při obnově se nemění.** Bez hesla zálohu nelze obnovit.
+Přenos hesla do hodin zůstává přes místní HTTP, stejně jako zadávání tokenu;
+šifrování chrání soubor, ne tento síťový přenos.
+
+Import nabízí výběr souboru i přetažení. Před zadáním hesla zobrazí čitelnou
+hlavičku s verzí zdrojového FW, schématem a časem vytvoření (pokud byly hodiny
+synchronizované). Hlavička je ověřována spolu s šifrovaným obsahem. Novější FW
+ve hlavičce je upozornění; rozhodující je podporované schéma. Podporované
+starší konfigurace se migrují v paměti, neznámé schéma se odmítne bez zápisu.
+
+Po ověření hesla, neporušenosti a celého nastavení se zapíše neaktivní kopie
+konfigurace, přečte se zpět a teprve potom se atomicky aktivuje. Součástí
+stejné změny je trvalé potvrzení operace. Po restartu web ověří toto potvrzení;
+při ztrátě spojení nezobrazuje neověřený úspěch a neopakuje import. Pokud
+obnovené nastavení vypíná web, lze potvrzení přesto ověřit a web znovu povolit
+na displeji. Obnovuje se i ochrana webu, takže další otevření nastavení může
+vyžadovat původní heslo webu ze zálohy.
+
+Starší nešifrované JSON zálohy formátu 2 lze nadále importovat jako omezenou
+obnovu nastavení bez přístupových údajů. Heslo zálohy se u nich nevyžaduje.
+HA token se zachová pouze při shodné URL; chybějící přístup TMEP neblokuje
+uložení vybraných pozic. Chybějící přístupové údaje následně doplň ručně.
+
+Při návratu k firmware, který nové úložiště ještě nezná, jsou dostupná pouze
+původní nastavení z doby před přechodem. Pozdější změny se do staršího firmware
+automaticky nepřenesou; před downgrade si ponech odpovídající zálohu.
+
+Podrobnosti formátu, transakcí a migračních testů jsou v
+[docs/configuration-backup.md](docs/configuration-backup.md).
 
 ## Nastavení na displeji
 
@@ -404,8 +437,8 @@ Pomocí REST příkazů lze aktualizovat data, zapnout či vypnout podsvícení 
 vyvolat další podporované akce. URL považuj za přihlašovací údaj: nevkládej ji
 do screenshotů, veřejných logů ani Git repozitáře.
 
-Secret je uložený v zařízení, ověřuje se konstantním časem a není součástí
-exportované zálohy. Přesný tvar endpointů a příklady požadavků jsou zobrazené
+Secret je uložený v zařízení, ověřuje se konstantním časem a je součástí pouze
+šifrované kompletní zálohy. Přesný tvar endpointů a příklady požadavků jsou zobrazené
 přímo v aktuálním webovém rozhraní firmware.
 
 ## Sestavení ze zdrojů

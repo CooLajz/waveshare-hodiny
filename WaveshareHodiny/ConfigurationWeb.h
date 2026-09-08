@@ -2,6 +2,8 @@
 
 #include "ClockConfig.h"
 
+using ClockSettingsApplyCallback = void (*)();
+
 using ClockConfigLoadCallback = void (*)(ClockConfig &config);
 using ClockConfigSaveCallback = bool (*)(const ClockConfig &config,
                                          bool tokenWasSubmitted);
@@ -41,7 +43,8 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
                            RadarRangePreviewCallback radarRangePreviewCallback,
                            ClockAppearanceStateCallback appearanceStateCallback,
                            ClockAppearanceChangeCallback appearancePreviewCallback,
-                           ClockAppearanceChangeCallback appearanceSaveCallback);
+                           ClockAppearanceChangeCallback appearanceSaveCallback,
+                           ClockSettingsApplyCallback settingsApplyCallback);
 void configurationWebLoop();
 void configurationWebEnsureActive();
 void configurationWebExtendAvailability();

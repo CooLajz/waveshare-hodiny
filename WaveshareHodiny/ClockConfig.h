@@ -243,6 +243,9 @@ static_assert(offsetof(ClockConfig, language) == 2106 &&
 bool clockConfigBegin();
 bool clockConfigLoad(ClockConfig &config);
 bool clockConfigSave(const ClockConfig &config);
+bool clockConfigSchemaSupported(uint32_t schema);
+bool clockConfigValidate(const ClockConfig &config);
+bool clockConfigDecodeRecord(const void *data, size_t size, ClockConfig &config);
 void clockConfigApplyDefaults(ClockConfig &config);
 bool clockConfigRadarAvailable(const ClockConfig &config);
 bool clockAppearanceLoad(ClockAppearanceConfig &appearance,

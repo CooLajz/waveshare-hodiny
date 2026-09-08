@@ -4,7 +4,13 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
-#include <Preferences.h>
+#include "SettingsStore.h"
+#include "ConfigurationBackup.h"
+#include <atomic>
+#include <freertos/idf_additions.h>
+#include <new>
+#include <mbedtls/platform_util.h>
+#include <time.h>
 #include <esp_heap_caps.h>
 #include <esp_system.h>
 #include <mbedtls/md.h>
@@ -28,7 +34,7 @@
 #include "TmepService.h"
 
 namespace {
-constexpr size_t MAX_POST_BODY_BYTES = 16 * 1024;
+constexpr size_t MAX_POST_BODY_BYTES = 32 * 1024;
 constexpr size_t MAX_POST_KEY_BYTES = 64;
 constexpr size_t MAX_POST_VALUE_BYTES = 1024;
 
@@ -47,17 +53,24 @@ class BoundedWebServer : public WebServer {
 
   void captureRawPost(HTTPRaw &raw) {
     if (raw.status == RAW_START) {
-      // WebServer čte každý raw blok do celé velikosti HTTP_RAW_BUFLEN a u
-      // posledního kratšího bloku by jinak čekal výchozích pět sekund.
-      // Lokální prohlížeč už v této fázi tělo odesílá, krátký timeout proto
-      // odstraní prodlevu a současně omezuje pomalé POST požadavky.
-      client().setTimeout(100);
+      // Read exactly Content-Length. The core's raw parser otherwise requests
+      // a full HTTP_RAW_BUFLEN for its last chunk and waits out the timeout
+      // even though the complete body has already arrived.
+      client().setTimeout(3000);
       rawPostActive_ = true;
       postBodyLength_ = 0;
       postBodyReady_ = false;
       postBodyTooLarge_ = clientContentLength() > MAX_POST_BODY_BYTES;
       postBodyMalformed_ = false;
       if (postBody_ != nullptr) postBody_[0] = '\0';
+      const size_t expected = clientContentLength() < 0 ? 0 : size_t(clientContentLength());
+      if (!postBodyTooLarge_ && postBody_ != nullptr) {
+        postBodyLength_ = client().readBytes(postBody_, expected);
+        postBodyMalformed_ = postBodyLength_ != expected;
+      }
+      // RAW_END still runs; skip the core's unbounded final read. Oversized
+      // bodies are rejected by the handler without allocating or draining them.
+      raw.totalSize = expected;
       return;
     }
     if (raw.status == RAW_WRITE) {
@@ -73,12 +86,19 @@ class BoundedWebServer : public WebServer {
     if (raw.status == RAW_END) {
       if (!postBodyTooLarge_ && postBody_ != nullptr) {
         postBody_[postBodyLength_] = '\0';
-        postBodyMalformed_ = !validRawBodyShape();
+        postBodyMalformed_ = postBodyMalformed_ || !validRawBodyShape();
         postBodyReady_ = !postBodyMalformed_;
       }
       return;
     }
     postBodyReady_ = false;
+  }
+
+  void clearSensitivePost() {
+    if (postBody_) mbedtls_platform_zeroize(postBody_, postBodyLength_);
+    postBodyLength_ = 0;
+    postBodyReady_ = false;
+    rawPostActive_ = false;
   }
 
   bool postBodyAccepted() const {
@@ -89,7 +109,7 @@ class BoundedWebServer : public WebServer {
   bool postBodyMalformed() const { return postBodyMalformed_; }
 
   String arg(const String &name) {
-    if (!rawPostActive_) return WebServer::arg(name);
+    if (method() != HTTP_POST || !rawPostActive_) return WebServer::arg(name);
     size_t valueStart = 0;
     size_t valueLength = 0;
     if (!findRawArgument(name, valueStart, valueLength)) return String();
@@ -97,7 +117,7 @@ class BoundedWebServer : public WebServer {
   }
 
   bool hasArg(const String &name) {
-    if (!rawPostActive_) return WebServer::hasArg(name);
+    if (method() != HTTP_POST || !rawPostActive_) return WebServer::hasArg(name);
     size_t valueStart = 0;
     size_t valueLength = 0;
     return findRawArgument(name, valueStart, valueLength);
@@ -113,7 +133,8 @@ class BoundedWebServer : public WebServer {
       size_t equalsAt = fieldStart;
       while (equalsAt < fieldEnd && postBody_[equalsAt] != '=') ++equalsAt;
       if (equalsAt == fieldEnd || equalsAt - fieldStart > MAX_POST_KEY_BYTES ||
-          fieldEnd - equalsAt - 1 > MAX_POST_VALUE_BYTES) {
+          fieldEnd - equalsAt - 1 > (equalsAt - fieldStart == 6 &&
+              memcmp(postBody_ + fieldStart, "backup", 6) == 0 ? 24000 : MAX_POST_VALUE_BYTES)) {
         return false;
       }
       fieldStart = fieldEnd + 1;
@@ -155,6 +176,7 @@ class BoundedWebServer : public WebServer {
 
 BoundedWebServer server(80);
 ClockConfigLoadCallback configLoadCallback = nullptr;
+ClockSettingsApplyCallback committedSettingsCallback = nullptr;
 ClockConfigSaveCallback configSaveCallback = nullptr;
 ConfigurationWebStatusCallback webStatusCallback = nullptr;
 SunTransitionTimesCallback sunTransitionTimesCallback = nullptr;
@@ -178,7 +200,7 @@ constexpr char CONTROL_PREFS_NAMESPACE[] = "control-api";
 constexpr char CONTROL_PREFS_KEY[] = "secret";
 constexpr size_t CONTROL_SECRET_LENGTH = 32;
 String controlSecret;
-constexpr size_t SAVE_CONFIRMATION_ID_LENGTH = 16;
+constexpr size_t SAVE_CONFIRMATION_ID_LENGTH = 32;
 String lastSaveConfirmationId;
 constexpr char WEB_AUTH_PREFS_NAMESPACE[] = "web-auth";
 constexpr char WEB_AUTH_PREFS_KEY[] = "credential";
@@ -241,7 +263,7 @@ bool validWebPasswordLength(const String &password) {
 }
 
 bool validSaveConfirmationId(const String &value) {
-  if (value.length() != SAVE_CONFIRMATION_ID_LENGTH) return false;
+  if (value.length() != SAVE_CONFIRMATION_ID_LENGTH && value.length() != 16) return false;
   for (size_t index = 0; index < value.length(); ++index) {
     const char character = value[index];
     if (!((character >= '0' && character <= '9') ||
@@ -264,7 +286,7 @@ bool deriveWebPassword(const String &password, const uint8_t *salt,
 void initializeWebPassword() {
   webPasswordRecord = WebPasswordRecord{};
   webPasswordEnabled = false;
-  Preferences preferences;
+  SettingsPreferences preferences;
   if (!preferences.begin(WEB_AUTH_PREFS_NAMESPACE, true, "clockcfg")) return;
   const size_t storedSize = preferences.getBytesLength(WEB_AUTH_PREFS_KEY);
   const bool loaded =
@@ -284,7 +306,7 @@ bool persistWebPassword(const String &password) {
   esp_fill_random(candidate.salt, sizeof(candidate.salt));
   if (!deriveWebPassword(password, candidate.salt, candidate.hash)) return false;
   candidate.checksum = webPasswordChecksum(candidate);
-  Preferences preferences;
+  SettingsPreferences preferences;
   if (!preferences.begin(WEB_AUTH_PREFS_NAMESPACE, false, "clockcfg"))
     return false;
   const bool saved =
@@ -298,7 +320,7 @@ bool persistWebPassword(const String &password) {
 }
 
 bool eraseWebPassword() {
-  Preferences preferences;
+  SettingsPreferences preferences;
   if (!preferences.begin(WEB_AUTH_PREFS_NAMESPACE, false, "clockcfg"))
     return false;
   const bool removed = preferences.remove(WEB_AUTH_PREFS_KEY);
@@ -415,7 +437,7 @@ String generateControlSecret() {
 }
 
 void initializeControlSecret() {
-  Preferences preferences;
+  SettingsPreferences preferences;
   if (!preferences.begin(CONTROL_PREFS_NAMESPACE, false, "clockcfg")) return;
   controlSecret = preferences.getString(CONTROL_PREFS_KEY, "");
   if (!validControlSecret(controlSecret)) {
@@ -465,7 +487,7 @@ void lockConfiguration() {
 }
 
 bool persistWebMode(ConfigurationWebMode mode) {
-  Preferences preferences;
+  SettingsPreferences preferences;
   if (!preferences.begin(WEB_PREFS_NAMESPACE, false, "clockcfg")) return false;
   const bool saved = preferences.putUChar(WEB_PREFS_KEY, mode) == 1;
   preferences.end();
@@ -697,7 +719,7 @@ String colorScaleJson(const ClockMetricColorScale &scale) {
   for (uint8_t index = 0; index < scale.count; ++index) {
     if (index > 0) result += ',';
     result += F("{\"value\":");
-    result += String(scale.points[index].value, 3);
+    { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(scale.points[index].value)); result += value; }
     result += F(",\"color\":\"");
     result += htmlColor(scale.points[index].color);
     result += F("\"}");
@@ -1216,7 +1238,12 @@ bool requestOriginAllowed() {
   return origin == String(F("http://")) + server.hostHeader();
 }
 
+bool backupBusy();
+
 bool requireConfigurationAccess() {
+  if (server.method() == HTTP_POST && backupBusy()) {
+    sendError(409, F("Zálohování nebo obnova právě probíhá.")); return false;
+  }
   if (!webActive) {
     sendError(423, F("Konfigurace je zamčená. Aktivuj ji na displeji hodin."));
     return false;
@@ -1321,7 +1348,14 @@ void handleGetConfig() {
   result += jsonEscape(config.homeAssistantUrl);
   result += F("\",\"saveConfirmationId\":\"");
   result += lastSaveConfirmationId;
-  result += F("\",\"tokenConfigured\":");
+  result += F("\",\"supportedBackupSchemas\":[");
+  bool firstSchema = true;
+  for (uint32_t schema = 1; schema <= CLOCK_CONFIG_SCHEMA_VERSION; ++schema) {
+    if (!clockConfigSchemaSupported(schema)) continue;
+    if (!firstSchema) result += ',';
+    result += schema; firstSchema = false;
+  }
+  result += F("],\"tokenConfigured\":");
   result += config.homeAssistantToken[0] == '\0' ? F("false") : F("true");
   result += F(",\"tmepKeyConfigured\":");
   result += config.tmepExportId[0] == '\0' || config.tmepExportKey[0] == '\0'
@@ -1623,6 +1657,28 @@ void handleSaveConfig() {
     sendError(400, F("Identifikátor uložení není platný."));
     return;
   }
+  const struct { const char *name; size_t capacity; } textLimits[] = {
+      {"haUrl", CLOCK_HA_URL_LENGTH}, {"haToken", CLOCK_HA_TOKEN_LENGTH},
+      {"weatherEntity", CLOCK_ENTITY_ID_LENGTH}, {"sunEntity", CLOCK_ENTITY_ID_LENGTH},
+      {"dayNightLightEntity", CLOCK_ENTITY_ID_LENGTH}, {"openMeteoCity", CLOCK_OPEN_METEO_CITY_LENGTH},
+      {"timeZone", CLOCK_TIMEZONE_LENGTH}};
+  for (const auto &field : textLimits) {
+    if (server.arg(field.name).length() >= field.capacity) {
+      sendError(400, F("Formulář obsahuje příliš dlouhé nebo neplatné pole.")); return;
+    }
+  }
+  for (const char *prefix : {"left", "right", "metricA", "metricB"}) {
+    if (server.arg(String(prefix) + "Name").length() >= (prefix[0] == 'm' ? CLOCK_METRIC_NAME_LENGTH : CLOCK_ROOM_NAME_LENGTH) ||
+        server.arg(String(prefix) + "Suffix").length() >= CLOCK_METRIC_SUFFIX_LENGTH ||
+        server.arg(String(prefix) + "Entity").length() >= CLOCK_ENTITY_ID_LENGTH) {
+      sendError(400, F("Formulář obsahuje příliš dlouhé nebo neplatné pole.")); return;
+    }
+  }
+  for (size_t i = 0; i < 4; ++i) {
+    if (server.arg(String("openMeteoSlot") + i + "Name").length() >= CLOCK_METRIC_NAME_LENGTH) {
+      sendError(400, F("Formulář obsahuje příliš dlouhé nebo neplatné pole.")); return;
+    }
+  }
   const String language = server.arg("language");
   if (language == "cs")
     config.language = CLOCK_LANGUAGE_CZECH;
@@ -1749,8 +1805,7 @@ void handleSaveConfig() {
       const String field =
           separator > 5 ? value.substring(separator + 1) : String();
       const String unit = server.arg(prefix + F("Unit"));
-      if (config.tmepExportId[0] == '\0' || config.tmepExportKey[0] == '\0' ||
-          !validTmepSensorId(sensorId) ||
+      if (!validTmepSensorId(sensorId) ||
           !tmepFieldSupported(field.c_str()) || !validTmepUnit(unit)) {
         sendError(400, F("Nastavení hodnoty TMEP není platné."));
         return;
@@ -1801,10 +1856,13 @@ void handleSaveConfig() {
   }
   clockConfigCopy(config.homeAssistantUrl, sizeof(config.homeAssistantUrl), url);
   const String submittedToken = server.arg("haToken");
-  if (!submittedToken.isEmpty()) {
-    clockConfigCopy(config.homeAssistantToken,
-                    sizeof(config.homeAssistantToken), submittedToken);
+  static ClockConfig previouslySaved;
+  if (!clockConfigLoad(previouslySaved)) {
+    sendError(500, F("Původní nastavení nelze bezpečně načíst.")); return;
   }
+  clockConfigCopy(config.homeAssistantToken, sizeof(config.homeAssistantToken),
+      !submittedToken.isEmpty() ? submittedToken.c_str() :
+      (url == previouslySaved.homeAssistantUrl ? previouslySaved.homeAssistantToken : ""));
   clockConfigCopy(config.weatherEntityId, sizeof(config.weatherEntityId),
                   server.arg("weatherEntity"));
   clockConfigCopy(config.sunEntityId, sizeof(config.sunEntityId),
@@ -1967,23 +2025,21 @@ void handleSaveConfig() {
     return;
   }
 
-  if (configSaveCallback == nullptr ||
-      !configSaveCallback(config, !submittedToken.isEmpty())) {
-    sendError(500, F("Nastavení se nepodařilo uložit do paměti."));
-    return;
+  if (!clockConfigValidate(config) || !settingsTransactionBegin()) {
+    sendError(500, F("Nastavení není platné nebo je úložiště zaneprázdněné.")); return;
   }
-  if (currentAppearanceSaveCallback == nullptr ||
-      !currentAppearanceSaveCallback(appearance)) {
-    sendError(500, F("Vzhled hodin se nepodařilo uložit do paměti."));
-    return;
-  }
-  if (!persistWebMode(requestedWebMode)) {
-    sendError(500, F("Režim webového serveru se nepodařilo uložit."));
-    return;
+  SettingsPreferences receipt;
+  const bool saved = clockConfigSave(config) && clockAppearanceSave(appearance) &&
+      persistWebMode(requestedWebMode) && receipt.begin("save-state") &&
+      receipt.putString("receipt", saveConfirmationId) == saveConfirmationId.length();
+  if (!saved) settingsTransactionAbort();
+  if (!saved || !settingsTransactionCommit()) {
+    sendError(500, F("Nastavení se nepodařilo uložit. Původní nastavení zůstalo zachované.")); return;
   }
   lastSaveConfirmationId = saveConfirmationId;
   extendWebAvailability();
   sendJson(200, F("{\"ok\":true}"));
+  if (committedSettingsCallback) committedSettingsCallback();
   applyWebMode(requestedWebMode);
 }
 
@@ -2661,6 +2717,8 @@ void handleFirmwareInstall() {
            F("{\"ok\":true,\"message\":\"Kontrola a aktualizace byly spuštěny.\"}"));
 }
 
+#include "ConfigurationBackupWeb.h"
+
 bool requireAcceptedPostBody() {
   if (server.header("Content-Type").startsWith("multipart/")) {
     sendError(415, F("Formát multipart není podporovaný."));
@@ -2691,6 +2749,7 @@ class BoundedPostRequestHandler final : public RequestHandler {
 
   bool handle(WebServer &, HTTPMethod, const String &) override {
     if (requireAcceptedPostBody()) handler_();
+    server.clearSensitivePost();
     return true;
   }
 
@@ -2741,8 +2800,12 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
                            RadarRangePreviewCallback radarRangePreviewCallback,
                            ClockAppearanceStateCallback appearanceStateCallback,
                            ClockAppearanceChangeCallback appearancePreviewCallback,
-                           ClockAppearanceChangeCallback appearanceSaveCallback) {
+                           ClockAppearanceChangeCallback appearanceSaveCallback,
+                           ClockSettingsApplyCallback settingsApplyCallback) {
   configLoadCallback = loadCallback;
+  committedSettingsCallback = settingsApplyCallback;
+  SettingsPreferences receipt;
+  if (receipt.begin("save-state", true)) lastSaveConfirmationId = receipt.getString("receipt");
   configSaveCallback = saveCallback;
   webStatusCallback = statusCallback;
   sunTransitionTimesCallback = sunTimesCallback;
@@ -2755,10 +2818,11 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
   currentAppearanceStateCallback = appearanceStateCallback;
   currentAppearancePreviewCallback = appearancePreviewCallback;
   currentAppearanceSaveCallback = appearanceSaveCallback;
+  backupBootId = randomHex(16);
   initializeControlSecret();
   initializeWebPassword();
   server.beginBoundedPostSupport();
-  Preferences preferences;
+  SettingsPreferences preferences;
   if (preferences.begin(WEB_PREFS_NAMESPACE, true, "clockcfg")) {
     selectedWebMode = static_cast<ConfigurationWebMode>(constrain(
         preferences.getUChar(WEB_PREFS_KEY, CONFIGURATION_WEB_ALWAYS),
@@ -2780,6 +2844,9 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
   registerBoundedPost("/api/web-password", []() {
     if (requireConfigurationAccess()) handleWebPassword();
   });
+  registerBoundedPost("/api/backup/export", []() { handleBackupStart(false); });
+  registerBoundedPost("/api/backup/import", []() { handleBackupStart(true); });
+  server.on("/api/backup/status", HTTP_GET, handleBackupStatus);
   server.on("/api/config", HTTP_GET, []() {
     if (requireConfigurationAccess()) handleGetConfig();
   });
@@ -2846,6 +2913,10 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
 
 void configurationWebLoop() {
   server.handleClient();
+  finishBackupJob();
+  if (backupRestartAt && static_cast<long>(millis() - backupRestartAt) >= 0) ESP.restart();
+  if (backupJob && backupJob->finished && !backupRestartAt &&
+      millis() - backupJob->touchedAt > 300000) clearBackupJob();
   if (selectedWebMode == CONFIGURATION_WEB_TIMED &&
       webActive && static_cast<long>(millis() - webAvailableUntil) >= 0) {
     lockConfiguration();
