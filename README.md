@@ -24,8 +24,12 @@ z webového rozhraní bez úpravy zdrojového kódu.
 ---
 
 <p align="center">
-  <img src="screenshots/dashboard.png" alt="Hlavní obrazovka Waveshare Hodiny v denním režimu" width="46%">
   <img src="screenshots/dashboard-analog.png" alt="Analogový ciferník Waveshare Hodiny v denním režimu" width="46%">
+</p>
+
+<p align="center">
+  <img src="screenshots/dashboard.png" alt="Digitální ciferník Waveshare Hodiny v denním režimu" width="46%">
+  <img src="screenshots/dashboard-retro-lcd.png" alt="Retro LCD ciferník Waveshare Hodiny v denním režimu" width="46%">
 </p>
 
 <p align="center">

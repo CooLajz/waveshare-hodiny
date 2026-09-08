@@ -25,8 +25,12 @@ interface without editing source code.
 ---
 
 <p align="center">
-  <img src="screenshots/dashboard.png" alt="Waveshare Hodiny day dashboard" width="46%">
   <img src="screenshots/dashboard-analog.png" alt="Waveshare Hodiny analog clock in day mode" width="46%">
+</p>
+
+<p align="center">
+  <img src="screenshots/dashboard.png" alt="Waveshare Hodiny digital clock in day mode" width="46%">
+  <img src="screenshots/dashboard-retro-lcd.png" alt="Waveshare Hodiny Retro LCD clock in day mode" width="46%">
 </p>
 
 <p align="center">
