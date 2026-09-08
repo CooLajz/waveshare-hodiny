@@ -5,6 +5,8 @@
 const char CONFIGURATION_LOCALIZATION_JS[] PROGMEM = R"JS(
 (() => {
   const en = {
+    "Ikona počasí":"Weather icon",
+    "Podkladový rastr počasí":"Weather background grid",
     "Počet míst LCD":"LCD digit positions",
     "Číslice před desetinnou tečkou. Mínus má vlastní segment navíc. Prázdná místa zůstanou zhasnutá.":"Digits before the decimal point. Minus has its own extra segment. Empty positions remain unlit.",
     "Barva pozadí LCD":"LCD background color",

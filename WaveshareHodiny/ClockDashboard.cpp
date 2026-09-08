@@ -3324,11 +3324,12 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
   retroProgressSegments = constrain(appearance.retroProgressSegments, 5, 50);
   retroProgressMin = appearance.retroProgressMin;
   retroProgressMax = appearance.retroProgressMax;
-  retroSources[0] = constrain(appearance.retroLeftSource, 0, 3);
-  retroSources[1] = constrain(appearance.retroRightSource, 0, 3);
+  retroSources[0] = constrain(appearance.retroLeftSource, 0, 4);
+  retroSources[1] = constrain(appearance.retroRightSource, 0, 4);
   retroLcdSetDigitPlaces(appearance.retroMetricADigits, appearance.retroMetricBDigits);
   retroLcdSetColors(appearance.retroBackgroundColor, appearance.retroForegroundColor);
   retroLcdSetGhostOpacity(appearance.retroGhostOpacity);
+  retroLcdSetWeatherStyle(appearance.retroWeatherRaster);
   const uint8_t style = constrain(
       appearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
       static_cast<uint8_t>(CLOCK_STYLE_RETRO_LCD));
@@ -3399,10 +3400,14 @@ static void updateRetroValues(const ClockValues &values) {
   const float numbers[] = {values.leftTemperatureC, values.rightTemperatureC, values.metricAValue, values.metricBValue};
   retroLcdSetProgress(retroProgressSource < 4 ? configs[retroProgressSource] : nullptr,
                       retroProgressSource < 4 ? numbers[retroProgressSource] : NAN, retroProgressMin, retroProgressMax, retroProgressSegments);
+  retroLcdSetWeather(retroSources[0] == 4, retroSources[1] == 4,
+                     weatherConfigured ? openWeatherIconForCode(values.weatherCode, values.weatherIsDay) : nullptr);
+  const uint8_t left = retroSources[0] < 4 ? retroSources[0] : 0;
+  const uint8_t right = retroSources[1] < 4 ? retroSources[1] : 1;
   ClockValues mapped = values;
-  mapped.metricAValue = numbers[retroSources[0]];
-  mapped.metricBValue = numbers[retroSources[1]];
-  retroLcdUpdate(mapped, *configs[retroSources[0]], *configs[retroSources[1]], englishLanguage(),
+  mapped.metricAValue = numbers[left];
+  mapped.metricBValue = numbers[right];
+  retroLcdUpdate(mapped, *configs[left], *configs[right], englishLanguage(),
                  redNightVisualEnabled(), wifiConnected, webActive);
 }
 

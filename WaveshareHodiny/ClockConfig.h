@@ -97,7 +97,8 @@ struct ClockAppearanceConfig {
   uint32_t retroBackgroundColor = 0xB7C1A5;
   uint32_t retroForegroundColor = 0x20261C;
   uint8_t retroGhostOpacity = 5;
-  uint8_t retroLeftSource = 2; // Left, right, metric A, metric B.
+  bool retroWeatherRaster = true;
+  uint8_t retroLeftSource = 2; // Left, right, metric A, metric B, static weather icon.
   uint8_t retroRightSource = 3;
   uint8_t retroProgressSource = 4; // 0–3: existing values, 4: disabled.
   uint8_t retroProgressSegments = 10;

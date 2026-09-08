@@ -821,6 +821,7 @@ bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
     appearance.retroBackgroundColor = active.retroBackgroundColor;
     appearance.retroForegroundColor = active.retroForegroundColor;
     appearance.retroGhostOpacity = active.retroGhostOpacity;
+    appearance.retroWeatherRaster = active.retroWeatherRaster;
     appearance.retroLeftSource = active.retroLeftSource;
     appearance.retroRightSource = active.retroRightSource;
     appearance.retroProgressSource = active.retroProgressSource;
@@ -837,6 +838,12 @@ bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
   }
   if (server.hasArg("retroBackgroundColor") && !parseHtmlColor(server.arg("retroBackgroundColor"), appearance.retroBackgroundColor)) return false;
   if (server.hasArg("retroForegroundColor") && !parseHtmlColor(server.arg("retroForegroundColor"), appearance.retroForegroundColor)) return false;
+  if (server.hasArg("retroWeatherRaster")) {
+    const String value = server.arg("retroWeatherRaster");
+    if (value != "0" && value != "1") return false;
+    appearance.retroWeatherRaster = value == "1";
+  }
+
   if (server.hasArg("retroGhostOpacity")) {
     const String value = server.arg("retroGhostOpacity");
     if (value.length() == 0 || value.length() > 2) return false;
@@ -864,7 +871,7 @@ bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
   for (uint8_t i = 0; i < 2; ++i) {
     if (!server.hasArg(sourceKeys[i])) continue;
     const String value = server.arg(sourceKeys[i]);
-    if (value.length() != 1 || value[0] < '0' || value[0] > '3') return false;
+    if (value.length() != 1 || value[0] < '0' || value[0] > '4') return false;
     *sourceFields[i] = value[0] - '0';
   }
   const char *digitKeys[] = {"retroMetricADigits", "retroMetricBDigits"};
@@ -1374,6 +1381,8 @@ void handleGetConfig() {
   result += savedAppearance.retroProgressSource;
   result += F(",\"retroProgressSegments\":");
   result += savedAppearance.retroProgressSegments;
+  result += F(",\"retroWeatherRaster\":");
+  result += savedAppearance.retroWeatherRaster ? F("true") : F("false");
   result += F(",\"retroProgressMin\":");
   { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(savedAppearance.retroProgressMin)); result += value; }
   result += F(",\"retroProgressMax\":");
@@ -1382,6 +1391,8 @@ void handleGetConfig() {
   result += activeAppearance.retroProgressSource;
   result += F(",\"activeRetroProgressSegments\":");
   result += activeAppearance.retroProgressSegments;
+  result += F(",\"activeRetroWeatherRaster\":");
+  result += activeAppearance.retroWeatherRaster ? F("true") : F("false");
   result += F(",\"activeRetroProgressMin\":");
   { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(activeAppearance.retroProgressMin)); result += value; }
   result += F(",\"activeRetroProgressMax\":");
@@ -2180,6 +2191,8 @@ void handleClockAppearancePreview() {
   result += saved.retroProgressSource;
   result += F(",\"retroProgressSegments\":");
   result += saved.retroProgressSegments;
+  result += F(",\"retroWeatherRaster\":");
+  result += saved.retroWeatherRaster ? F("true") : F("false");
   result += F(",\"retroProgressMin\":");
   { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(saved.retroProgressMin)); result += value; }
   result += F(",\"retroProgressMax\":");
@@ -2188,6 +2201,8 @@ void handleClockAppearancePreview() {
   result += active.retroProgressSource;
   result += F(",\"activeRetroProgressSegments\":");
   result += active.retroProgressSegments;
+  result += F(",\"activeRetroWeatherRaster\":");
+  result += active.retroWeatherRaster ? F("true") : F("false");
   result += F(",\"activeRetroProgressMin\":");
   { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(active.retroProgressMin)); result += value; }
   result += F(",\"activeRetroProgressMax\":");

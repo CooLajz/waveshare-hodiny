@@ -55,3 +55,12 @@ Releasing the segment-count slider previews the change immediately; Save persist
 
 Znaménko mínus nemá podkres; rezervované místo udržuje číslice a jednotku na místě.
 The minus sign has no inactive trace; its reserved space keeps digits and units stationary.
+
+Levá i pravá pozice může místo hodnoty zobrazit statickou ikonu aktuálního počasí. Používá existující Monochrome asset v barvě LCD popředí (i v nočním režimu). Pole počtu číslic se pro ikonu skryje.
+Either value slot can show the static current-weather icon instead, recolored to the LCD foreground including night mode. Its digit-count control is hidden.
+
+Ikona počasí používá pevnou matici 26 × 26 bodů, každý 3 × 3 px s mezerou 1 px (celkem 103 × 103 px). Při zvolené ikoně lze společným on/off přepínačem zapnout nebo vypnout podkladový rastr. Přepnutí má okamžitý náhled; Uložit jej zachová po restartu. Změna ikony převádí průhlednost jejího výřezu do 85bajtové masky. Původní nastavení velikosti z dřívějších záloh a NVS se ignoruje.
+Weather uses a fixed 26 × 26 matrix with 3 × 3 px dots and 1 px gaps (103 × 103 px total). When weather is selected, a shared on/off switch controls the background grid with immediate preview and explicit Save. Icon changes rasterize the alpha crop into an 85-byte cache. Former dot-size settings in backups and NVS are ignored.
+
+Převod používá přesné plošné vážení průhlednosti, včetně zlomkového překryvu okrajových pixelů. Hranice vzorků se nezaokrouhlují, takže převod zachovává zrcadlovou symetrii.
+Rasterization uses exact area-weighted alpha, including fractional boundary coverage, preserving mirror symmetry without rounded sampling boundaries.

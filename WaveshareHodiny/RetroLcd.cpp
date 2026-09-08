@@ -15,6 +15,45 @@ char units[2][CLOCK_METRIC_SUFFIX_LENGTH] = {};
 char numbers[2][32] = {"--", "--"};
 uint8_t digitPlaces[2] = {3, 4};
 bool negativeValues[2] = {false, false};
+bool weatherSlots[2] = {false, false};
+const lv_img_dsc_t *weatherImage = nullptr;
+const lv_img_dsc_t *rasterizedWeatherImage = nullptr;
+uint8_t weatherMatrix[26 * 26 / 8 + 1] = {};
+bool weatherRaster = true;
+constexpr uint8_t weatherPixelSize = 3;
+constexpr int weatherGridSize() { return 26; }
+
+void rasterizeWeather(const lv_img_dsc_t *icon) {
+  std::memset(weatherMatrix, 0, sizeof(weatherMatrix));
+  if (!icon || !icon->header.w || !icon->header.h) return;
+  const int count = weatherGridSize();
+  // Exact area coverage: fractional boundary pixels contribute proportionally.
+  // Keep boundaries as integers in units of 1 / denominator source pixels,
+  // avoiding directional bias from rounding each sampling cell separately.
+  const int denominator = 32 * count;
+  for (int y = 0; y < count; ++y) {
+    const int top = (3 * count + y * 26) * icon->header.h;
+    const int bottom = (3 * count + (y + 1) * 26) * icon->header.h;
+    for (int x = 0; x < count; ++x) {
+      const int left = (3 * count + x * 26) * icon->header.w;
+      const int right = (3 * count + (x + 1) * 26) * icon->header.w;
+      uint64_t alpha = 0;
+      for (int sy = top / denominator; sy < (bottom + denominator - 1) / denominator; ++sy) {
+        const int overlapY = std::min(bottom, (sy + 1) * denominator) - std::max(top, sy * denominator);
+        for (int sx = left / denominator; sx < (right + denominator - 1) / denominator; ++sx) {
+          const int overlapX = std::min(right, (sx + 1) * denominator) - std::max(left, sx * denominator);
+          alpha += static_cast<uint64_t>(lv_img_buf_get_px_alpha(icon, sx, sy)) * overlapX * overlapY;
+        }
+      }
+      const uint64_t area = static_cast<uint64_t>(right - left) * (bottom - top);
+      if (alpha >= area * 64) {
+        const int bit = y * count + x;
+        weatherMatrix[bit / 8] |= 1U << (bit % 8);
+      }
+    }
+  }
+}
+
 uint8_t ghostOpacity = 5;
 float progress = NAN;
 bool progressEnabled = false;
@@ -186,13 +225,29 @@ void draw(lv_event_t *event) {
     snprintf(seconds,sizeof(seconds),"%02d",clockTime.tm_sec);
   }
   p.text(date,(480-p.width(date,16,5))/2,109,16,29,5);
-  p.text(time,48,154,60,112,12);
-  p.text(seconds,370,216,27,50,7);
+  p.text(time,50,154,60,112,12);
+  p.text(seconds,372,216,27,50,7);
   p.rect(38,278,404,1,ink());
   p.rect(240,291,1,69,ink());
   for(int i=0;i<2;++i) {
     const int center=i?339:141;
-    p.label(names[i],center-88,289,176,&clock_czech_16,ink());
+    p.label(weatherSlots[i] ? "" : names[i],center-88,289,176,&clock_czech_16,ink());
+    if (weatherSlots[i]) {
+      const int count = weatherGridSize();
+      const int pitch = weatherPixelSize + 1;
+      const int extent = count * pitch - 1;
+      const int left = center - extent / 2;
+      const int top = 280 + (103 - extent) / 2;
+      for (int row = 0; row < count; ++row) {
+        for (int column = 0; column < count; ++column) {
+          const int bit = row * count + column;
+          const bool active = weatherMatrix[bit / 8] & (1U << (bit % 8));
+          if (active || weatherRaster)
+            p.rect(left + column * pitch, top + row * pitch, weatherPixelSize, weatherPixelSize, active ? ink() : ghost());
+        }
+      }
+      continue;
+    }
     int w=24,h=46,gap=5;
     lv_point_t unitSize;
     lv_txt_get_size(&unitSize,units[i],&clock_unit_24,0,0,200,LV_TEXT_FLAG_EXPAND);
@@ -268,6 +323,24 @@ void retroLcdEnable(lv_obj_t *parent,bool enabled) {
   lv_obj_add_event_cb(face,draw,LV_EVENT_DRAW_MAIN,nullptr);
 }
 
+void retroLcdSetWeatherStyle(bool raster) {
+  if (weatherRaster == raster) return;
+  weatherRaster = raster;
+  if (face) lv_obj_invalidate(face);
+}
+
+void retroLcdSetWeather(bool left, bool right, const lv_img_dsc_t *icon) {
+  if (weatherSlots[0] == left && weatherSlots[1] == right && weatherImage == icon) return;
+  if (rasterizedWeatherImage != icon) {
+    rasterizeWeather(icon);
+    rasterizedWeatherImage = icon;
+  }
+  weatherSlots[0] = left;
+  weatherSlots[1] = right;
+  weatherImage = icon;
+  if (face) lv_obj_invalidate(face);
+}
+
 void retroLcdSetProgress(const ClockMetricConfig *config, float value, float minimum, float maximum, uint8_t segments) {
   segments = std::max<uint8_t>(5, std::min<uint8_t>(50, segments));
   const bool enabled = config != nullptr;
@@ -291,8 +364,8 @@ void retroLcdSetTime(const tm &value) {
   if(!timeAvailable || value.tm_yday!=clockTime.tm_yday || value.tm_year!=clockTime.tm_year)
     invalidate(65,50,350,92);
   if(!timeAvailable || value.tm_hour!=clockTime.tm_hour || value.tm_min!=clockTime.tm_min)
-    invalidate(43,149,320,122);
-  if(!timeAvailable || value.tm_sec!=clockTime.tm_sec) invalidate(365,211,73,59);
+    invalidate(43,138,320,133);
+  if(!timeAvailable || value.tm_sec!=clockTime.tm_sec) invalidate(367,185,73,85);
   clockTime=value;
   timeAvailable=true;
 }
