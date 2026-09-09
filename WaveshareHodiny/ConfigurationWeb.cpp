@@ -845,6 +845,7 @@ bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
     appearance.retroGhostOpacity = active.retroGhostOpacity;
     appearance.use12HourFormat = active.use12HourFormat;
     appearance.retroWeatherRaster = active.retroWeatherRaster;
+    appearance.retroFixedWeekday = active.retroFixedWeekday;
     appearance.retroLeftSource = active.retroLeftSource;
     appearance.retroRightSource = active.retroRightSource;
     appearance.retroProgressSource = active.retroProgressSource;
@@ -870,6 +871,11 @@ bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
     const String value = server.arg("retroWeatherRaster");
     if (value != "0" && value != "1") return false;
     appearance.retroWeatherRaster = value == "1";
+  }
+  if (server.hasArg("retroFixedWeekday")) {
+    const String value = server.arg("retroFixedWeekday");
+    if (value != "0" && value != "1") return false;
+    appearance.retroFixedWeekday = value == "1";
   }
 
   if (server.hasArg("retroGhostOpacity")) {
@@ -1427,6 +1433,8 @@ void handleGetConfig() {
   result += savedAppearance.use12HourFormat ? F("true") : F("false");
   result += F(",\"retroWeatherRaster\":");
   result += savedAppearance.retroWeatherRaster ? F("true") : F("false");
+  result += F(",\"retroFixedWeekday\":");
+  result += savedAppearance.retroFixedWeekday ? F("true") : F("false");
   result += F(",\"retroProgressMin\":");
   { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(savedAppearance.retroProgressMin)); result += value; }
   result += F(",\"retroProgressMax\":");
@@ -1439,6 +1447,8 @@ void handleGetConfig() {
   result += activeAppearance.use12HourFormat ? F("true") : F("false");
   result += F(",\"activeRetroWeatherRaster\":");
   result += activeAppearance.retroWeatherRaster ? F("true") : F("false");
+  result += F(",\"activeRetroFixedWeekday\":");
+  result += activeAppearance.retroFixedWeekday ? F("true") : F("false");
   result += F(",\"activeRetroProgressMin\":");
   { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(activeAppearance.retroProgressMin)); result += value; }
   result += F(",\"activeRetroProgressMax\":");
@@ -2271,6 +2281,8 @@ void handleClockAppearancePreview() {
   result += saved.use12HourFormat ? F("true") : F("false");
   result += F(",\"retroWeatherRaster\":");
   result += saved.retroWeatherRaster ? F("true") : F("false");
+  result += F(",\"retroFixedWeekday\":");
+  result += saved.retroFixedWeekday ? F("true") : F("false");
   result += F(",\"retroProgressMin\":");
   { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(saved.retroProgressMin)); result += value; }
   result += F(",\"retroProgressMax\":");
@@ -2283,6 +2295,8 @@ void handleClockAppearancePreview() {
   result += active.use12HourFormat ? F("true") : F("false");
   result += F(",\"activeRetroWeatherRaster\":");
   result += active.retroWeatherRaster ? F("true") : F("false");
+  result += F(",\"activeRetroFixedWeekday\":");
+  result += active.retroFixedWeekday ? F("true") : F("false");
   result += F(",\"activeRetroProgressMin\":");
   { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(active.retroProgressMin)); result += value; }
   result += F(",\"activeRetroProgressMax\":");

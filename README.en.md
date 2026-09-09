@@ -498,3 +498,5 @@ rules allow offline transitions. After a restart, NTP is needed to obtain the
 correct time. Embedded IANA 2026c data covers 2020–2100, including irregular
 transitions; subsequent legislative changes require a firmware database
 update. See `tools/generate_timezones.py` for the source and generator.
+
+LCD offers “Fixed weekday positions” (disabled by default): 7 positions in Czech and 9 in English, with inactive characters around shorter names. Disabling it restores the precisely centered name without surrounding positions.

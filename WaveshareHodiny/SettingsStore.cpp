@@ -41,6 +41,7 @@ const Key keys[] = {
     {"web-auth", "credential", Blob, 56},
     {"control-api", "secret", Text, 33},
     {"save-state", "receipt", Text, 33},
+    {"clock-look", "retroFixedDay", Byte, 1},
 };
 constexpr size_t KEY_COUNT = sizeof(keys) / sizeof(keys[0]);
 struct Image {

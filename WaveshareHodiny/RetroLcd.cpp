@@ -12,6 +12,7 @@ lv_obj_t *face = nullptr;
 tm clockTime = {};
 bool timeAvailable = false;
 bool use12HourFormat = false;
+bool fixedWeekday = false;
 bool showLeadingHourZero = true;
 bool english = false, night = false, wifi = false, web = false, ha = false;
 char names[2][CLOCK_METRIC_NAME_LENGTH] = {};
@@ -187,9 +188,8 @@ void draw(lv_event_t *event) {
   lv_area_t area;
   lv_obj_get_coords(face,&area);
   Painter p{lv_event_get_draw_ctx(event),area.x1,area.y1};
-  static const char *cz[] = {"NEDELE","PONDELI","UTERY","STREDA","CTVRTEK","PATEK","SOBOTA"};
-  static const char *en[] = {"SUNDAY","MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY"};
-  const char *day=timeAvailable?(english?en:cz)[clockTime.tm_wday]:"-------";
+  char day[10];
+  retroLcdFormatWeekday(day,sizeof(day),timeAvailable ? clockTime.tm_wday : -1,english,fixedWeekday);
   p.text(day,(480-p.width(day,18,6))/2,57,18,30,6,true,true);
   char date[16]="--.--.----", time[8]="--:--", seconds[4]="--";
   if(timeAvailable) {
@@ -340,6 +340,12 @@ void retroLcdSetLeadingHourZero(bool enabled) {
   if (showLeadingHourZero == enabled) return;
   showLeadingHourZero = enabled;
   invalidate(43,138,320,133);
+}
+
+void retroLcdSetFixedWeekday(bool enabled) {
+  if (fixedWeekday == enabled) return;
+  fixedWeekday = enabled;
+  invalidate(65,50,350,42);
 }
 
 void retroLcdSet12HourFormat(bool enabled) {

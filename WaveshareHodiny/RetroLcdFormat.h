@@ -38,3 +38,21 @@ inline void retroLcdFormatValue(char *out, size_t capacity, float value,
   std::memset(out, ' ', padding);
   std::memcpy(out + padding, formatted, std::strlen(formatted) + 1);
 }
+
+// Fixed LCD character positions; an unmatched spare position stays on the right.
+inline void retroLcdFormatWeekday(char *out, size_t capacity, int weekday, bool english, bool fixed = true) {
+  static const char *const cz[] = {"NEDELE","PONDELI","UTERY","STREDA","CTVRTEK","PATEK","SOBOTA"};
+  static const char *const en[] = {"SUNDAY","MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY"};
+  const auto &names = english ? en : cz;
+  size_t places = 0;
+  for (const char *name : names) places = std::max(places, std::strlen(name));
+  if (!fixed && weekday >= 0 && weekday < 7) places = std::strlen(names[weekday]);
+  if (!fixed && (weekday < 0 || weekday >= 7)) places = 7;
+  if (!capacity) return;
+  if (capacity <= places) { out[0] = '\0'; return; }
+  std::memset(out, weekday >= 0 && weekday < 7 ? ' ' : '-', places);
+  out[places] = '\0';
+  if (weekday < 0 || weekday >= 7) return;
+  const size_t length = std::strlen(names[weekday]);
+  std::memcpy(out + (places - length) / 2, names[weekday], length);
+}

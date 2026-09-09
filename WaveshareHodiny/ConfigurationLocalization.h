@@ -65,6 +65,7 @@ const char CONFIGURATION_LOCALIZATION_JS[] PROGMEM = R"JS(
     "24 hodin":"24-hour",
     "12 hodin (AM/PM)":"12-hour (AM/PM)",
     "Ikona počasí":"Weather icon",
+    "Pevné pozice dne":"Fixed weekday positions",
     "Podkladový rastr počasí":"Weather background grid",
     "Počet míst LCD":"LCD digit positions",
     "Číslice před desetinnou tečkou. Mínus má vlastní segment navíc. Prázdná místa zůstanou zhasnutá.":"Digits before the decimal point. Minus has its own extra segment. Empty positions remain unlit.",

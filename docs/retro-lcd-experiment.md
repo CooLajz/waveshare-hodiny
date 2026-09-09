@@ -71,3 +71,5 @@ A shared, language-independent 24/12-hour format uses 12 AM at midnight and 12 P
 Segment rasterization uses canonical shapes on a pixel grid and mirrors their finished antialiased coverage for opposing strokes. Small text, numeric values, AM/PM and the main time share the renderer. Geometry symmetry can be checked with `clang++ -std=c++11 -I WaveshareHodiny tests/retro_lcd_geometry_test.cpp -o /tmp/retro-lcd-geometry-test && /tmp/retro-lcd-geometry-test`.
 
 Day and date use solid-color segment edges. The day’s split middle strokes extend toward the center and outer sides for readability; other LCD elements retain antialiasing.
+
+The optional fixed weekday setting is disabled by default. When enabled, the weekday has a fixed bank of 7 Czech or 9 English character positions, derived from the longest localized weekday. Shorter names are centered with any spare odd position on the right; unused positions retain inactive segments.

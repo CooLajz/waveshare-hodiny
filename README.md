@@ -658,3 +658,5 @@ přechody bez internetu. Po restartu je pro získání přesného času potřeba
 Vestavěná data IANA 2026c pokrývají roky 2020–2100 včetně nepravidelných
 přechodů; pozdější legislativní změny vyžadují aktualizaci databáze ve firmwaru.
 Generátor a zdroj databáze jsou popsané v `tools/generate_timezones.py`.
+
+LCD nabízí přepínač „Pevné pozice dne“ (výchozí vypnuto): 7 pozic v češtině a 9 v angličtině, s pohaslými znaky kolem kratších názvů. Vypnutí vrací přesně centrovaný název bez okolních pozic.
