@@ -313,6 +313,10 @@ See [the backup format and storage contract](docs/configuration-backup.md).
 
 Long-press anywhere on the clock or radar to open the settings pages. A
 horizontal swipe in either direction switches between the clock and radar.
+On the clock, swiping up cycles Digital → Analog → Retro LCD; swiping down
+cycles in reverse. This is temporary: restart restores the saved clock face.
+With animated transitions enabled, faces slide vertically in the swipe
+direction over 500 ms; otherwise they switch immediately.
 On the radar, swiping up zooms in and swiping down zooms out; this range change
 remains temporary until restart. With automatic day/night mode disabled, a
 short tap on either screen switches the appearance. Arrow buttons move between

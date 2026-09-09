@@ -90,6 +90,7 @@ void readTouch(lv_indev_drv_t *, lv_indev_data_t *data) {
       touch_data.gesture == SWIPE_UP || touch_data.gesture == SWIPE_DOWN;
   const bool singleClick = touch_data.gesture == SINGLE_CLICK;
   if (horizontalSwipe) {
+    verticalSwipeLatched = false;
     if (!horizontalSwipeLatched) {
       horizontalSwipeLatched = true;
       horizontalSwipePending = touch_data.gesture == SWIPE_LEFT ? -1 : 1;

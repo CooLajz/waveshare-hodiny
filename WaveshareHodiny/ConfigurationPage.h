@@ -331,7 +331,7 @@ const char CONFIGURATION_PAGE[] PROGMEM = R"HTML(
       </div>
     </section>
     <section>
-      <div class="grid"><div class="span-12"><div class="switch-row"><span class="field-label">Animovaný přechod obrazovek (hodiny/meteoradar)</span><label class="switch" aria-label="Animovaný přechod obrazovek (hodiny/meteoradar)"><input id="animatedScreenTransitions" name="animatedScreenTransitions" type="checkbox" checked><span></span></label></div><span class="hint">Plynulý posun při ručním i automatickém přepínání obrazovek.</span></div></div>
+      <div class="grid"><div class="span-12"><div class="switch-row"><span class="field-label">Animované přechody obrazovek a ciferníků</span><label class="switch" aria-label="Animované přechody obrazovek a ciferníků"><input id="animatedScreenTransitions" name="animatedScreenTransitions" type="checkbox" checked><span></span></label></div><span class="hint">Plynulý posun při přepínání ciferníků a při ručním i automatickém přepínání hodin a meteoradaru.</span></div></div>
     </section>
     <section>
       <h2>Jas a režim DEN/NOC</h2>

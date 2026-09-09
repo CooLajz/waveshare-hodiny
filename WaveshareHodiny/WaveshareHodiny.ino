@@ -274,6 +274,7 @@ void applyPendingClockAppearance() {
   if (!clockAppearanceApplyPending) return;
   clockAppearanceApplyPending = false;
   clockDashboardApplyAppearance(pendingAppearance);
+  lastDisplayedSecond = -1;
 }
 
 void applyPendingRuntimeConfiguration() {
@@ -530,10 +531,22 @@ void maintainDisplayGestures() {
                                   horizontalSwipeDirection);
   }
   const int8_t verticalSwipeDirection = displayDriverTakeVerticalSwipe();
-  if (verticalSwipeDirection != 0 && radarAvailable &&
-      clockDashboardRadarVisible() &&
+  if (verticalSwipeDirection != 0 &&
       clockDashboardAutomaticRotationAllowed()) {
-    handleRadarRangeChange(verticalSwipeDirection);
+    if (clockDashboardRadarVisible()) {
+      if (radarAvailable) handleRadarRangeChange(verticalSwipeDirection);
+    } else {
+      // Fyzický test panelu ukázal opačný svislý směr než názvy CST820 gest.
+      // Normalizujeme pouze ciferníky; zavedené ovládání radaru zůstává stejné.
+      const int8_t clockSwipeDirection = -verticalSwipeDirection;
+      ClockAppearanceConfig appearance = activeAppearance;
+      constexpr uint8_t styleCount = CLOCK_STYLE_RETRO_LCD + 1;
+      appearance.style = (appearance.style +
+          (clockSwipeDirection < 0 ? 1 : styleCount - 1)) % styleCount;
+      activeAppearance = appearance;
+      clockDashboardSwipeAppearance(appearance, clockSwipeDirection);
+      lastDisplayedSecond = -1;
+    }
   }
   if (displayDriverTakeSingleClick()) clockDashboardHandleShortClick();
 }
@@ -1822,6 +1835,9 @@ void loop() {
   // pozastavení LVGL timerů zabrání tomu, aby GIF dekodér soupeřil s USB CDC;
   // po dokončení přenosu se animace plynule rozběhne od dalšího snímku.
   if (!screenshotTransferActive) {
+    // Změna ciferníku/formátu musí mít správné datum už v prvním snímku,
+    // včetně cílového snapshotu swipu; nečekáme na příští celou sekundu.
+    if (lastDisplayedSecond == -1) maintainNetworkTime();
     clockDashboardLoop();
     displayDriverLoop();
   }

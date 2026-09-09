@@ -64,6 +64,8 @@ void clockDashboardSetWebActive(bool active);
 void clockDashboardSetWifiConnected(bool connected);
 void clockDashboardSetWebMode(uint8_t mode);
 void clockDashboardApplyConfiguration(const ClockConfig &config);
+void clockDashboardSwipeAppearance(const ClockAppearanceConfig &appearance,
+                                   int8_t direction);
 void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance);
 void clockDashboardUpdate(const ClockValues &values);
 void clockDashboardSetDate(const char *dateText);

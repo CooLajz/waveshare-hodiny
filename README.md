@@ -361,12 +361,18 @@ Nastavení otevře dlouhý stisk kdekoliv na hodinách i meteoradaru. Mezi hodin
 a meteoradarem přepne vodorovné gesto swipe doleva nebo doprava. Protože jsou
 obrazovky pouze dvě, oba směry vždy zobrazí druhou obrazovku.
 
+Na hodinách swipe nahoru cyklí ciferníky Digitální → Analogový → Retro LCD,
+swipe dolů prochází opačným směrem. Přepnutí je dočasné; po restartu se vrátí
+uložený ciferník. Pokud jsou povolené animované přechody, ciferníky se posouvají
+svisle ve směru tahu během 500 ms, jinak se přepnou okamžitě.
+
 Na radaru swipe nahoru pohled přiblíží a swipe dolů jej oddálí. Změna provedená
 na displeji je dočasná a nezapisuje se do flash.
 
 | Obrazovka a gesto | Výsledek |
 | --- | --- |
 | Hodiny: swipe doleva nebo doprava | Otevře meteoradar |
+| Hodiny: swipe nahoru / dolů | Další / předchozí ciferník |
 | Meteoradar: swipe doleva nebo doprava | Vrátí hodiny |
 | Hodiny nebo meteoradar: dlouhý stisk kdekoliv | Otevře nastavení |
 | Hodiny nebo meteoradar: krátký dotyk při vypnuté automatice den/noc | Přepne denní a noční režim |
