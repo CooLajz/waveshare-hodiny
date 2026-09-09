@@ -13,6 +13,7 @@ tm clockTime = {};
 bool timeAvailable = false;
 bool use12HourFormat = false;
 bool fixedWeekday = false;
+uint8_t dateFormat = 0;
 bool showLeadingHourZero = true;
 bool english = false, night = false, wifi = false, web = false, ha = false;
 char names[2][CLOCK_METRIC_NAME_LENGTH] = {};
@@ -158,20 +159,32 @@ struct Painter {
     }
   }
 
-  int width(const char *text,int w,int gap) {
+  bool dateSeparator(int position) {
+    return dateFormat % 7 >= 5 ? (position == 4 || position == 7) : (position == 2 || position == 5);
+  }
+
+  int width(const char *text,int w,int gap,bool dateSymbols=false) {
     int total=0;
-    for(const char *c=text;*c;++c) total+=(*c=='.'||*c==':'?std::max(4,w/3):w)+gap;
+    for(const char *c=text;*c;++c) total+=(*c=='.'||*c==':'?std::max(4,w/3):(dateSymbols && dateSeparator(c-text) && (*c=='-' || *c=='/') ? std::max(5,w/2) : w))+gap;
     return std::max(0,total-gap);
   }
 
-  void text(const char *value,int x,int y,int w,int h,int gap,bool alphabet=false,bool solid=false) {
+  void text(const char *value,int x,int y,int w,int h,int gap,bool alphabet=false,bool solid=false,bool dateSymbols=false) {
     lv_area_t bounds={static_cast<lv_coord_t>(ox+x),static_cast<lv_coord_t>(oy+y),
-                     static_cast<lv_coord_t>(ox+x+width(value,w,gap)),static_cast<lv_coord_t>(oy+y+h)};
+                     static_cast<lv_coord_t>(ox+x+width(value,w,gap,dateSymbols)),static_cast<lv_coord_t>(oy+y+h)};
     lv_area_t clip;
     if(!_lv_area_intersect(&clip,ctx->clip_area,&bounds)) return;
     for(const char *c=value;*c;++c) {
       int cw=w;
-      if(*c=='.'||*c==':') {
+      if(dateSymbols && dateSeparator(c-value) && (*c=='-' || *c=='/')) {
+        cw=std::max(5,w/2);
+        if(*c=='-') rect(x,y+h/2,cw,2,ink());
+        else {
+          const int length=h/2;
+          for(int row=0;row<length;++row)
+            rect(x+cw-2-row*(cw-2)/(length-1),y+h/4+row,2,1,ink());
+        }
+      } else if(*c=='.'||*c==':') {
         cw=std::max(4,w/3);
         int s=std::max(3,h/12);
         if(*c==':') {
@@ -192,12 +205,12 @@ void draw(lv_event_t *event) {
   retroLcdFormatWeekday(day,sizeof(day),timeAvailable ? clockTime.tm_wday : -1,english,fixedWeekday);
   p.text(day,(480-p.width(day,18,6))/2,57,18,30,6,true,true);
   char date[16]="--.--.----", time[8]="--:--", seconds[4]="--";
+  retroLcdFormatDate(date,sizeof(date),clockTime.tm_mday,clockTime.tm_mon+1,clockTime.tm_year+1900,dateFormat,timeAvailable);
   if(timeAvailable) {
-    snprintf(date,sizeof(date),"%02d.%02d.%04d",clockTime.tm_mday,clockTime.tm_mon+1,clockTime.tm_year+1900);
     snprintf(time,sizeof(time),showLeadingHourZero ? "%02d:%02d" : "%2d:%02d",clockDisplayHour(clockTime.tm_hour,use12HourFormat),clockTime.tm_min);
     snprintf(seconds,sizeof(seconds),"%02d",clockTime.tm_sec);
   }
-  p.text(date,(480-p.width(date,16,5))/2,109,16,29,5,false,true);
+  p.text(date,(480-p.width(date,16,5,true))/2,106,16,29,5,false,true,true);
   p.text(time,50,154,60,112,12);
   p.text(seconds,372,216,27,50,7);
   if (use12HourFormat && timeAvailable) p.text(clockTimePeriod(clockTime.tm_hour),380,169,18,32,8,true);
@@ -340,6 +353,13 @@ void retroLcdSetLeadingHourZero(bool enabled) {
   if (showLeadingHourZero == enabled) return;
   showLeadingHourZero = enabled;
   invalidate(43,138,320,133);
+}
+
+void retroLcdSetDateStyle(uint8_t format) {
+  if (format > 13) format = 0;
+  if (dateFormat == format) return;
+  dateFormat = format;
+  invalidate(65,100,350,42);
 }
 
 void retroLcdSetFixedWeekday(bool enabled) {

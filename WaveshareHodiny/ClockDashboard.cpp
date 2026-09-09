@@ -3340,6 +3340,7 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
 void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
   retroLcdSet12HourFormat(appearance.use12HourFormat);
   retroLcdSetFixedWeekday(appearance.retroFixedWeekday);
+  retroLcdSetDateStyle(appearance.retroDateFormat);
   animatedScreenTransitions = appearance.animatedScreenTransitions;
   retroProgressSource = constrain(appearance.retroProgressSource, 0, 4);
   retroProgressSegments = constrain(appearance.retroProgressSegments, 5, 50);

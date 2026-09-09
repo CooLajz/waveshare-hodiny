@@ -102,6 +102,7 @@ struct ClockAppearanceConfig {
   uint8_t retroGhostOpacity = 5;
   bool retroWeatherRaster = true;
   bool retroFixedWeekday = false;
+  uint8_t retroDateFormat = 0; // 0–6: padded DMY/MDY/YMD layouts; 7–13: same layouts with blank leading zeros.
   uint8_t retroLeftSource = 2; // Left, right, metric A, metric B, static weather icon.
   uint8_t retroRightSource = 3;
   uint8_t retroProgressSource = 4; // 0–3: existing values, 4: disabled.

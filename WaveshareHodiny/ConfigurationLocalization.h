@@ -65,6 +65,8 @@ const char CONFIGURATION_LOCALIZATION_JS[] PROGMEM = R"JS(
     "24 hodin":"24-hour",
     "12 hodin (AM/PM)":"12-hour (AM/PM)",
     "Ikona počasí":"Weather icon",
+    "Formát data LCD":"LCD date format",
+    "Varianty bez úvodních nul zachovají prázdné pozice a podkres číslic.":"Formats without leading zeros retain blank positions and inactive segments.",
     "Pevné pozice dne":"Fixed weekday positions",
     "Podkladový rastr počasí":"Weather background grid",
     "Počet míst LCD":"LCD digit positions",

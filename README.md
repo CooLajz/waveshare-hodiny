@@ -660,3 +660,5 @@ přechodů; pozdější legislativní změny vyžadují aktualizaci databáze ve
 Generátor a zdroj databáze jsou popsané v `tools/generate_timezones.py`.
 
 LCD nabízí přepínač „Pevné pozice dne“ (výchozí vypnuto): 7 pozic v češtině a 9 v angličtině, s pohaslými znaky kolem kratších názvů. Vypnutí vrací přesně centrovaný název bez okolních pozic.
+
+Formát data LCD lze vybrat samostatně: pořadí den–měsíc–rok, měsíc–den–rok nebo rok–měsíc–den, s tečkami, pomlčkami či lomítky podle varianty. Každý formát má variantu bez úvodních nul, která zachová prázdné pozice a podkres. Výchozí je DD.MM.YYYY.

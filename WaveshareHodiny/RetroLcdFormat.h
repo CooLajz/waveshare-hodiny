@@ -56,3 +56,25 @@ inline void retroLcdFormatWeekday(char *out, size_t capacity, int weekday, bool 
   const size_t length = std::strlen(names[weekday]);
   std::memcpy(out + (places - length) / 2, names[weekday], length);
 }
+
+// All date layouts reserve two day/month positions, even with hidden zeros.
+inline void retroLcdFormatDate(char *out, size_t capacity, int day, int month, int year,
+                              unsigned format, bool available = true) {
+  if (!capacity) return;
+  if (capacity < 11) { out[0] = '\0'; return; }
+  if (format > 13) format = 0;
+  const bool leadingZeros = format < 7;
+  format %= 7;
+  const char separator = format == 0 ? '.' : (format == 2 || format == 4 || format == 6 ? '/' : '-');
+  char d[3], m[3], y[5];
+  if (available && day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 0 && year <= 9999) {
+    std::snprintf(d,sizeof(d),leadingZeros ? "%02d" : "%2d",day);
+    std::snprintf(m,sizeof(m),leadingZeros ? "%02d" : "%2d",month);
+    std::snprintf(y,sizeof(y),"%04d",year);
+  } else {
+    std::strcpy(d,"--"); std::strcpy(m,"--"); std::strcpy(y,"----");
+  }
+  if (format >= 5) std::snprintf(out,capacity,"%s%c%s%c%s",y,separator,m,separator,d);
+  else if (format >= 3) std::snprintf(out,capacity,"%s%c%s%c%s",m,separator,d,separator,y);
+  else std::snprintf(out,capacity,"%s%c%s%c%s",d,separator,m,separator,y);
+}

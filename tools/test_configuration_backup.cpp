@@ -122,6 +122,7 @@ void testCompleteSnapshot() {
   source.metricAColorScale.points[1]={1.0002f,0};
   ClockAppearanceConfig appearance;appearance.style=CLOCK_STYLE_RETRO_LCD;
   appearance.retroFixedWeekday=true;
+  appearance.retroDateFormat=10;
   appearance.use12HourFormat=true;appearance.retroProgressMin=0.0001234567f;
   uint8_t credential[56]={}; uint32_t magic=0x57485058;memcpy(credential,&magic,4);
   for(size_t i=4;i<52;++i)credential[i]=i;
@@ -146,6 +147,7 @@ void testCompleteSnapshot() {
   ClockAppearanceConfig restoredAppearance;assert(clockAppearanceLoad(restoredAppearance));
   assert(restoredAppearance.use12HourFormat&&restoredAppearance.style==CLOCK_STYLE_RETRO_LCD);
   assert(restoredAppearance.retroFixedWeekday);
+  assert(restoredAppearance.retroDateFormat==10);
   assert(restoredAppearance.retroProgressMin==appearance.retroProgressMin);
   prefs.begin("web-auth",true);uint8_t readCredential[56];assert(prefs.getBytes("credential",readCredential,56)==56);
   assert(!memcmp(credential,readCredential,56));assert(settingsTransactionCommit());
@@ -153,14 +155,24 @@ void testCompleteSnapshot() {
   assert(!strcmp(restored.homeAssistantToken,source.homeAssistantToken));
   prefs.begin("web-mode",true);assert(prefs.getUChar("mode")==2);
   assert(clockAppearanceLoad(restoredAppearance));assert(restoredAppearance.retroFixedWeekday);
+  assert(restoredAppearance.retroDateFormat==10);
   // A normal color-only save must retain the weekday option and survive reboot.
   restoredAppearance.retroForegroundColor=0x123456;
   assert(clockAppearanceSave(restoredAppearance));settingsStoreTestReset();assert(settingsStoreBegin());
   assert(clockAppearanceLoad(restoredAppearance));
   assert(restoredAppearance.retroForegroundColor==0x123456 && restoredAppearance.retroFixedWeekday);
+  assert(restoredAppearance.retroDateFormat==10);
+  for(uint8_t format=0;format<14;++format) {
+    restoredAppearance.retroDateFormat=format;
+    assert(clockAppearanceSave(restoredAppearance));settingsStoreTestReset();assert(settingsStoreBegin());
+    assert(clockAppearanceLoad(restoredAppearance));assert(restoredAppearance.retroDateFormat==format);
+  }
+  assert(settingsTransactionBegin());prefs.begin("clock-look");
+  assert(prefs.putUChar("retroDateFmt",14)==1);assert(!settingsTransactionCommit());
+  settingsTransactionAbort();assert(clockAppearanceLoad(restoredAppearance));assert(restoredAppearance.retroDateFormat==13);
   // Older images do not carry the appended key and use its explicit default.
-  prefs.begin("clock-look");assert(prefs.remove("retroFixedDay"));
-  assert(clockAppearanceLoad(restoredAppearance));assert(!restoredAppearance.retroFixedWeekday);
+  prefs.begin("clock-look");assert(prefs.remove("retroFixedDay"));assert(prefs.remove("retroDateFmt"));
+  assert(clockAppearanceLoad(restoredAppearance));assert(!restoredAppearance.retroFixedWeekday);assert(restoredAppearance.retroDateFormat==0);
   puts("PASS: encrypted full settings restore over clean target, HA/TMEP credentials, web auth, appearance, exact floats and reboot");
 }
 int main(){testMigration();testStorage();testCrypto();testCompleteSnapshot();testCorruptStoreRecovery();}

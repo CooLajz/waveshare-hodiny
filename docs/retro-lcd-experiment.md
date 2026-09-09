@@ -73,3 +73,5 @@ Segment rasterization uses canonical shapes on a pixel grid and mirrors their fi
 Day and date use solid-color segment edges. The day’s split middle strokes extend toward the center and outer sides for readability; other LCD elements retain antialiasing.
 
 The optional fixed weekday setting is disabled by default. When enabled, the weekday has a fixed bank of 7 Czech or 9 English character positions, derived from the longest localized weekday. Shorter names are centered with any spare odd position on the right; unused positions retain inactive segments.
+
+LCD date preferences use one selector with 14 choices: seven layouts (DMY dot/dash/slash, MDY dash/slash, YMD dash/slash), each with or without visible leading zeros. IDs 0–6 are padded; IDs 7–13 keep blank zero positions. The default is 0 (DD.MM.YYYY). Separators have dedicated compact rendering; the date stays at y=106. Changes preview immediately and persist in appearance preferences.

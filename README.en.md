@@ -500,3 +500,5 @@ transitions; subsequent legislative changes require a firmware database
 update. See `tools/generate_timezones.py` for the source and generator.
 
 LCD offers “Fixed weekday positions” (disabled by default): 7 positions in Czech and 9 in English, with inactive characters around shorter names. Disabling it restores the precisely centered name without surrounding positions.
+
+LCD date format is configurable independently: day–month–year, month–day–year, or year–month–day, with dots, dashes, or slashes depending on the layout. Each layout offers a variant without leading zeros that retains blank positions and inactive segments. The default is DD.MM.YYYY.

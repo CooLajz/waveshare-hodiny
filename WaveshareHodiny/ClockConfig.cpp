@@ -288,6 +288,8 @@ bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
   appearance.use12HourFormat = preferences.getBool("time12h", false);
   appearance.retroWeatherRaster = preferences.getBool("retroWxRaster", true);
   appearance.retroFixedWeekday = preferences.getBool("retroFixedDay", false);
+  appearance.retroDateFormat = preferences.getUChar("retroDateFmt", 0);
+  if (appearance.retroDateFormat > 13) appearance.retroDateFormat = 0;
   appearance.retroGhostOpacity = constrain(preferences.getUChar("retroGhost", 5), 0, 50);
   appearance.retroBackgroundColor = preferences.getUInt("retroBg", 0xB7C1A5) & 0xFFFFFF;
   appearance.retroForegroundColor = preferences.getUInt("retroFg", 0x20261C) & 0xFFFFFF;
@@ -352,6 +354,7 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
   const bool retroSourcesSaved = preferences.putUChar("retroLeft", constrain(appearance.retroLeftSource, 0, 4)) == sizeof(uint8_t) &&
       preferences.putUChar("retroRight", constrain(appearance.retroRightSource, 0, 4)) == sizeof(uint8_t);
   const bool timeFormatSaved = preferences.putBool("time12h", appearance.use12HourFormat) == sizeof(bool);
+  const bool retroDateSaved = preferences.putUChar("retroDateFmt", appearance.retroDateFormat <= 13 ? appearance.retroDateFormat : 0) == sizeof(uint8_t);
   const bool retroWeekdaySaved = preferences.putBool("retroFixedDay", appearance.retroFixedWeekday) == sizeof(bool);
   const bool retroWeatherSaved = preferences.putBool("retroWxRaster", appearance.retroWeatherRaster) == sizeof(bool);
   const bool retroGhostSaved = preferences.putUChar("retroGhost", constrain(appearance.retroGhostOpacity, 0, 50)) == sizeof(uint8_t);
@@ -405,7 +408,7 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
                           appearance.monochromeWeatherIconColor & 0xFFFFFF) ==
       sizeof(uint32_t);
   preferences.end();
-  const bool ok = retroWeekdaySaved && timeFormatSaved && retroWeatherSaved && retroProgressSaved && retroSourcesSaved && retroGhostSaved && styleSaved && toneSaved && handToneSaved && accentColorSaved &&
+  const bool ok = retroDateSaved && retroWeekdaySaved && timeFormatSaved && retroWeatherSaved && retroProgressSaved && retroSourcesSaved && retroGhostSaved && styleSaved && toneSaved && handToneSaved && accentColorSaved &&
          accentsSaved && outlineHandsSaved && monoValuesSaved &&
          valuesAboveSaved && dateFormatSaved && dateColorSaved &&
          weatherColorSaved && transitionSaved && digitsSavedA && digitsSavedB && retroColorsSaved;

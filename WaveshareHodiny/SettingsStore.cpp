@@ -42,6 +42,7 @@ const Key keys[] = {
     {"control-api", "secret", Text, 33},
     {"save-state", "receipt", Text, 33},
     {"clock-look", "retroFixedDay", Byte, 1},
+    {"clock-look", "retroDateFmt", Byte, 1},
 };
 constexpr size_t KEY_COUNT = sizeof(keys) / sizeof(keys[0]);
 struct Image {
@@ -94,6 +95,7 @@ bool validImage(const uint8_t *data, size_t length) {
       switch (id) {
         case 1: case 26: if (value > 2) return false; break;
         case 9: if (value > 5) return false; break;
+        case 31: if (value > 13) return false; break; // retroDateFmt
         case 12: if (value < 5 || value > 50) return false; break;
         case 13: case 16: case 17: if (value > 4) return false; break;
         case 20: if (value > 50) return false; break;
