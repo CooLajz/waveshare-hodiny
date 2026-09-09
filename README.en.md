@@ -502,3 +502,24 @@ update. See `tools/generate_timezones.py` for the source and generator.
 LCD offers “Fixed weekday positions” (disabled by default): 7 positions in Czech and 9 in English, with inactive characters around shorter names. Disabling it restores the precisely centered name without surrounding positions.
 
 LCD date format is configurable independently: day–month–year, month–day–year, or year–month–day, with dots, dashes, or slashes depending on the layout. Each layout offers a variant without leading zeros that retains blank positions and inactive segments. The default is DD.MM.YYYY.
+
+
+### Web performance and live clock preview
+
+Both development and release scripts generate gzip page and translation assets with
+`tools/generate_web_assets.py`. The ignored output at
+`WaveshareHodiny/local/ConfigurationAssets.h` is refreshed from source during builds.
+The ESP32 serves the prepared bytes from flash without runtime compression.
+Direct compilation without that header falls back to the original page; rerun the
+generator when directly compiling after web source changes.
+
+Digital immediately previews the font, time/date colors, date format, leading zero,
+colon, side icon colors, and seconds effect settings. These previews do not write
+flash or resynchronize the LCD. Press **Save** to persist them. Network settings and
+data sources still apply when saved.
+
+Digital, Analog, and Retro LCD previews share a queue: rapid changes are coalesced
+for 120 ms, with at most one request in flight. Saving waits for pending previews
+and prevents form edits during the write. The saved transaction identifier is still
+verified, without a fixed one-second delay. Firmware status no longer blocks the
+form, and the memory overview requests a compact diagnostic response.

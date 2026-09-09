@@ -4,6 +4,7 @@
 
 using ClockSettingsApplyCallback = void (*)();
 
+using ClockConfigPreviewCallback = bool (*)(const ClockConfig &config);
 using ClockConfigLoadCallback = void (*)(ClockConfig &config);
 using ClockConfigSaveCallback = bool (*)(const ClockConfig &config,
                                          bool tokenWasSubmitted);
@@ -44,7 +45,8 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
                            ClockAppearanceStateCallback appearanceStateCallback,
                            ClockAppearanceChangeCallback appearancePreviewCallback,
                            ClockAppearanceChangeCallback appearanceSaveCallback,
-                           ClockSettingsApplyCallback settingsApplyCallback);
+                           ClockSettingsApplyCallback settingsApplyCallback,
+                           ClockConfigPreviewCallback previewCallback);
 void configurationWebLoop();
 void configurationWebEnsureActive();
 void configurationWebExtendAvailability();

@@ -163,6 +163,26 @@ void loadRuntimeConfigForWeb(ClockConfig &config) {
   xSemaphoreGive(runtimeConfigMutex);
 }
 
+bool digitalAppearanceApplyPending = false;
+
+bool previewDigitalAppearanceFromWeb(const ClockConfig &config) {
+  xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
+  runtimeConfig = config;
+  xSemaphoreGive(runtimeConfigMutex);
+  digitalAppearanceApplyPending = true;
+  return true;
+}
+
+void applyPendingDigitalAppearance() {
+  if (!digitalAppearanceApplyPending) return;
+  digitalAppearanceApplyPending = false;
+  xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
+  dashboardConfigBuffer = runtimeConfig;
+  xSemaphoreGive(runtimeConfigMutex);
+  lastDisplayedSecond = -1;
+  clockDashboardApplyConfiguration(dashboardConfigBuffer);
+}
+
 bool saveRuntimeConfig(const ClockConfig &config, bool tokenWasSubmitted) {
   configSaveBuffer = config;
   if (!tokenWasSubmitted) {
@@ -1748,7 +1768,8 @@ void setup() {
                         displayPowerForcedOff, loadRadarRangeStateForWeb,
                         previewRadarRangeFromWeb, loadClockAppearanceForWeb,
                         previewClockAppearanceFromWeb,
-                        saveClockAppearanceFromWeb, applyCommittedSettingsFromWeb);
+                        saveClockAppearanceFromWeb, applyCommittedSettingsFromWeb,
+                        previewDigitalAppearanceFromWeb);
   clockDashboardSetWebMode(configurationWebMode());
 
   const esp_task_wdt_config_t watchdogConfig = {
@@ -1791,6 +1812,7 @@ void loop() {
   configurationWebLoop();
   applyPendingRuntimeConfiguration();
   applyPendingClockAppearance();
+  applyPendingDigitalAppearance();
   maintainDisplayGestures();
   maintainRadarNightVisual();
   maintainRadarRangeChange();

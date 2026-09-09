@@ -662,3 +662,24 @@ Generátor a zdroj databáze jsou popsané v `tools/generate_timezones.py`.
 LCD nabízí přepínač „Pevné pozice dne“ (výchozí vypnuto): 7 pozic v češtině a 9 v angličtině, s pohaslými znaky kolem kratších názvů. Vypnutí vrací přesně centrovaný název bez okolních pozic.
 
 Formát data LCD lze vybrat samostatně: pořadí den–měsíc–rok, měsíc–den–rok nebo rok–měsíc–den, s tečkami, pomlčkami či lomítky podle varianty. Každý formát má variantu bez úvodních nul, která zachová prázdné pozice a podkres. Výchozí je DD.MM.YYYY.
+
+
+### Rychlost webu a živý náhled ciferníku
+
+Vývojový i release skript generují gzip stránky a překladů pomocí
+`tools/generate_web_assets.py`. Výstup v `WaveshareHodiny/local/ConfigurationAssets.h`
+je ignorovaný a při sestavení se obnovuje ze zdrojů. ESP32 odesílá hotová data z flash,
+bez komprese za běhu. Přímá kompilace bez generovaného headeru používá původní stránku;
+při přímé kompilaci po změně webu je potřeba generátor spustit znovu.
+
+Digital okamžitě zobrazuje změny fontu, barvy času a data, formátu data,
+úvodní nuly, dvojtečky, barev bočních ikon a parametrů vteřinového efektu.
+Tyto náhledy nezapisují do flash a nevyvolávají resynchronizaci LCD.
+Trvalé nastavení se zapíše až tlačítkem **Uložit**. Síťová nastavení a zdroje dat
+se nadále použijí při uložení.
+
+Náhledy Digital, Analog a Retro LCD mají společnou frontu: rychlé změny se slučují
+po 120 ms a běží nejvýše jeden požadavek. Uložení počká na rozpracovaný náhled
+a po dobu zápisu zabrání editaci formuláře. Ověření identifikátoru uložené transakce
+zůstává zachované, ale bez pevné sekundové prodlevy. Stav firmware neblokuje
+zobrazení formuláře a přehled paměti používá zkrácenou diagnostiku.

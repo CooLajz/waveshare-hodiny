@@ -21,6 +21,10 @@
 
 #include "ConfigurationPage.h"
 #include "ConfigurationLocalization.h"
+#if __has_include("local/ConfigurationAssets.h")
+#include "local/ConfigurationAssets.h"
+#define CLOCK_COMPRESSED_WEB_ASSETS 1
+#endif
 #include "ChmiRadarService.h"
 #include "DiagnosticPage.h"
 #include "Display_ST7701.h"
@@ -759,6 +763,9 @@ void sendError(int status, const String &message) {
   sendJson(status, payload);
 }
 
+ClockConfigPreviewCallback configPreviewCallback = nullptr;
+bool digitalPreviewActive = false;
+
 ClockConfig &currentConfig() {
   if (configLoadCallback != nullptr) configLoadCallback(configBuffer);
   return configBuffer;
@@ -1233,10 +1240,18 @@ void handleRoot() {
   addSecurityHeaders();
   if (webActive) {
     extendWebAvailability();
-    server.send_P(200, PSTR("text/html; charset=utf-8"),
-                  webPasswordEnabled && !webSessionAuthenticated()
-                      ? LOGIN_PAGE
-                      : CONFIGURATION_PAGE);
+    if (webPasswordEnabled && !webSessionAuthenticated()) {
+      server.send_P(200, PSTR("text/html; charset=utf-8"), LOGIN_PAGE);
+    } else {
+#if CLOCK_COMPRESSED_WEB_ASSETS
+      server.sendHeader("Content-Encoding", "gzip");
+      server.send_P(200, PSTR("text/html; charset=utf-8"),
+                    reinterpret_cast<const char *>(CONFIGURATION_PAGE_GZIP),
+                    sizeof(CONFIGURATION_PAGE_GZIP));
+#else
+      server.send_P(200, PSTR("text/html; charset=utf-8"), CONFIGURATION_PAGE);
+#endif
+    }
   } else {
     server.send_P(200, PSTR("text/html; charset=utf-8"), DIAGNOSTIC_PAGE);
   }
@@ -1364,7 +1379,9 @@ void handleGetConfig() {
   result += jsonEscape(config.homeAssistantUrl);
   result += F("\",\"saveConfirmationId\":\"");
   result += lastSaveConfirmationId;
-  result += F("\",\"supportedBackupSchemas\":[");
+  result += F("\",\"digitalPreviewActive\":");
+  result += digitalPreviewActive ? F("true") : F("false");
+  result += F(",\"supportedBackupSchemas\":[");
   bool firstSchema = true;
   for (uint32_t schema = 1; schema <= CLOCK_CONFIG_SCHEMA_VERSION; ++schema) {
     if (!clockConfigSchemaSupported(schema)) continue;
@@ -1673,6 +1690,111 @@ void handleGetConfig() {
   sendJson(200, result);
 }
 
+bool readDigitalAppearanceFromRequest(ClockConfig &config) {
+  const String timeColonEffect = server.arg("timeColonEffect");
+  if (timeColonEffect == "steady")
+    config.timeColonEffect = CLOCK_TIME_COLON_STEADY;
+  else if (timeColonEffect == "blink")
+    config.timeColonEffect = CLOCK_TIME_COLON_BLINK;
+  else if (timeColonEffect == "fade")
+    config.timeColonEffect = CLOCK_TIME_COLON_FADE;
+  else {
+    sendError(400, F("Efekt dvojtečky hodin není platný."));
+    return false;
+  }
+  config.showLeadingHourZero = server.arg("showLeadingHourZero") == "1";
+  const String timeFont = server.arg("timeFont");
+  if (timeFont == "barlow")
+    config.timeFont = CLOCK_TIME_FONT_BARLOW;
+  else if (timeFont == "liberation")
+    config.timeFont = CLOCK_TIME_FONT_LIBERATION_SANS;
+  else if (timeFont == "lcd")
+    config.timeFont = CLOCK_TIME_FONT_LCD;
+  else if (timeFont == "doto")
+    config.timeFont = CLOCK_TIME_FONT_DOTO;
+  else {
+    sendError(400, F("Font hodin není platný."));
+    return false;
+  }
+  const String dateFormat = server.arg("dateFormat");
+  if (dateFormat == "weekday-day-month")
+    config.dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;
+  else if (dateFormat == "numeric")
+    config.dateFormat = CLOCK_DATE_FORMAT_NUMERIC;
+  else if (dateFormat == "day-month-year")
+    config.dateFormat = CLOCK_DATE_FORMAT_DAY_MONTH_YEAR;
+  else if (dateFormat == "weekday-day-month-year")
+    config.dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH_YEAR;
+  else if (dateFormat == "day-month")
+    config.dateFormat = CLOCK_DATE_FORMAT_DAY_MONTH;
+  else if (dateFormat == "hidden")
+    config.dateFormat = CLOCK_DATE_FORMAT_HIDDEN;
+  else {
+    sendError(400, F("Formát data není platný."));
+    return false;
+  }
+  if (!parseHtmlColor(server.arg("timeColor"), config.timeColor) ||
+      !parseHtmlColor(server.arg("dateColor"), config.dateColor) ||
+      !parseHtmlColor(server.arg("leftWeatherIconColor"),
+                      config.leftWeatherIconColor) ||
+      !parseHtmlColor(server.arg("rightWeatherIconColor"),
+                      config.rightWeatherIconColor)) {
+    sendError(400, F("Barva hodin, data nebo ikon není platná."));
+    return false;
+  }
+  const String secondEffect = server.arg("secondEffect");
+  if (secondEffect != "off" && secondEffect != "dots" && secondEffect != "line" &&
+      secondEffect != "comet") {
+    sendError(400, F("Efekt zobrazení vteřin není platný."));
+    return false;
+  }
+  config.secondRingEnabled = secondEffect != "off";
+  if (secondEffect != "off" && server.hasArg("secondRingEnabled")) {
+    // Kompatibilita se starší webovou stránkou se samostatným přepínačem.
+    config.secondRingEnabled = server.arg("secondRingEnabled") == "1";
+  }
+  if (secondEffect == "comet")
+    config.secondEffect = CLOCK_SECOND_EFFECT_COMET;
+  else if (secondEffect == "line")
+    config.secondEffect = CLOCK_SECOND_EFFECT_LINE;
+  else
+    config.secondEffect = CLOCK_SECOND_EFFECT_DOTS;
+  uint32_t secondRingBackgroundColor;
+  if (!parseHtmlColor(server.arg("secondRingBackgroundColor"),
+                      secondRingBackgroundColor)) {
+    sendError(400, F("Barva pozadí vteřin není platná."));
+    return false;
+  }
+  config.secondRingBackgroundColor = secondRingBackgroundColor;
+  config.secondRingBackgroundBrightness = constrain(
+      server.arg("secondRingBackgroundBrightness").toInt(), 0, 255);
+  config.secondRingBackgroundDotSize =
+      constrain(server.arg("secondRingBackgroundDotSize").toInt(), 1, 10);
+  config.secondDotSize =
+      constrain(server.arg("secondDotSize").toInt(), 1, 10);
+  uint32_t secondDotColor;
+  if (!parseHtmlColor(server.arg("secondDotColor"), secondDotColor)) {
+    sendError(400, F("Barva aktivních vteřin není platná."));
+    return false;
+  }
+  config.secondDotColor = secondDotColor;
+  config.secondDotBrightness =
+      constrain(server.arg("secondDotBrightness").toInt(), 0, 255);
+  return true;
+}
+
+void handleDigitalAppearancePreview() {
+  ClockConfig &config = currentConfig();
+  if (!readDigitalAppearanceFromRequest(config)) return;
+  if (!configPreviewCallback || !configPreviewCallback(config)) {
+    sendError(503, F("Náhled vzhledu hodin se nepodařilo změnit."));
+    return;
+  }
+  digitalPreviewActive = true;
+  extendWebAvailability();
+  sendJson(200, F("{\"ok\":true}"));
+}
+
 void handleSaveConfig() {
   ClockConfig &config = currentConfig();
   const String saveConfirmationId = server.arg("saveConfirmationId");
@@ -1952,95 +2074,7 @@ void handleSaveConfig() {
   }
   config.automaticFirmwareUpdate =
       server.arg("automaticFirmwareUpdate") == "1";
-  const String timeColonEffect = server.arg("timeColonEffect");
-  if (timeColonEffect == "steady")
-    config.timeColonEffect = CLOCK_TIME_COLON_STEADY;
-  else if (timeColonEffect == "blink")
-    config.timeColonEffect = CLOCK_TIME_COLON_BLINK;
-  else if (timeColonEffect == "fade")
-    config.timeColonEffect = CLOCK_TIME_COLON_FADE;
-  else {
-    sendError(400, F("Efekt dvojtečky hodin není platný."));
-    return;
-  }
-  config.showLeadingHourZero = server.arg("showLeadingHourZero") == "1";
-  const String timeFont = server.arg("timeFont");
-  if (timeFont == "barlow")
-    config.timeFont = CLOCK_TIME_FONT_BARLOW;
-  else if (timeFont == "liberation")
-    config.timeFont = CLOCK_TIME_FONT_LIBERATION_SANS;
-  else if (timeFont == "lcd")
-    config.timeFont = CLOCK_TIME_FONT_LCD;
-  else if (timeFont == "doto")
-    config.timeFont = CLOCK_TIME_FONT_DOTO;
-  else {
-    sendError(400, F("Font hodin není platný."));
-    return;
-  }
-  const String dateFormat = server.arg("dateFormat");
-  if (dateFormat == "weekday-day-month")
-    config.dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;
-  else if (dateFormat == "numeric")
-    config.dateFormat = CLOCK_DATE_FORMAT_NUMERIC;
-  else if (dateFormat == "day-month-year")
-    config.dateFormat = CLOCK_DATE_FORMAT_DAY_MONTH_YEAR;
-  else if (dateFormat == "weekday-day-month-year")
-    config.dateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH_YEAR;
-  else if (dateFormat == "day-month")
-    config.dateFormat = CLOCK_DATE_FORMAT_DAY_MONTH;
-  else if (dateFormat == "hidden")
-    config.dateFormat = CLOCK_DATE_FORMAT_HIDDEN;
-  else {
-    sendError(400, F("Formát data není platný."));
-    return;
-  }
-  if (!parseHtmlColor(server.arg("timeColor"), config.timeColor) ||
-      !parseHtmlColor(server.arg("dateColor"), config.dateColor) ||
-      !parseHtmlColor(server.arg("leftWeatherIconColor"),
-                      config.leftWeatherIconColor) ||
-      !parseHtmlColor(server.arg("rightWeatherIconColor"),
-                      config.rightWeatherIconColor)) {
-    sendError(400, F("Barva hodin, data nebo ikon není platná."));
-    return;
-  }
-  const String secondEffect = server.arg("secondEffect");
-  if (secondEffect != "off" && secondEffect != "dots" && secondEffect != "line" &&
-      secondEffect != "comet") {
-    sendError(400, F("Efekt zobrazení vteřin není platný."));
-    return;
-  }
-  config.secondRingEnabled = secondEffect != "off";
-  if (secondEffect != "off" && server.hasArg("secondRingEnabled")) {
-    // Kompatibilita se starší webovou stránkou se samostatným přepínačem.
-    config.secondRingEnabled = server.arg("secondRingEnabled") == "1";
-  }
-  if (secondEffect == "comet")
-    config.secondEffect = CLOCK_SECOND_EFFECT_COMET;
-  else if (secondEffect == "line")
-    config.secondEffect = CLOCK_SECOND_EFFECT_LINE;
-  else
-    config.secondEffect = CLOCK_SECOND_EFFECT_DOTS;
-  uint32_t secondRingBackgroundColor;
-  if (!parseHtmlColor(server.arg("secondRingBackgroundColor"),
-                      secondRingBackgroundColor)) {
-    sendError(400, F("Barva pozadí vteřin není platná."));
-    return;
-  }
-  config.secondRingBackgroundColor = secondRingBackgroundColor;
-  config.secondRingBackgroundBrightness = constrain(
-      server.arg("secondRingBackgroundBrightness").toInt(), 0, 255);
-  config.secondRingBackgroundDotSize =
-      constrain(server.arg("secondRingBackgroundDotSize").toInt(), 1, 10);
-  config.secondDotSize =
-      constrain(server.arg("secondDotSize").toInt(), 1, 10);
-  uint32_t secondDotColor;
-  if (!parseHtmlColor(server.arg("secondDotColor"), secondDotColor)) {
-    sendError(400, F("Barva aktivních vteřin není platná."));
-    return;
-  }
-  config.secondDotColor = secondDotColor;
-  config.secondDotBrightness =
-      constrain(server.arg("secondDotBrightness").toInt(), 0, 255);
+  if (!readDigitalAppearanceFromRequest(config)) return;
   config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
 
   ClockAppearanceConfig appearance;
@@ -2060,6 +2094,7 @@ void handleSaveConfig() {
   if (!saved || !settingsTransactionCommit()) {
     sendError(500, F("Nastavení se nepodařilo uložit. Původní nastavení zůstalo zachované.")); return;
   }
+  digitalPreviewActive = false;
   lastSaveConfirmationId = saveConfirmationId;
   extendWebAvailability();
   sendJson(200, F("{\"ok\":true}"));
@@ -2258,6 +2293,10 @@ void handleClockAppearancePreview() {
   if (currentAppearancePreviewCallback == nullptr ||
       !currentAppearancePreviewCallback(appearance)) {
     sendError(503, F("Náhled vzhledu hodin se nepodařilo změnit."));
+    return;
+  }
+  if (server.arg("compact") == "1") {
+    sendJson(200, F("{\"ok\":true}"));
     return;
   }
   ClockAppearanceConfig saved;
@@ -2486,6 +2525,17 @@ void appendDiagnosticJson(String &result,
 }
 
 void handleDiagnostics() {
+  if (server.arg("summary") == "1") {
+    String result;
+    result.reserve(224);
+    result = F("{\"ok\":true,\"cpuFrequencyMHz\":");
+    result += ESP.getCpuFreqMHz();
+    result += F(",\"currentMemory\":");
+    appendMemoryJson(result, networkDiagnosticsCurrentMemory());
+    result += '}';
+    sendJson(200, result);
+    return;
+  }
   const FirmwareUpdateSnapshot firmware = firmwareUpdateServiceSnapshot();
   ChmiRadarDiagnostics radar;
   chmiRadarServiceDiagnostics(radar);
@@ -2833,7 +2883,9 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
                            ClockAppearanceStateCallback appearanceStateCallback,
                            ClockAppearanceChangeCallback appearancePreviewCallback,
                            ClockAppearanceChangeCallback appearanceSaveCallback,
-                           ClockSettingsApplyCallback settingsApplyCallback) {
+                           ClockSettingsApplyCallback settingsApplyCallback,
+                           ClockConfigPreviewCallback previewCallback) {
+  configPreviewCallback = previewCallback;
   configLoadCallback = loadCallback;
   committedSettingsCallback = settingsApplyCallback;
   SettingsPreferences receipt;
@@ -2868,8 +2920,15 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
   server.on("/", HTTP_GET, handleRoot);
   server.on("/ui-language.js", HTTP_GET, []() {
     addSecurityHeaders();
+#if CLOCK_COMPRESSED_WEB_ASSETS
+    server.sendHeader("Content-Encoding", "gzip");
+    server.send_P(200, PSTR("text/javascript; charset=utf-8"),
+                  reinterpret_cast<const char *>(CONFIGURATION_LOCALIZATION_JS_GZIP),
+                  sizeof(CONFIGURATION_LOCALIZATION_JS_GZIP));
+#else
     server.send_P(200, PSTR("text/javascript; charset=utf-8"),
                   CONFIGURATION_LOCALIZATION_JS);
+#endif
   });
   server.on("/diagnostics", HTTP_GET, handleDiagnosticPage);
   registerBoundedPost("/api/auth/login", handleWebLogin);
@@ -2905,6 +2964,9 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
   });
   registerBoundedPost("/api/radar/preview", []() {
     if (requireConfigurationAccess()) handleRadarRangePreview();
+  });
+  registerBoundedPost("/api/digital-appearance/preview", []() {
+    if (requireConfigurationAccess()) handleDigitalAppearancePreview();
   });
   registerBoundedPost("/api/clock-appearance/preview", []() {
     if (requireConfigurationAccess()) handleClockAppearancePreview();
