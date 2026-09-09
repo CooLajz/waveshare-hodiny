@@ -2,6 +2,7 @@
 #include "ClockFonts.h"
 #include "ClockTimeFormat.h"
 #include "RetroLcdFormat.h"
+#include "RetroLcdGeometry.h"
 #include <cmath>
 #include <cstring>
 #include <algorithm>
@@ -96,29 +97,6 @@ struct Painter {
     lv_draw_rect(ctx, &d, &area);
   }
 
-  // Šestiboký segment se seříznutými konci, společný pro čísla i písmena.
-  void segment(float x1, float y1, float x2, float y2, float thickness,
-               lv_color_t color) {
-    const float dx = x2-x1, dy = y2-y1;
-    const float length = std::sqrt(dx*dx+dy*dy);
-    if (length <= thickness) return;
-    const float ux = dx/length, uy = dy/length;
-    const float r = thickness/2;
-    const float px = -uy*r, py = ux*r;
-    const float coordinates[6][2] = {
-      {x1,y1}, {x1+ux*r+px,y1+uy*r+py}, {x2-ux*r+px,y2-uy*r+py},
-      {x2,y2}, {x2-ux*r-px,y2-uy*r-py}, {x1+ux*r-px,y1+uy*r-py}
-    };
-    lv_point_t points[6];
-    for (int i=0;i<6;++i) points[i] = {
-      static_cast<lv_coord_t>(std::lround(ox+coordinates[i][0])),
-      static_cast<lv_coord_t>(std::lround(oy+coordinates[i][1]))};
-    lv_draw_rect_dsc_t d;
-    lv_draw_rect_dsc_init(&d);
-    d.bg_color = color;
-    lv_draw_polygon(ctx, &d, points, 6);
-  }
-
   void label(const char *text, int x, int y, int w, const lv_font_t *font,
              lv_color_t color, lv_text_align_t align = LV_TEXT_ALIGN_CENTER) {
     lv_draw_label_dsc_t d;
@@ -138,7 +116,7 @@ struct Painter {
     ctx->clip_area = old;
   }
 
-  void digit(char c, int x, int y, int w, int h, bool alphabet=false) {
+  void digit(char c, int x, int y, int w, int h, bool alphabet=false, bool solid=false) {
     static const uint8_t digits[] = {0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F};
     uint16_t mask = c>='0' && c<='9' ? digits[c-'0'] : c=='-' ? 0x40 : 0;
     // A B C D E F G1 G2 H I J K L M; diagonály a středové svislice.
@@ -168,23 +146,15 @@ struct Painter {
         case 'Y': mask=0x1500; break;
       }
     }
-    const float t = std::max(2.0f, h*(alphabet ? .073f : .086f));
-    const float l=x+t/2, r=x+w-t/2;
-    // Shodná pixelová fáze všech vodorovných tahů; jinak měl střed data
-    // kvůli půlpixelové souřadnici čtyři řádky místo tří.
-    const float top=std::round(y+t/2), mid=std::round(y+h/2.0f), bot=std::round(y+h-t/2);
-    const float cx=(l+r)/2, gap=1.4f;
-    const float lines[14][4] = {
-      {l+gap,top,r-gap,top}, {r,top+gap,r,mid-gap}, {r,mid+gap,r,bot-gap},
-      {l+gap,bot,r-gap,bot}, {l,mid+gap,l,bot-gap}, {l,top+gap,l,mid-gap},
-      {l+gap,mid,alphabet?cx-gap:r-gap,mid}, {cx+gap,mid,r-gap,mid},
-      {l+gap,top+gap,cx-gap,mid-gap}, {cx,top+gap,cx,mid-gap},
-      {r-gap,top+gap,cx+gap,mid-gap}, {cx+gap,mid+gap,r-gap,bot-gap},
-      {cx,mid+gap,cx,bot-gap}, {cx-gap,mid+gap,l+gap,bot-gap}
-    };
-    for(int i=0;i<(alphabet?14:7);++i)
-      segment(lines[i][0],lines[i][1],lines[i][2],lines[i][3],t,
-              mask&(1U<<i)?ink():ghost(alphabet || h <= 32));
+    // On solid small text, inactive diagonals must not erase lit middle strokes.
+    for(int pass=0;pass<(solid?2:1);++pass) for(int i=0;i<(alphabet?14:7);++i) {
+      const bool active = mask&(1U<<i);
+      if(solid && active != (pass==1)) continue;
+      const lv_color_t color = active ? ink() : ghost(alphabet || h <= 32);
+      retro_lcd_geometry::segment(w,h,alphabet,i,[&](int sx,int sy,int length,uint8_t coverage) {
+        rect(x+sx,y+sy,length,1,lv_color_mix(color,background(),coverage));
+      },solid);
+    }
   }
 
   int width(const char *text,int w,int gap) {
@@ -193,7 +163,7 @@ struct Painter {
     return std::max(0,total-gap);
   }
 
-  void text(const char *value,int x,int y,int w,int h,int gap,bool alphabet=false) {
+  void text(const char *value,int x,int y,int w,int h,int gap,bool alphabet=false,bool solid=false) {
     lv_area_t bounds={static_cast<lv_coord_t>(ox+x),static_cast<lv_coord_t>(oy+y),
                      static_cast<lv_coord_t>(ox+x+width(value,w,gap)),static_cast<lv_coord_t>(oy+y+h)};
     lv_area_t clip;
@@ -207,7 +177,7 @@ struct Painter {
           rect(x+(cw-s)/2,y+h/3-s/2,s,s,ink());
           rect(x+(cw-s)/2,y+2*h/3-s/2,s,s,ink());
         } else rect(x+(cw-s)/2,y+h-s,s,s,ink());
-      } else digit(*c,x,y,w,h,alphabet);
+      } else digit(*c,x,y,w,h,alphabet,solid);
       x+=cw+gap;
     }
   }
@@ -220,14 +190,14 @@ void draw(lv_event_t *event) {
   static const char *cz[] = {"NEDELE","PONDELI","UTERY","STREDA","CTVRTEK","PATEK","SOBOTA"};
   static const char *en[] = {"SUNDAY","MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY"};
   const char *day=timeAvailable?(english?en:cz)[clockTime.tm_wday]:"-------";
-  p.text(day,(480-p.width(day,18,6))/2,57,18,30,6,true);
+  p.text(day,(480-p.width(day,18,6))/2,57,18,30,6,true,true);
   char date[16]="--.--.----", time[8]="--:--", seconds[4]="--";
   if(timeAvailable) {
     snprintf(date,sizeof(date),"%02d.%02d.%04d",clockTime.tm_mday,clockTime.tm_mon+1,clockTime.tm_year+1900);
     snprintf(time,sizeof(time),showLeadingHourZero ? "%02d:%02d" : "%2d:%02d",clockDisplayHour(clockTime.tm_hour,use12HourFormat),clockTime.tm_min);
     snprintf(seconds,sizeof(seconds),"%02d",clockTime.tm_sec);
   }
-  p.text(date,(480-p.width(date,16,5))/2,109,16,29,5);
+  p.text(date,(480-p.width(date,16,5))/2,109,16,29,5,false,true);
   p.text(time,50,154,60,112,12);
   p.text(seconds,372,216,27,50,7);
   if (use12HourFormat && timeAvailable) p.text(clockTimePeriod(clockTime.tm_hour),380,169,18,32,8,true);
@@ -262,9 +232,11 @@ void draw(lv_event_t *event) {
     const int signWidth = std::max(7,w/2);
     const int left=center-(signWidth+4+numberWidth+unitWidth+(unitWidth?6:0))/2;
     const int numberLeft=left+signWidth+4;
-    const float thickness=std::max(2.0f,h*.086f);
-    const float signY=std::round(315+46-h+h/2.0f);
-    if (negativeValues[i]) p.segment(left+thickness/2,signY,left+signWidth-thickness/2,signY,thickness,ink());
+    if (negativeValues[i]) {
+      retro_lcd_geometry::segment(signWidth,h,false,14,[&](int sx,int sy,int length,uint8_t coverage) {
+        p.rect(left+sx,315+46-h+sy,length,1,lv_color_mix(ink(),background(),coverage));
+      });
+    }
     p.text(numbers[i],numberLeft,315+46-h,w,h,gap);
     if(unitWidth) p.label(units[i],numberLeft+numberWidth+6,338,unitWidth,&clock_unit_24,ink());
   }

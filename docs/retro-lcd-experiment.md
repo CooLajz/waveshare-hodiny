@@ -67,3 +67,7 @@ Rasterization uses exact area-weighted alpha, including fractional boundary cove
 
 Formát 24/12 hodin je společný pro digitální a LCD ciferník, nezávislý na jazyku. Ve 12h formátu je půlnoc 12 AM a poledne 12 PM. LCD zobrazuje segmentové AM/PM nad vteřinami, digitální ciferník menší popisek vpravo dole u času. Formát se ukládá samostatným klíčem vzhledu a je součástí záloh.
 A shared, language-independent 24/12-hour format uses 12 AM at midnight and 12 PM at noon. LCD places segmented AM/PM above seconds; digital uses a smaller caption at the lower right of the time. The format is stored in appearance preferences and included in backups. The leading hour zero setting is shared with digital. LCD formats a blank first digit with inactive segments, preserving all digit positions.
+
+Segment rasterization uses canonical shapes on a pixel grid and mirrors their finished antialiased coverage for opposing strokes. Small text, numeric values, AM/PM and the main time share the renderer. Geometry symmetry can be checked with `clang++ -std=c++11 -I WaveshareHodiny tests/retro_lcd_geometry_test.cpp -o /tmp/retro-lcd-geometry-test && /tmp/retro-lcd-geometry-test`.
+
+Day and date use solid-color segment edges. The day’s split middle strokes extend toward the center and outer sides for readability; other LCD elements retain antialiasing.
