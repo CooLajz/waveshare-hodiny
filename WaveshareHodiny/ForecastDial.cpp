@@ -20,6 +20,7 @@ lv_color_t *fanPixels = nullptr;
 lv_img_dsc_t fanImage{};
 ForecastFanKey renderedFanKey{};
 bool fanInitialized = false;
+ForecastFanBuild fanBuild;
 float currentTemperature = NAN;
 constexpr int CENTER_RADIUS = 108;
 void applyCenterColors() {
@@ -71,8 +72,8 @@ lv_color_t temperatureColor(float temperature) {
   }
   return lv_color_hex(colors[5]);
 }
-void rebuildFan() {
-  if (!fanPixels) return;
+bool rebuildFan(int rowBudget) {
+  if (!fanPixels) return true;
   uint32_t colors[12];
   const time_t now = time(nullptr);
   struct tm local{};
@@ -89,9 +90,26 @@ void rebuildFan() {
   nextKey.minute = local.tm_min;
   nextKey.valid = valid;
   nextKey.stale = stale;
-  const ForecastFanRegion region = forecastFanRegion(renderedFanKey, nextKey, fanInitialized);
-  for (int y = region.y1; y <= region.y2; ++y) {
+  // A restarted, partially painted image requires a full rebuild, not a seam update.
+  fanBuild.begin(renderedFanKey, nextKey, fanInitialized);
+  const ForecastFanRegion &region = fanBuild.region;
+  const ForecastFanSeamUpdate seam(renderedFanKey, nextKey, fanBuild.allowSeam);
+  // Only 16 dither variants are needed for the endpoint replacing the seam.
+  lv_color_t seamColors[4][4];
+  if (seam.active) {
+    const uint32_t value = colors[(nextKey.hour +
+        (nextKey.minute < renderedFanKey.minute ? 1 : 0)) % 12];
+    for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x) {
+      seamColors[y][x] = lv_color_hex(forecastFanEndpointColor(value, stale, x, y));
+    }
+  }
+  const int endRow = fanBuild.endRow(rowBudget);
+  for (int y = fanBuild.row; y < endRow; ++y) {
     for (int x = region.x1; x <= region.x2; ++x) {
+      if (seam.active) {
+        if (seam.changes(x, y)) fanPixels[y * 480 + x] = seamColors[y & 3][x & 3];
+        continue;
+      }
       const float dx = x - 240, dy = y - 240;
       lv_color_t color = lv_color_black();
       if (dx * dx + dy * dy <= 240 * 240) {
@@ -120,8 +138,10 @@ void rebuildFan() {
       fanPixels[y * 480 + x] = color;
     }
   }
+  if (!fanBuild.advance(endRow)) return false;
   renderedFanKey = nextKey;
   fanInitialized = true;
+  return true;
 }
 void text(lv_draw_ctx_t *ctx, lv_point_t p, const char *value,
           const lv_font_t *font, lv_color_t color, int width = 64) {
@@ -281,7 +301,7 @@ lv_obj_t *forecastDialCreate(lv_obj_t *parent) {
     fanImage.header.cf = LV_IMG_CF_TRUE_COLOR;
     fanImage.data_size = 480 * 480 * sizeof(lv_color_t);
     fanImage.data = reinterpret_cast<const uint8_t *>(fanPixels);
-    rebuildFan();
+    memset(fanPixels, 0, fanImage.data_size);
   }
   currentIcon = lv_img_create(dial);
   lv_obj_align(currentIcon, LV_ALIGN_CENTER, 0, -30);
@@ -324,14 +344,15 @@ void forecastDialSetVisible(bool visible) {
   displayedMinute = -1;
 }
 void forecastDialUpdate(bool redNight) {
-  if (!dial || lv_obj_has_flag(dial, LV_OBJ_FLAG_HIDDEN)) return;
+  if (!dial) return;
+  const bool visible = !lv_obj_has_flag(dial, LV_OBJ_FLAG_HIDDEN);
   const uint32_t now = lv_tick_get();
-  if (now - lastCheck < 1000 && displayedMinute >= 0 && red == redNight) return;
+  if (!fanBuild.pending && now - lastCheck < 1000 && displayedMinute >= 0 && red == redNight) return;
   lastCheck = now;
   const HourlyForecast next = hourlyForecastSnapshot();
   const time_t minute = time(nullptr) / 60;
-  if (minute != displayedMinute || next.fetchedAt != data.fetchedAt || next.count != data.count || red != redNight) {
-    const bool fanChanged = minute != cachedFanMinute || next.fetchedAt != data.fetchedAt || next.count != data.count || red != redNight;
+  if (fanBuild.pending || minute != displayedMinute || next.fetchedAt != data.fetchedAt || next.count != data.count || red != redNight) {
+    const bool fanChanged = fanBuild.pending || minute != cachedFanMinute || next.fetchedAt != data.fetchedAt || next.count != data.count || red != redNight;
     data = next; displayedMinute = minute; red = redNight;
     applyCenterColors();
     const time_t stamp = time(nullptr);
@@ -343,8 +364,10 @@ void forecastDialUpdate(bool redNight) {
     lv_label_set_text(centerTimeShadow, timeText);
     lv_obj_align(centerTime, LV_ALIGN_CENTER, 0, 78);
     lv_obj_align(centerTimeShadow, LV_ALIGN_CENTER, 1, 79);
-    if (fanChanged) { rebuildFan(); cachedFanMinute = minute; }
-    lv_obj_invalidate(dial);
+    // Hidden preparation shares the UI task and paints only eight rows per
+    // iteration. No extra framebuffer, worker task, or concurrent LVGL access.
+    if (fanChanged && rebuildFan(visible ? 480 : 8)) cachedFanMinute = minute;
+    if (visible) lv_obj_invalidate(dial);
   }
 }
 

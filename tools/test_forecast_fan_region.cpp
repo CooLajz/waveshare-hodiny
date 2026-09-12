@@ -34,9 +34,19 @@ int main() {
   unsigned checked = 0;
   const auto verify = [&](const ForecastFanKey &next) {
     const auto region = forecastFanRegion(previous, next, initialized);
+    const ForecastFanSeamUpdate seam(previous, next, initialized);
+    uint16_t palette[4][4]{};
+    if (seam.active) {
+      const auto value = next.colors[(next.hour + (next.minute < previous.minute ? 1 : 0)) % 12];
+      for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x) {
+        const auto c = forecastFanEndpointColor(value, next.stale, x, y);
+        palette[y][x] = ((c >> 8) & 0xF800) | ((c >> 5) & 0x07E0) | ((c >> 3) & 0x001F);
+      }
+    }
     for (int y = region.y1; y <= region.y2; ++y)
       for (int x = region.x1; x <= region.x2; ++x)
-        frame[y * 480 + x] = pixel(next, x, y);
+        if (!seam.active) frame[y * 480 + x] = pixel(next, x, y);
+        else if (seam.changes(x, y)) frame[y * 480 + x] = palette[y & 3][x & 3];
     for (int y = 0; y < 480; ++y)
       for (int x = 0; x < 480; ++x) {
         assert(frame[y * 480 + x] == pixel(next, x, y));
@@ -60,6 +70,10 @@ int main() {
       verify(next);
     }
   }
+  for (int hour = 0; hour < 12; ++hour) {
+    next.hour = hour;
+    for (int minute : {59, 0, 30, 1, 58, 12, 11}) { next.minute = minute; verify(next); }
+  }
   for (int i = 0; i < 12; ++i) {
     next.colors[i] ^= 0xDEADBE;
     verify(next); // Both neighboring sectors must change.
@@ -75,5 +89,43 @@ int main() {
   next.minute = 1; minuteLater.minute = 2;
   const auto small = forecastFanRegion(next, minuteLater, true);
   assert((small.x2 - small.x1 + 1) * (small.y2 - small.y1 + 1) < 480 * 480 / 4);
+  // Hidden preparation must complete in bounded chunks and restart safely
+  // when fresh weather, time or night colors arrive during a partial frame.
+  for (int scenario = 0; scenario < 5; ++scenario) {
+    ForecastFanBuild build;
+    auto initial = previous;
+    auto target = initial;
+    target.colors[3] ^= 0xA5B6C7;
+    build.begin(initial, target, true);
+    const int start = build.row, end = build.endRow(8);
+    assert(end - start <= 8);
+    for (int y = start; y < end; ++y)
+      for (int x = build.region.x1; x <= build.region.x2; ++x)
+        frame[y * 480 + x] = pixel(target, x, y);
+    build.advance(end);
+    if (scenario == 0) target.colors[9] ^= 0xFFAABB;
+    if (scenario == 1) target.minute = (target.minute + 1) % 60;
+    if (scenario == 2) target.hour = (target.hour + 1) % 12;
+    if (scenario == 3) target.stale = !target.stale;
+    if (scenario == 4) target.valid = !target.valid;
+    build.begin(initial, target, true);
+    assert(build.row == 0 && build.region.y2 == 479);
+    while (build.pending) {
+      const int first = build.row, last = build.endRow(8);
+      assert(last - first <= 8);
+      for (int y = first; y < last; ++y)
+        for (int x = build.region.x1; x <= build.region.x2; ++x)
+          frame[y * 480 + x] = pixel(target, x, y);
+      build.advance(last);
+      if (build.pending) {
+        build.begin(initial, target, true);
+        assert(build.row == last); // Unchanged inputs retain completed rows.
+      }
+    }
+    for (int y = 0; y < 480; ++y) for (int x = 0; x < 480; ++x)
+      assert(frame[y * 480 + x] == pixel(target, x, y));
+    previous = target;
+  }
+  puts("PASS: bounded hidden rendering and restart on data/time/night changes");
   printf("PASS: %u full-frame comparisons (all hours/minutes, data, stale/night/time changes)\n", checked);
 }
