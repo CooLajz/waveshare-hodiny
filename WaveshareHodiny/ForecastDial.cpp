@@ -23,6 +23,8 @@ bool fanInitialized = false;
 ForecastFanBuild fanBuild;
 float currentTemperature = NAN;
 constexpr int CENTER_RADIUS = 108;
+constexpr int OUTER_RING_RADIUS = 218;
+constexpr int OUTER_RING_WIDTH = 2;
 void applyCenterColors() {
   if (!temperatureLabel) return;
   const lv_color_t color = lv_color_hex(red ? 0xEE4232 : 0xF6F6F6);
@@ -187,7 +189,8 @@ void draw(lv_event_t *event) {
   lv_draw_rect(ctx, &centerDisc, &disc);
   if (timeValid) {
     const float angle = (local.tm_hour % 12 + local.tm_min / 60.0f) * 30;
-    const lv_point_t edge = point(center, angle, 220);
+    // Stop at the ring's inner edge; its foreground stroke covers the join.
+    const lv_point_t edge = point(center, angle, OUTER_RING_RADIUS - OUTER_RING_WIDTH);
     const lv_point_t start = point(center, angle, CENTER_RADIUS + 2);
     lv_draw_line_dsc_t divider;
     lv_draw_line_dsc_init(&divider);
@@ -195,17 +198,17 @@ void draw(lv_event_t *event) {
     divider.opa = LV_OPA_70;
     divider.width = 2;
     divider.round_start = true;
-    divider.round_end = true;
+    divider.round_end = false;
     lv_draw_line(ctx, &divider, &start, &edge);
   }
   lv_draw_arc_dsc_t ring;
   lv_draw_arc_dsc_init(&ring);
-  ring.width = 2;
+  ring.width = OUTER_RING_WIDTH;
   ring.color = lv_color_black();
   const lv_point_t ringShadowCenter = {static_cast<lv_coord_t>(center.x + 2), static_cast<lv_coord_t>(center.y + 2)};
-  lv_draw_arc(ctx, &ring, &ringShadowCenter, 218, 0, 360);
+  lv_draw_arc(ctx, &ring, &ringShadowCenter, OUTER_RING_RADIUS, 0, 360);
   ring.color = fg;
-  lv_draw_arc(ctx, &ring, &center, 218, 0, 360);
+  lv_draw_arc(ctx, &ring, &center, OUTER_RING_RADIUS, 0, 360);
   for (int i = 0; i < 12; ++i) {
     const time_t stamp = firstHour + i * 3600;
     struct tm hour{};
