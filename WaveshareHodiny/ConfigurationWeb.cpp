@@ -18,6 +18,7 @@
 
 #include <cmath>
 #include <cctype>
+#include <cerrno>
 
 #include "ConfigurationPage.h"
 #include "ConfigurationLocalization.h"
@@ -3012,6 +3013,12 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
 }
 
 void configurationWebLoop() {
+  // Arduino ESP32 3.0.2 NetworkClient::connected() checks errno even when
+  // its zero-length recv() succeeds. A stale ECONNRESET from the previous
+  // client can therefore discard the next healthy HTTP connection. Clear
+  // only the old error before entering the server; real socket errors raised
+  // while handling this client still reach the core unchanged.
+  errno = 0;
   server.handleClient();
   finishBackupJob();
   if (backupRestartAt && static_cast<long>(millis() - backupRestartAt) >= 0) ESP.restart();
