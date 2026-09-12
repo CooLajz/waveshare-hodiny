@@ -938,6 +938,8 @@ bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
     appearance.style = CLOCK_STYLE_DIGITAL;
   else if (style == "analog")
     appearance.style = CLOCK_STYLE_ANALOG;
+  else if (style == "forecast")
+    appearance.style = CLOCK_STYLE_FORECAST;
   else if (style == "retro-lcd")
     appearance.style = CLOCK_STYLE_RETRO_LCD;
   else
@@ -1432,6 +1434,8 @@ void handleGetConfig() {
   result += config.clockDisplaySeconds;
   result += F(",\"radarDisplaySeconds\":");
   result += config.radarDisplaySeconds;
+  result += F(",\"forecastDisplaySeconds\":");
+  result += config.forecastDisplaySeconds;
   result += F(",\"retroBackgroundColor\":\"");
   result += htmlColor(savedAppearance.retroBackgroundColor);
   result += F("\",\"retroForegroundColor\":\"");
@@ -1489,10 +1493,10 @@ void handleGetConfig() {
   result += F(",\"retroMetricBDigits\":");
   result += savedAppearance.retroMetricBDigits;
   result += F(",\"clockStyle\":\"");
-  result += savedAppearance.style == CLOCK_STYLE_RETRO_LCD ? F("retro-lcd") : savedAppearance.style == CLOCK_STYLE_ANALOG ? F("analog")
+  result += savedAppearance.style == CLOCK_STYLE_FORECAST ? F("forecast") : savedAppearance.style == CLOCK_STYLE_RETRO_LCD ? F("retro-lcd") : savedAppearance.style == CLOCK_STYLE_ANALOG ? F("analog")
                                                         : F("digital");
   result += F("\",\"activeClockStyle\":\"");
-  result += activeAppearance.style == CLOCK_STYLE_RETRO_LCD ? F("retro-lcd") : activeAppearance.style == CLOCK_STYLE_ANALOG ? F("analog")
+  result += activeAppearance.style == CLOCK_STYLE_FORECAST ? F("forecast") : activeAppearance.style == CLOCK_STYLE_RETRO_LCD ? F("retro-lcd") : activeAppearance.style == CLOCK_STYLE_ANALOG ? F("analog")
                                                          : F("digital");
   result += F("\",\"analogToneColor\":\"");
   result += htmlColor(savedAppearance.analogToneColor);
@@ -1904,18 +1908,20 @@ void handleSaveConfig() {
   config.radarPauseSeconds = static_cast<uint8_t>(radarPauseSeconds);
   const int clockDisplaySeconds = server.arg("clockDisplaySeconds").toInt();
   const int radarDisplaySeconds = server.arg("radarDisplaySeconds").toInt();
-  if (clockDisplaySeconds < 10 || clockDisplaySeconds > 3600 ||
-      radarDisplaySeconds < 10 || radarDisplaySeconds > 3600) {
-    sendError(400, F("Časy automatického střídání musí být od 10 do 3600 sekund."));
+  const int forecastDisplaySeconds = server.hasArg("forecastDisplaySeconds") ? server.arg("forecastDisplaySeconds").toInt() : config.forecastDisplaySeconds;
+  if (clockDisplaySeconds < 0 || clockDisplaySeconds > 3600 ||
+      radarDisplaySeconds < 0 || radarDisplaySeconds > 3600 ||
+      forecastDisplaySeconds < 0 || forecastDisplaySeconds > 3600) {
+    sendError(400, F("Časy automatického střídání musí být od 0 do 3600 sekund. Nula obrazovku vynechá."));
     return;
   }
   config.automaticRadarRotation =
-      clockConfigRadarAvailable(config) &&
       server.arg("automaticRadarRotation") == "1";
   config.clockDisplaySeconds =
       static_cast<uint16_t>(clockDisplaySeconds);
   config.radarDisplaySeconds =
       static_cast<uint16_t>(radarDisplaySeconds);
+  config.forecastDisplaySeconds = static_cast<uint16_t>(forecastDisplaySeconds);
   const String submittedTmepUrl = server.arg("tmepExportUrl");
   if (!submittedTmepUrl.isEmpty()) {
     String exportId;
@@ -2303,9 +2309,9 @@ void handleClockAppearancePreview() {
   ClockAppearanceConfig active;
   appearanceState(saved, active);
   String result = F("{\"ok\":true,\"clockStyle\":\"");
-  result += saved.style == CLOCK_STYLE_RETRO_LCD ? F("retro-lcd") : saved.style == CLOCK_STYLE_ANALOG ? F("analog") : F("digital");
+  result += saved.style == CLOCK_STYLE_FORECAST ? F("forecast") : saved.style == CLOCK_STYLE_RETRO_LCD ? F("retro-lcd") : saved.style == CLOCK_STYLE_ANALOG ? F("analog") : F("digital");
   result += F("\",\"activeClockStyle\":\"");
-  result += active.style == CLOCK_STYLE_RETRO_LCD ? F("retro-lcd") : active.style == CLOCK_STYLE_ANALOG ? F("analog") : F("digital");
+  result += active.style == CLOCK_STYLE_FORECAST ? F("forecast") : active.style == CLOCK_STYLE_RETRO_LCD ? F("retro-lcd") : active.style == CLOCK_STYLE_ANALOG ? F("analog") : F("digital");
   result += F("\",\"retroBackgroundColor\":\"");
   result += htmlColor(saved.retroBackgroundColor);
   result += F("\",\"retroForegroundColor\":\"");

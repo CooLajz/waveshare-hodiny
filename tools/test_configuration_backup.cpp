@@ -16,7 +16,7 @@ void testMigration() {
   ClockConfig current; clockConfigApplyDefaults(current);
   strcpy(current.homeAssistantToken,"synthetic-test-token");
   const struct { uint32_t schema; size_t prefix; } cases[] = {
-      {20,2096},{24,2108},{25,2108},{26,2108},{27,2452},{28,2688},{29,2752}};
+      {20,2096},{24,2108},{25,2108},{26,2108},{27,2452},{28,2688},{29,2752},{30,2756}};
   for(auto test:cases){
     std::vector<uint8_t> record(test.prefix+12);
     uint32_t magic=0x57484346;memcpy(record.data(),&magic,4);memcpy(record.data()+4,&test.schema,4);
@@ -25,7 +25,7 @@ void testMigration() {
     uint32_t hash=checksum(record.data()+8,test.prefix);memcpy(record.data()+8+test.prefix,&hash,4);
     const auto before=fakeNvs::values;
     ClockConfig decoded;assert(clockConfigDecodeRecord(record.data(),record.size(),decoded));
-    assert(decoded.schemaVersion==29);assert(!strcmp(decoded.homeAssistantToken,"synthetic-test-token"));
+    assert(decoded.schemaVersion==30);assert(decoded.forecastDisplaySeconds==20);assert(!strcmp(decoded.homeAssistantToken,"synthetic-test-token"));
     if(test.schema==25)assert(decoded.language==CLOCK_LANGUAGE_ENGLISH);
     assert(fakeNvs::values==before); // Decoder must be pure, including migrations.
     record[12]^=1;assert(!clockConfigDecodeRecord(record.data(),record.size(),decoded));
@@ -117,6 +117,7 @@ void testCompleteSnapshot() {
   strcpy(source.homeAssistantUrl,"http://synthetic.invalid:8123");
   strcpy(source.homeAssistantToken,"synthetic-complete-token");
   strcpy(source.tmepExportKey,"synthetic-tmep-key"); strcpy(source.tmepExportId,"123");
+  source.clockDisplaySeconds=0;source.radarDisplaySeconds=0;source.forecastDisplaySeconds=37;
   source.metricAColorScale.count=2;
   source.metricAColorScale.points[0]={1.0001f,0xffffff};
   source.metricAColorScale.points[1]={1.0002f,0};
@@ -132,7 +133,7 @@ void testCompleteSnapshot() {
   prefs.begin("control-api");assert(prefs.putString("secret","0123456789abcdef0123456789abcdef")==32);
   prefs.begin("web-mode");assert(prefs.putUChar("mode",2)==1);assert(settingsTransactionCommit());
   uint8_t snapshot[SETTINGS_IMAGE_CAPACITY];size_t snapshotLength=0;assert(settingsExport(snapshot,sizeof(snapshot),snapshotLength));
-  BackupMetadata meta;strcpy(meta.firmware,"1.8.1");meta.configSchema=29;
+  BackupMetadata meta;strcpy(meta.firmware,"1.8.1");meta.configSchema=CLOCK_CONFIG_SCHEMA_VERSION;
   char file[BACKUP_FILE_CAPACITY];assert(backupEncrypt(snapshot,snapshotLength,"synthetic-password",meta,file,sizeof(file)));
   assert(!strstr(file,"synthetic-complete-token")&&!strstr(file,"synthetic-tmep-key"));
   // Destination starts with entirely different settings and no credentials.
@@ -140,7 +141,7 @@ void testCompleteSnapshot() {
   prefs.begin("web-auth");assert(prefs.remove("credential"));
   uint8_t plain[SETTINGS_IMAGE_CAPACITY];size_t size;BackupMetadata header;
   assert(backupDecrypt(file,strlen(file),"synthetic-password",header,plain,sizeof(plain),size));
-  assert(settingsImport(plain,size));ClockConfig restored;assert(clockConfigLoad(restored));
+  assert(settingsImport(plain,size));ClockConfig restored;assert(clockConfigLoad(restored));assert(restored.forecastDisplaySeconds==37);assert(restored.clockDisplaySeconds==0&&restored.radarDisplaySeconds==0);
   assert(!strcmp(restored.homeAssistantToken,source.homeAssistantToken));
   assert(!strcmp(restored.tmepExportKey,source.tmepExportKey));
   assert(restored.metricAColorScale.points[0].value==source.metricAColorScale.points[0].value);
@@ -170,6 +171,17 @@ void testCompleteSnapshot() {
   assert(settingsTransactionBegin());prefs.begin("clock-look");
   assert(prefs.putUChar("retroDateFmt",14)==1);assert(!settingsTransactionCommit());
   settingsTransactionAbort();assert(clockAppearanceLoad(restoredAppearance));assert(restoredAppearance.retroDateFormat==13);
+  // Commit the new style to disk (a read within a transaction is insufficient).
+  restoredAppearance.style = CLOCK_STYLE_FORECAST;
+  assert(clockAppearanceSave(restoredAppearance));
+  settingsStoreTestReset();assert(settingsStoreBegin());
+  assert(clockAppearanceLoad(restoredAppearance));
+  assert(restoredAppearance.style == CLOCK_STYLE_DIGITAL); // legacy forecast selection migrates to a clock
+  uint8_t forecastImage[SETTINGS_IMAGE_CAPACITY];size_t forecastSize=0;
+  assert(settingsExport(forecastImage,sizeof(forecastImage),forecastSize));
+  assert(settingsImport(forecastImage,forecastSize));assert(settingsTransactionCommit());
+  assert(settingsTransactionBegin());prefs.begin("clock-look");
+  assert(prefs.putUChar("style",4)==1);assert(!settingsTransactionCommit());
   // Older images do not carry the appended key and use its explicit default.
   prefs.begin("clock-look");assert(prefs.remove("retroFixedDay"));assert(prefs.remove("retroDateFmt"));
   assert(clockAppearanceLoad(restoredAppearance));assert(!restoredAppearance.retroFixedWeekday);assert(restoredAppearance.retroDateFormat==0);

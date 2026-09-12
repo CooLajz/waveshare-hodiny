@@ -6,6 +6,7 @@
 
 struct ClockValues {
   int weatherCode = -1;
+  float weatherTemperatureC = NAN;
   bool weatherIsDay = true;
   bool sunStateAvailable = false;
   uint64_t nextSunriseTimestamp = 0;
@@ -66,6 +67,7 @@ void clockDashboardSetWebMode(uint8_t mode);
 void clockDashboardApplyConfiguration(const ClockConfig &config);
 void clockDashboardSwipeAppearance(const ClockAppearanceConfig &appearance,
                                    int8_t direction);
+void clockDashboardSwipePage(const ClockAppearanceConfig &appearance, bool radar, int8_t direction);
 void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance);
 void clockDashboardUpdate(const ClockValues &values);
 void clockDashboardSetDate(const char *dateText);

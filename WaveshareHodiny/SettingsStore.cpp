@@ -93,7 +93,8 @@ bool validImage(const uint8_t *data, size_t length) {
     if (kind == Byte) {
       const uint8_t value = data[pos];
       switch (id) {
-        case 1: case 26: if (value > 2) return false; break;
+        case 1: if (value > 3) return false; break; // clock style, including hourly forecast
+        case 26: if (value > 2) return false; break;
         case 9: if (value > 5) return false; break;
         case 31: if (value > 13) return false; break; // retroDateFmt
         case 12: if (value < 5 || value > 50) return false; break;

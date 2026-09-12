@@ -1,4 +1,7 @@
+#include "ScreenRotation.h"
+#include "ForecastDial.h"
 #include "ClockTimeFormat.h"
+#include "HourlyForecastService.h"
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <ESPmDNS.h>
@@ -213,7 +216,7 @@ bool previewClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
   activeAppearance = appearance;
   activeAppearance.style = constrain(
       activeAppearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
-      static_cast<uint8_t>(CLOCK_STYLE_RETRO_LCD));
+      static_cast<uint8_t>(CLOCK_STYLE_FORECAST));
   activeAppearance.analogToneColor &= 0xFFFFFF;
   activeAppearance.analogHandToneColor &= 0xFFFFFF;
   activeAppearance.analogCardinalAccentColor &= 0xFFFFFF;
@@ -232,7 +235,7 @@ bool saveClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
   ClockAppearanceConfig normalized = appearance;
   normalized.style = constrain(
       normalized.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
-      static_cast<uint8_t>(CLOCK_STYLE_RETRO_LCD));
+      static_cast<uint8_t>(CLOCK_STYLE_FORECAST));
   normalized.analogToneColor &= 0xFFFFFF;
   normalized.analogHandToneColor &= 0xFFFFFF;
   normalized.analogCardinalAccentColor &= 0xFFFFFF;
@@ -296,7 +299,7 @@ void applyPendingRuntimeConfiguration() {
       clockConfigRadarAvailable(dashboardConfigBuffer);
   chmiRadarServiceSetActive(
       radarAvailable && clockDashboardRadarVisible(),
-      radarAvailable && dashboardConfigBuffer.automaticRadarRotation,
+      radarAvailable && dashboardConfigBuffer.automaticRadarRotation && dashboardConfigBuffer.radarDisplaySeconds > 0,
       dashboardConfigBuffer.openMeteoLatitude,
       dashboardConfigBuffer.openMeteoLongitude,
       dashboardConfigBuffer.radarRadiusKm,
@@ -381,7 +384,7 @@ void handleRadarVisibility(bool visible) {
   const ClockConfig config = runtimeConfigSnapshot();
   const bool radarAvailable = clockConfigRadarAvailable(config);
   chmiRadarServiceSetActive(radarAvailable && visible,
-                            radarAvailable && config.automaticRadarRotation,
+                            radarAvailable && config.automaticRadarRotation && config.radarDisplaySeconds > 0,
                             config.openMeteoLatitude,
                             config.openMeteoLongitude, config.radarRadiusKm,
                             config.radarFrameCount, config.radarMapOpacity,
@@ -421,9 +424,9 @@ void maintainRadarRangeChange() {
     radarRadiusApplyAt = 0;
     const ClockConfig config = runtimeConfigSnapshot();
     if (clockConfigRadarAvailable(config) &&
-        (clockDashboardRadarVisible() || config.automaticRadarRotation)) {
+        (clockDashboardRadarVisible() || (config.automaticRadarRotation && config.radarDisplaySeconds > 0))) {
       chmiRadarServiceSetActive(clockDashboardRadarVisible(),
-                                config.automaticRadarRotation,
+                                config.automaticRadarRotation && config.radarDisplaySeconds > 0,
                                 config.openMeteoLatitude,
                                 config.openMeteoLongitude,
                                 config.radarRadiusKm,
@@ -453,9 +456,9 @@ bool previewRadarRangeFromWeb(uint16_t radiusKm) {
   radarRadiusApplyAt = 0;
   displayModeStartedAt = millis();
   radarRotationWaitingForCycle = false;
-  if (clockDashboardRadarVisible() || config.automaticRadarRotation) {
+  if (clockDashboardRadarVisible() || (config.automaticRadarRotation && config.radarDisplaySeconds > 0)) {
     chmiRadarServiceSetActive(clockDashboardRadarVisible(),
-                              config.automaticRadarRotation,
+                              config.automaticRadarRotation && config.radarDisplaySeconds > 0,
                               config.openMeteoLatitude,
                               config.openMeteoLongitude,
                               config.radarRadiusKm,
@@ -466,13 +469,26 @@ bool previewRadarRangeFromWeb(uint16_t radiusKm) {
   return true;
 }
 
+void showDisplayPage(uint8_t page, int8_t direction) {
+  static ClockAppearanceConfig clockAppearance = persistedAppearance;
+  if (!clockDashboardRadarVisible() && activeAppearance.style != CLOCK_STYLE_FORECAST)
+    clockAppearance = activeAppearance;
+  if (clockAppearance.style == CLOCK_STYLE_FORECAST) clockAppearance.style = CLOCK_STYLE_DIGITAL;
+  if (page != 2) {
+    activeAppearance = clockAppearance;
+    if (page == 1) activeAppearance.style = CLOCK_STYLE_FORECAST;
+  }
+  clockDashboardSwipePage(activeAppearance, page == 2, direction);
+  displayModeStartedAt = millis();
+  radarRotationWaitingForCycle = false;
+  lastDisplayedSecond = -1;
+}
+
 void maintainAutomaticRadarRotation() {
   const ClockConfig config = runtimeConfigSnapshot();
-  const bool allowed =
-      clockConfigRadarAvailable(config) && config.automaticRadarRotation &&
+  const bool allowed = config.automaticRadarRotation &&
       WiFi.status() == WL_CONNECTED && timeWasSynchronized &&
-      !displayForcedOff &&
-      clockDashboardAutomaticRotationAllowed();
+      !displayForcedOff && clockDashboardAutomaticRotationAllowed();
   if (!allowed) {
     automaticRadarRotationPaused = true;
     radarRotationWaitingForCycle = false;
@@ -485,57 +501,47 @@ void maintainAutomaticRadarRotation() {
     radarRotationWaitingForCycle = false;
     return;
   }
-  const bool radarVisible = clockDashboardRadarVisible();
-  const unsigned long durationMs =
-      static_cast<unsigned long>(radarVisible ? config.radarDisplaySeconds
-                                              : config.clockDisplaySeconds) *
-      1000UL;
-  if (now - displayModeStartedAt < durationMs) return;
-  if (radarVisible) {
-    ChmiRadarSnapshot snapshot;
-    chmiRadarServiceSnapshot(snapshot);
-    const bool staticRadarReady =
-        snapshot.ready && snapshot.animationFrameCount <= 1;
-    if (!staticRadarReady) {
-      if (!radarRotationWaitingForCycle) {
-        // Nastavený čas je pouze minimum. Od této chvíle čekáme na dokončení
-        // právě rozběhnutého cyklu včetně koncové pauzy.
-        radarRotationWaitingForCycle = true;
-        radarRotationCycleAtTimeout = snapshot.completedAnimationCycles;
-        return;
-      }
-      if (snapshot.completedAnimationCycles == radarRotationCycleAtTimeout)
-        return;
+  const uint8_t current = clockDashboardRadarVisible() ? 2 :
+      (activeAppearance.style == CLOCK_STYLE_FORECAST ? 1 : 0);
+  uint16_t seconds[3] = {config.clockDisplaySeconds, config.forecastDisplaySeconds,
+      static_cast<uint16_t>(clockConfigRadarAvailable(config) ? config.radarDisplaySeconds : 0)};
+  if (!seconds[0] && !seconds[1] && !seconds[2]) return;
+  if (now - displayModeStartedAt < static_cast<unsigned long>(seconds[current]) * 1000UL) return;
+  ChmiRadarSnapshot snapshot;
+  chmiRadarServiceSnapshot(snapshot);
+  if (current != 2 && !(snapshot.ready && !snapshot.loading &&
+      !snapshot.fullPreparationInProgress && snapshot.animationFrameCount == config.radarFrameCount))
+    seconds[2] = 0; // A loading/unavailable radar must not stall the other pages.
+  const uint8_t next = nextRotationPage(current, seconds);
+  if (next == current) return;
+  if (current == 2 && seconds[2] && snapshot.ready && snapshot.animationFrameCount > 1) {
+    if (!radarRotationWaitingForCycle) {
+      radarRotationWaitingForCycle = true;
+      radarRotationCycleAtTimeout = snapshot.completedAnimationCycles;
+      return;
     }
-  } else {
-    ChmiRadarSnapshot snapshot;
-    chmiRadarServiceSnapshot(snapshot);
-    const bool completeAnimationReady =
-        snapshot.ready && !snapshot.loading &&
-        !snapshot.fullPreparationInProgress &&
-        snapshot.animationFrameCount == config.radarFrameCount;
-    // Automatická rotace nesmí poprvé otevřít radar uprostřed přípravy.
-    // Ruční gesto zůstává neblokované a může radar zobrazit kdykoliv.
-    if (!completeAnimationReady) return;
+    if (snapshot.completedAnimationCycles == radarRotationCycleAtTimeout) return;
   }
-  clockDashboardSetRadarVisible(!radarVisible);
+  showDisplayPage(next, -1);
 }
 
 void maintainDisplayGestures() {
   const bool radarAvailable =
       clockConfigRadarAvailable(runtimeConfigSnapshot());
   const int8_t horizontalSwipeDirection = displayDriverTakeHorizontalSwipe();
-  if (horizontalSwipeDirection != 0 &&
-      radarAvailable && clockDashboardAutomaticRotationAllowed()) {
-    clockDashboardSetRadarVisible(!clockDashboardRadarVisible(),
-                                  horizontalSwipeDirection);
+  if (horizontalSwipeDirection != 0 && clockDashboardAutomaticRotationAllowed()) {
+    const uint8_t pageCount = radarAvailable ? 3 : 2;
+    const uint8_t page = clockDashboardRadarVisible() ? 2 :
+        (activeAppearance.style == CLOCK_STYLE_FORECAST ? 1 : 0);
+    const uint8_t next = (page + (horizontalSwipeDirection < 0 ? 1 : pageCount - 1)) % pageCount;
+    showDisplayPage(next, horizontalSwipeDirection);
   }
   const int8_t verticalSwipeDirection = displayDriverTakeVerticalSwipe();
   if (verticalSwipeDirection != 0 &&
       clockDashboardAutomaticRotationAllowed()) {
     if (clockDashboardRadarVisible()) {
       if (radarAvailable) handleRadarRangeChange(verticalSwipeDirection);
-    } else {
+    } else if (activeAppearance.style != CLOCK_STYLE_FORECAST) {
       // Fyzický test panelu ukázal opačný svislý směr než názvy CST820 gest.
       // Normalizujeme pouze ciferníky; zavedené ovládání radaru zůstává stejné.
       const int8_t clockSwipeDirection = -verticalSwipeDirection;
@@ -637,7 +643,7 @@ void handleSettingsSave(uint8_t clockStyle, uint8_t dayBrightness,
     ClockAppearanceConfig appearance = persistedAppearance;
     appearance.style = constrain(
         clockStyle, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
-        static_cast<uint8_t>(CLOCK_STYLE_RETRO_LCD));
+        static_cast<uint8_t>(CLOCK_STYLE_FORECAST));
     if (appearance.style != persistedAppearance.style)
       saveClockAppearanceFromWeb(appearance);
     configurationWebSetMode(static_cast<ConfigurationWebMode>(webMode));
@@ -666,6 +672,11 @@ void handleUsbCommands() {
         } else {
           screenshotTransferActive = true;
         }
+      } else if (usbCommand == "FORECAST" && !screenshotTransferActive) {
+        ClockAppearanceConfig appearance = activeAppearance;
+        appearance.style = CLOCK_STYLE_FORECAST;
+        previewClockAppearanceFromWeb(appearance);
+        Serial.println("FORECAST_ON");
       } else if (usbCommand == "RETRO" && !screenshotTransferActive) {
         clockDashboardSetRetroPreview(true);
         Serial.println("RETRO_ON");
@@ -810,7 +821,7 @@ void maintainNetworkTime() {
     const bool radarAvailable = clockConfigRadarAvailable(config);
     chmiRadarServiceSetActive(
         radarAvailable && clockDashboardRadarVisible(),
-        radarAvailable && config.automaticRadarRotation,
+        radarAvailable && config.automaticRadarRotation && config.radarDisplaySeconds > 0,
         config.openMeteoLatitude, config.openMeteoLongitude,
         config.radarRadiusKm, config.radarFrameCount,
         config.radarMapOpacity, config.radarPauseSeconds);
@@ -1087,6 +1098,7 @@ bool fetchOpenMeteo(const ClockConfig &config, ClockValues &values) {
     return false;
   }
   double number = 0;
+  values.weatherTemperatureC = extractJsonNumberField(payload, "temperature_2m", number) ? static_cast<float>(number) : NAN;
   bool ok = extractJsonNumberField(payload, "weather_code", number);
   if (ok) values.weatherCode = openMeteoWeatherCode(lround(number));
   if (extractJsonNumberField(payload, "is_day", number)) {
@@ -1378,6 +1390,13 @@ bool fetchHomeAssistantStates(NetworkClient &client, const ClockConfig &config,
     } else {
       applied = applyHomeAssistantState(config, entityIds[index], state, values);
     }
+    if (index == 0) {
+      double temperature;
+      values.weatherTemperatureC = extractJsonNumberField(payload, "temperature", temperature) ? temperature : NAN;
+      String unit;
+      if (extractJsonStringField(payload, "temperature_unit", unit) && unit == "°F")
+        values.weatherTemperatureC = (values.weatherTemperatureC - 32.0f) / 1.8f;
+    }
     if (applied) ++successfulCount;
   }
   const bool apiResponded = successfulCount > 0;
@@ -1556,6 +1575,7 @@ void homeAssistantTask(void *) {
   float timezoneLatitude = 1000, timezoneLongitude = 1000;
   for (;;) {
     const ClockConfig config = runtimeConfigSnapshot();
+    hourlyForecastRefresh(config);
     ClockValues values = lastAvailableValues;
     if (WiFi.status() != WL_CONNECTED) {
       nextOpenMeteoRefreshAt = 0;
@@ -1814,7 +1834,8 @@ void loop() {
                               weatherIconStyle,
                               !clockDashboardRadarVisible() &&
                                   animationConfig.animatedWeatherIcons &&
-                                  (activeAppearance.style ==
+                                  (activeAppearance.style == CLOCK_STYLE_FORECAST ||
+                                   activeAppearance.style ==
                                        CLOCK_STYLE_ANALOG ||
                                    animationConfig.dataSource ==
                                        CLOCK_DATA_SOURCE_OPEN_METEO ||

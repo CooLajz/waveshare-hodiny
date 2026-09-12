@@ -24,7 +24,7 @@ const origin='http://127.0.0.1:'+server.address().port;
 const browser=await chromium.launch({headless:true,channel:"chrome"});
 const page=await browser.newPage({viewport:{width:1360,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const requests=[];let config={ok:true,language:'cs',dataSource:'open-meteo',leftSide:{},rightSide:{},metricA:{},metricB:{},dayBrightness:80,nightBrightness:10,clockStyle:'digital',timeFont:'barlow',saveConfirmationId:''};let saves=0,active=0,maxActive=0,saveMode="ok";
-await page.route('**/api/**',async route=>{const req=route.request(),url=new URL(req.url());if(url.pathname==='/')return route.fulfill({contentType:'text/html',headers:{'Content-Encoding':'gzip'},body:compressedHtml});if(url.pathname==='/ui-language.js')return route.fulfill({contentType:'text/javascript',headers:{'Content-Encoding':'gzip'},body:compressedLocalization});let data={ok:true};if(url.pathname==='/api/config'){if(req.method()==='POST'){saves++;const body=Object.fromEntries(new URLSearchParams(req.postData()));config={...config,...body,use12HourFormat:body.use12HourFormat==="1"};if(saveMode==="lost")return route.abort("failed");if(saveMode==="wrong")config.saveConfirmationId="different";}data=config;}else if(url.pathname.endsWith('/preview')){active++;maxActive=Math.max(maxActive,active);requests.push({url:url.pathname,data:Object.fromEntries(new URLSearchParams(req.postData()))});await new Promise(r=>setTimeout(r,240));active--;}else if(url.pathname==='/api/update-status'){await new Promise(r=>setTimeout(r,2500));data={ok:true,currentVersion:'test',state:'current'};}return route.fulfill({contentType:'application/json',body:JSON.stringify(data)});});
+await page.route('**/api/**',async route=>{const req=route.request(),url=new URL(req.url());if(url.pathname==='/')return route.fulfill({contentType:'text/html',headers:{'Content-Encoding':'gzip'},body:compressedHtml});if(url.pathname==='/ui-language.js')return route.fulfill({contentType:'text/javascript',headers:{'Content-Encoding':'gzip'},body:compressedLocalization});let data={ok:true};if(url.pathname==='/api/config'){if(req.method()==='POST'){saves++;const body=Object.fromEntries(new URLSearchParams(req.postData()));config={...config,...body,use12HourFormat:body.use12HourFormat==="1",automaticRadarRotation:body.automaticRadarRotation==="1"};if(saveMode==="lost")return route.abort("failed");if(saveMode==="wrong")config.saveConfirmationId="different";}data=config;}else if(url.pathname.endsWith('/preview')){active++;maxActive=Math.max(maxActive,active);requests.push({url:url.pathname,data:Object.fromEntries(new URLSearchParams(req.postData()))});await new Promise(r=>setTimeout(r,240));active--;}else if(url.pathname==='/api/update-status'){await new Promise(r=>setTimeout(r,2500));data={ok:true,currentVersion:'test',state:'current'};}return route.fulfill({contentType:'application/json',body:JSON.stringify(data)});});
 const start=Date.now();await page.goto(origin+'/');await page.locator('#configForm').waitFor({state:'visible'});assert(Date.now()-start<2400,'form blocked by firmware');
 console.log('form visible before delayed firmware status');console.log(await page.title());
 await page.locator('[data-tab="display"]').click();
@@ -42,9 +42,27 @@ saveMode="ok";await page.locator('#headerSaveButton').click();await page.waitFor
 // Style changes share the same queue and cannot reset newer local selections.
 await page.locator('input[name="clockStyle"][value="analog"]').check();await page.waitForTimeout(150);await page.locator('input[name="clockStyle"][value="digital"]').check();await page.waitForTimeout(600);assert.equal(await page.locator('input[name="clockStyle"]:checked').inputValue(),'digital');assert.equal(maxActive,1);
 await page.locator('#headerSaveButton').click();await page.waitForFunction(()=>!settingsSaving);
-await page.screenshot({path:'/tmp/clock-web-desktop.png'});
-await page.evaluate(()=>applyDeviceLanguage('en'));await page.waitForTimeout(150);assert(await page.getByText('Changes apply immediately. Use Save to keep them permanently.').first().isVisible());
-await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/clock-web-mobile.png'});
+assert.equal(await page.locator('input[name="clockStyle"]').count(),3);
+assert.equal(await page.locator('input[name="clockStyle"][value="forecast"]').count(),0);
+await page.locator('#automaticRadarRotation').check();
+for (const id of ['clockDisplaySeconds','forecastDisplaySeconds','radarDisplaySeconds']) {
+  await page.locator('#'+id).fill('0');
+  assert.equal(await page.locator('#'+id).getAttribute('min'),'0');
+}
+await page.evaluate(()=>saveConfiguration());
+assert.equal(Number(config.forecastDisplaySeconds),0);
+assert.equal(Number(config.clockDisplaySeconds),0);
+assert.equal(Number(config.radarDisplaySeconds),0);
+await page.locator('#forecastDisplaySeconds').fill('37');
+await page.evaluate(()=>saveConfiguration());
+assert.equal(Number(config.forecastDisplaySeconds),37);
+await page.evaluate(()=>{updateRadarAvailability(false)});
+assert(await page.locator('#forecastDisplaySeconds').isVisible());
+assert.equal(await page.locator('#automaticRadarRotation').isDisabled(),false);
+await page.evaluate(()=>applyDeviceLanguage('en'));await page.waitForTimeout(150);
+assert(await page.getByText('Show forecast for',{exact:true}).isVisible());
+await page.screenshot({path:'/tmp/clock-web-desktop-'+Date.now()+'.png'});
+await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/clock-web-mobile-'+Date.now()+'.png'});
 assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
 assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:true,previews:requests.length,saves,maxActive,errors}));await browser.close();await new Promise(resolve=>server.close(resolve));
 })().catch(e=>{console.error(e);process.exit(1)});

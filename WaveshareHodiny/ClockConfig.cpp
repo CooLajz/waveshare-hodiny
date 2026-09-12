@@ -59,6 +59,15 @@ struct ConfigRecordV26 {
 
 constexpr size_t SCHEMA_27_CONFIG_SIZE = offsetof(ClockConfig, leftValue);
 
+constexpr size_t SCHEMA_29_CONFIG_SIZE = offsetof(ClockConfig, forecastDisplaySeconds);
+struct ConfigRecordV29 {
+  uint32_t magic;
+  uint32_t schemaVersion;
+  uint8_t config[SCHEMA_29_CONFIG_SIZE];
+  uint32_t checksum;
+};
+static_assert(sizeof(ConfigRecordV29) == 2764, "Preserve schema 29 NVS layout.");
+
 constexpr size_t SCHEMA_28_CONFIG_SIZE = offsetof(ClockConfig, timeZone);
 struct ConfigRecordV28 {
   uint32_t magic;
@@ -192,8 +201,6 @@ void normalizeConfig(ClockConfig &config) {
     // Každé nové vyhledání už ukládá výslovný country_code z Open-Meteo.
     config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_CZECHIA;
   }
-  if (config.openMeteoCountry != CLOCK_LOCATION_COUNTRY_CZECHIA)
-    config.automaticRadarRotation = false;
   if (config.radarRadiusKm != 0 && config.radarRadiusKm != 25 &&
       config.radarRadiusKm != 50 &&
       config.radarRadiusKm != 100 && config.radarRadiusKm != 200) {
@@ -201,9 +208,10 @@ void normalizeConfig(ClockConfig &config) {
   }
   config.radarFrameCount = constrain(config.radarFrameCount, 1, 15);
   config.clockDisplaySeconds =
-      constrain(config.clockDisplaySeconds, 10, 3600);
+      constrain(config.clockDisplaySeconds, 0, 3600);
   config.radarDisplaySeconds =
-      constrain(config.radarDisplaySeconds, 10, 3600);
+      constrain(config.radarDisplaySeconds, 0, 3600);
+  config.forecastDisplaySeconds = constrain(config.forecastDisplaySeconds, 0, 3600);
   config.radarMapOpacity = constrain(config.radarMapOpacity, 0, 100);
   config.radarPauseSeconds = constrain(config.radarPauseSeconds, 0, 30);
   if (!std::isfinite(config.openMeteoLatitude) ||
@@ -273,7 +281,9 @@ bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
   appearance.style = constrain(
       preferences.getUChar(APPEARANCE_STYLE_KEY, CLOCK_STYLE_DIGITAL),
       static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
-      static_cast<uint8_t>(CLOCK_STYLE_RETRO_LCD));
+      static_cast<uint8_t>(CLOCK_STYLE_FORECAST));
+  // The former experimental forecast face is now a separate page.
+  if (appearance.style == CLOCK_STYLE_FORECAST) appearance.style = CLOCK_STYLE_DIGITAL;
   appearance.retroProgressSegments = constrain(preferences.getUChar("retroBarCount", 10), 5, 50);
   appearance.retroProgressSource = constrain(preferences.getUChar("retroBarSrc", 4), 0, 4);
   appearance.retroProgressMin = preferences.getFloat("retroBarMin", 0.0f);
@@ -344,7 +354,7 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
   }
   const uint8_t style = constrain(
       appearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
-      static_cast<uint8_t>(CLOCK_STYLE_RETRO_LCD));
+      static_cast<uint8_t>(CLOCK_STYLE_FORECAST));
   const bool styleSaved =
       preferences.putUChar(APPEARANCE_STYLE_KEY, style) == sizeof(style);
   const bool retroProgressSaved = preferences.putUChar("retroBarCount", appearance.retroProgressSegments) == sizeof(uint8_t) &&
@@ -462,7 +472,7 @@ bool clockConfigBegin() {
 
 bool clockConfigSchemaSupported(uint32_t schema) {
   return schema == CLOCK_CONFIG_SCHEMA_VERSION || schema == 20 ||
-         schema == 24 || schema == 25 || schema == 26 || schema == 27 || schema == 28;
+         schema == 24 || schema == 25 || schema == 26 || schema == 27 || schema == 28 || schema == 29;
 }
 
 bool clockConfigValidate(const ClockConfig &c) {
@@ -502,8 +512,8 @@ bool clockConfigValidate(const ClockConfig &c) {
       c.sunsetOffsetMinutes < -60 || c.sunsetOffsetMinutes > 60 || c.sunsetOffsetMinutes % 15 ||
       c.metricA.decimals > 2 || c.metricB.decimals > 2 || c.leftValue.decimals > 2 || c.rightValue.decimals > 2 ||
       c.radarFrameCount < 1 || c.radarFrameCount > 15 || c.radarMapOpacity > 100 || c.radarPauseSeconds > 30 ||
-      c.clockDisplaySeconds < 10 || c.clockDisplaySeconds > 3600 ||
-      c.radarDisplaySeconds < 10 || c.radarDisplaySeconds > 3600 ||
+      c.clockDisplaySeconds > 3600 ||
+      c.radarDisplaySeconds > 3600 || c.forecastDisplaySeconds > 3600 ||
       c.secondRingBackgroundDotSize < 1 || c.secondRingBackgroundDotSize > 10 ||
       c.secondDotSize < 1 || c.secondDotSize > 10) return false;
   if (c.radarRadiusKm != 0 && c.radarRadiusKm != 25 && c.radarRadiusKm != 50 &&
@@ -550,7 +560,7 @@ bool clockConfigDecodeRecord(const void *data, size_t storedSize, ClockConfig &c
   static ConfigRecord record;
   record = ConfigRecord{};
   const bool supportedSize = storedSize == sizeof(record) ||
-      storedSize == sizeof(ConfigRecordV28) || storedSize == sizeof(ConfigRecordV27) ||
+      storedSize == sizeof(ConfigRecordV29) || storedSize == sizeof(ConfigRecordV28) || storedSize == sizeof(ConfigRecordV27) ||
       storedSize == sizeof(ConfigRecordV26) || storedSize == sizeof(ConfigRecordV155);
   const bool readComplete = data && supportedSize;
   if (!readComplete) return false;
@@ -563,6 +573,19 @@ bool clockConfigDecodeRecord(const void *data, size_t storedSize, ClockConfig &c
       record.checksum == configChecksum(record.config);
   if (currentRecord) {
     config = record.config;
+    if (!clockConfigValidate(config)) return false;
+    normalizeConfig(config);
+    return true;
+  }
+
+  const ConfigRecordV29 &legacyV29 = *reinterpret_cast<const ConfigRecordV29 *>(&record);
+  uint32_t embeddedSchemaV29 = 0;
+  if (storedSize == sizeof(legacyV29)) memcpy(&embeddedSchemaV29, legacyV29.config, 4);
+  if (storedSize == sizeof(legacyV29) && legacyV29.magic == CONFIG_MAGIC &&
+      legacyV29.schemaVersion == 29 && embeddedSchemaV29 == 29 &&
+      legacyV29.checksum == bytesChecksum(legacyV29.config, sizeof(legacyV29.config))) {
+    memcpy(&config, legacyV29.config, sizeof(legacyV29.config));
+    config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
     if (!clockConfigValidate(config)) return false;
     normalizeConfig(config);
     return true;
@@ -702,6 +725,7 @@ bool clockConfigDecodeRecord(const void *data, size_t storedSize, ClockConfig &c
   config.automaticRadarRotation = false;
   config.clockDisplaySeconds = 120;
   config.radarDisplaySeconds = 20;
+  config.forecastDisplaySeconds = 20;
   config.radarMapOpacity = 100;
   config.radarPauseSeconds = 5;
   config.language = CLOCK_LANGUAGE_UNSET;

@@ -2,6 +2,7 @@
 #include "OpenWeatherIcons.h"
 #include "WeatherIconMapping.h"
 #include "RetroLcd.h"
+#include "ForecastDial.h"
 
 #include <lvgl.h>
 
@@ -505,6 +506,7 @@ void setRadarVisible(bool visible, int8_t direction = -1) {
   const bool canSlide = beginPageSlide(direction, false);
   radarVisible = visible;
   if (visible) {
+    forecastDialSetVisible(false);
     // Při návratu na radar neodkrývej snímek, který zůstal v canvasu z
     // předchozího cyklu. Canvas znovu zobrazí až první snapshot nové animace.
     lv_obj_add_flag(radarCanvas, LV_OBJ_FLAG_HIDDEN);
@@ -516,6 +518,7 @@ void setRadarVisible(bool visible, int8_t direction = -1) {
     lv_obj_add_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(dashboardContent);
+    forecastDialSetVisible(activeClockStyle == CLOCK_STYLE_FORECAST);
   }
   if (radarVisibilityCallback != nullptr) radarVisibilityCallback(visible);
   completePageSlidePreparation(canSlide);
@@ -1401,6 +1404,7 @@ lv_color_t metricColorForValue(float value,
 
 lv_obj_t *makeLabel(lv_obj_t *parent, const lv_font_t *font, lv_color_t color) {
   lv_obj_t *label = lv_label_create(parent);
+  lv_label_set_text(label, ""); // Do not expose LVGL placeholder text before the first value.
   lv_obj_set_style_text_font(label, font, 0);
   lv_obj_set_style_text_color(label, color, 0);
   return label;
@@ -2294,6 +2298,11 @@ void showSettings() {
     lv_obj_clear_state(automaticUpdateSwitch, LV_STATE_CHECKED);
   lv_dropdown_set_selected(webModeDropdown, selectedWebMode);
   settingsSelectedClockStyle = activeClockStyle;
+  if (settingsSelectedClockStyle == CLOCK_STYLE_FORECAST) {
+    ClockAppearanceConfig saved;
+    clockAppearanceLoad(saved);
+    settingsSelectedClockStyle = saved.style < CLOCK_STYLE_FORECAST ? saved.style : CLOCK_STYLE_DIGITAL;
+  }
   updateClockStyleCardSelection();
   showSettingsSubpage(0);
   settingsVisible = true;
@@ -3030,6 +3039,9 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
     retroLcdRaise();
   }
 
+  lv_obj_t *forecast = forecastDialCreate(clockPage);
+  lv_obj_add_event_cb(forecast, openSettingsEvent, LV_EVENT_LONG_PRESSED, nullptr);
+  forecastDialSetVisible(activeClockStyle == CLOCK_STYLE_FORECAST);
   clockDashboardUpdate(values);
   makeChildrenTapThrough(dashboardContent);
   lv_obj_add_event_cb(dashboardContent, openSettingsEvent, LV_EVENT_LONG_PRESSED,
@@ -3073,6 +3085,7 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
     if (!settingsVisible && !firmwareUpdateActive) {
       lv_obj_clear_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
       lv_obj_move_foreground(dashboardContent);
+    forecastDialSetVisible(activeClockStyle == CLOCK_STYLE_FORECAST);
     }
     if (radarVisibilityCallback != nullptr) radarVisibilityCallback(false);
   }
@@ -3356,6 +3369,12 @@ void clockDashboardApplyConfiguration(const ClockConfig &config) {
   renderSecondRing(millis());
   clockDashboardUpdate(currentValues);
   retroLcdRaise();
+  if (activeClockStyle == CLOCK_STYLE_FORECAST) {
+    lv_timer_pause(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
+    lv_timer_pause(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
+    forecastDialUpdate(redNightVisualEnabled());
+    return;
+  }
   if (retroLcdEnabled()) {
     lv_timer_pause(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
     lv_timer_pause(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
@@ -3379,7 +3398,7 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
   retroLcdSetWeatherStyle(appearance.retroWeatherRaster);
   const uint8_t style = constrain(
       appearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
-      static_cast<uint8_t>(CLOCK_STYLE_RETRO_LCD));
+      static_cast<uint8_t>(CLOCK_STYLE_FORECAST));
   const uint32_t tone = appearance.analogToneColor & 0xFFFFFF;
   const uint32_t handTone = appearance.analogHandToneColor & 0xFFFFFF;
   const uint32_t accentColor =
@@ -3415,6 +3434,11 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
                                      analogCardinalAccentsEnabled !=
                                          accentsEnabled;
   activeClockStyle = style;
+  forecastDialSetVisible(style == CLOCK_STYLE_FORECAST);
+  if (dashboardContent) {
+    if (style == CLOCK_STYLE_FORECAST) lv_obj_add_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_clear_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
+  }
   analogToneColor = tone;
   analogHandToneColor = handTone;
   analogCardinalAccentColor = accentColor;
@@ -3428,7 +3452,7 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
   clockDashboardApplyConfiguration(dashboardRuntimeConfig);
   updateAnalogValueLayerOrder();
   retroLcdRaise();
-  if (styleChanged && !retroLcdEnabled()) {
+  if (styleChanged && !retroLcdEnabled() && style != CLOCK_STYLE_FORECAST) {
     if (leftWeatherDecoderKey[0]) lv_timer_resume(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
     if (rightWeatherDecoderKey[0]) lv_timer_resume(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
   }
@@ -3448,6 +3472,33 @@ void clockDashboardSwipeAppearance(const ClockAppearanceConfig &appearance,
   const bool canSlide = beginPageSlide(direction, true);
   clockDashboardApplyAppearance(appearance);
   // Změna layoutu může zapnout částečný refresh; přechod potřebuje celou plochu.
+  displayDriverSetPartialRefresh(false);
+  completePageSlidePreparation(canSlide);
+}
+
+void clockDashboardSwipePage(const ClockAppearanceConfig &appearance, bool radar, int8_t direction) {
+  if (!clockDashboardAutomaticRotationAllowed()) return;
+  const bool canSlide = beginPageSlide(direction, false);
+  const bool wasRadar = radarVisible;
+  radarVisible = radar;
+  if (!radar) clockDashboardApplyAppearance(appearance);
+  if (radar) {
+    forecastDialSetVisible(false);
+    lv_obj_add_flag(radarCanvas, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(radarProgressBar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(radarPage);
+  } else {
+    lv_obj_add_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
+    if (appearance.style != CLOCK_STYLE_FORECAST) {
+      lv_obj_clear_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_move_foreground(dashboardContent);
+    }
+    forecastDialSetVisible(appearance.style == CLOCK_STYLE_FORECAST);
+    clockDashboardUpdate(currentValues);
+  }
+  if (wasRadar != radar && radarVisibilityCallback) radarVisibilityCallback(radar);
   displayDriverSetPartialRefresh(false);
   completePageSlidePreparation(canSlide);
 }
@@ -3472,6 +3523,21 @@ void clockDashboardUpdate(const ClockValues &values) {
   char text[32];
   currentValues = values;
   if (firmwareUpdateActive) return;
+  if (activeClockStyle == CLOCK_STYLE_FORECAST) {
+    lv_timer_pause(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
+    lv_timer_pause(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
+    char key[48] = "";
+    const bool matches = weatherAnimationAssetKey(key, sizeof(key), values.weatherCode,
+        values.weatherIsDay, clockDashboardWeatherIconStyle(configuredWeatherIconStyle)) &&
+        strcmp(key, weatherAnimationKey) == 0;
+    float temperature = values.weatherTemperatureC;
+    if (!std::isfinite(temperature) && outsideConfigured && strcmp(outsideUnit, "°C") == 0)
+      temperature = values.leftTemperatureC;
+    forecastDialSetWeather(values.weatherCode, values.weatherIsDay, temperature,
+        animatedWeatherIconsEnabled && weatherAnimationAvailable && !weatherAnimationRevealPending && matches);
+    forecastDialUpdate(redNightVisualEnabled());
+    return;
+  }
   if (retroLcdEnabled()) {
     lv_timer_pause(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
     lv_timer_pause(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
@@ -3646,6 +3712,7 @@ void clockDashboardSetWeatherAnimation(const uint8_t *gifData, size_t size,
   weatherAnimationSource.header.cf = LV_IMG_CF_RAW;
   weatherAnimationSource.data_size = size;
   weatherAnimationSource.data = gifData;
+  forecastDialSetAnimation(&weatherAnimationSource);
   weatherAnimationAvailable = true;
   strlcpy(weatherAnimationKey, iconKey, sizeof(weatherAnimationKey));
   ensureWeatherAnimationDecoders();
@@ -3655,6 +3722,7 @@ void clockDashboardSetWeatherAnimation(const uint8_t *gifData, size_t size,
 
 void clockDashboardLoop() {
   if (firmwareUpdateActive) return;
+  forecastDialUpdate(redNightVisualEnabled());
   preparePageSlide();
   if (retroLcdEnabled()) {
     updateRetroValues(currentValues);

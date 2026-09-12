@@ -43,6 +43,14 @@ The project is Czech and the firmware defaults to Czech. English can be selected
 in the device web configuration; the setting is stored persistently and also
 changes the system text and verbal date shown on the display.
 
+The hourly forecast page shows the next twelve whole hours, with
+temperature badges, larger shadowed day/night icons and a temperature-colored
+angular gradient, a solid current-temperature center and a time divider starting at its edge, separating the end and start of the forecast without blending across it. Swipe horizontally between the clock, forecast and radar pages.
+Current weather appears in the center; vertical swipes cycle the three clock faces.
+It also fetches Open-Meteo forecasts when Home Assistant supplies the other values.
+Automatic rotation has independent clock, forecast and radar durations. Zero skips
+a page; all-zero durations leave the current page unchanged even when enabled.
+
 ## Features
 
 - digital clock with Barlow, Liberation Sans, LCD DSEG and Doto fonts, or an

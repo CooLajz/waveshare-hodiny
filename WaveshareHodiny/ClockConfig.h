@@ -28,8 +28,9 @@ constexpr size_t CLOCK_METRIC_COLOR_POINT_COUNT = 10;
 // Schema 28 appends generic formatting and color scales for the two top Home
 // Assistant values. The complete schema 27 prefix stays byte-for-byte
 // unchanged so existing temperature-only configuration can be migrated safely.
+// Schema 30 appends the forecast page duration; zero durations skip automatic pages.
 // Schema 29 appends the IANA time zone associated with the saved location.
-constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 29;
+constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 30;
 
 enum ClockLanguage : uint8_t {
   CLOCK_LANGUAGE_UNSET = 0,
@@ -91,6 +92,7 @@ enum ClockStyle : uint8_t {
   CLOCK_STYLE_DIGITAL = 0,
   CLOCK_STYLE_ANALOG = 1,
   CLOCK_STYLE_RETRO_LCD = 2,
+  CLOCK_STYLE_FORECAST = 3,
 };
 
 struct ClockAppearanceConfig {
@@ -230,6 +232,7 @@ struct ClockConfig {
   ClockMetricColorScale leftValueColorScale;
   ClockMetricColorScale rightValueColorScale;
   char timeZone[CLOCK_TIMEZONE_LENGTH] = "Europe/Prague";
+  uint16_t forecastDisplaySeconds = 20;
 };
 
 static_assert(offsetof(ClockConfig, language) == 2106 &&
@@ -239,8 +242,9 @@ static_assert(offsetof(ClockConfig, language) == 2106 &&
                   sizeof(ClockTmepSlotConfig) == 50 &&
                   sizeof(ClockSideValueConfig) == 34 &&
                   offsetof(ClockConfig, timeZone) == 2688 &&
-                  sizeof(ClockConfig) == 2752,
-              "Schema 29 must preserve the complete schema 28 prefix.");
+                  offsetof(ClockConfig, forecastDisplaySeconds) == 2752 &&
+                  sizeof(ClockConfig) == 2756,
+              "Schema 30 must preserve the complete schema 29 prefix.");
 
 bool clockConfigBegin();
 bool clockConfigLoad(ClockConfig &config);

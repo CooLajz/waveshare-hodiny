@@ -55,6 +55,12 @@ pozicích 12, 3, 6 a 9 hodin.
 - dvě univerzální horní hodnoty s vlastním názvem, jednotkou, přesností,
   ikonou a plynulou barevnou škálou,
 - animované i statické ikony počasí založené na Meteocons,
+- samostatná stránka předpovědi Open-Meteo: následujících 12 celých hodin,
+  teploty, větší denní/noční ikony se stínem a plynulý teplotní přechod po obvodu
+  s vyplněným středem podle aktuální teploty a radiální čárou od jeho okraje, která odděluje začátek a konec předpovědi;
+  vodorovně mezi hodinami a radarem, s aktuálním počasím uprostřed;
+  dostupná také při použití Home Assistantu; automatické střídání má samostatné
+  délky pro hodiny, předpověď a radar (0 = vynechat, všechny 0 = bez přepínání),
 - srážkový radar ČHMÚ s mapou České republiky, městy a 1 až 15 snímky,
 - rozsahy 25, 50, 100 a 200 km nebo celou ČR ovládané svislým gestem swipe,
 - červenou noční paletu radaru se zachováním rozlišení intenzity srážek,

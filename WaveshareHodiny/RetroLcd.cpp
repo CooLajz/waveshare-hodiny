@@ -9,6 +9,8 @@
 
 namespace {
 lv_obj_t *face = nullptr;
+lv_coord_t parentRadiusBeforeLcd = 0;
+bool parentClipBeforeLcd = false;
 tm clockTime = {};
 bool timeAvailable = false;
 bool use12HourFormat = false;
@@ -300,7 +302,19 @@ void retroLcdRaise() {
 
 void retroLcdEnable(lv_obj_t *parent,bool enabled) {
   if(enabled==retroLcdEnabled()) return;
-  if(!enabled) { lv_obj_del(face); face=nullptr; return; }
+  if(!enabled) {
+    lv_obj_t *content = lv_obj_get_parent(face);
+    lv_obj_del(face); face=nullptr;
+    lv_obj_set_style_radius(content,parentRadiusBeforeLcd,0);
+    lv_obj_set_style_clip_corner(content,parentClipBeforeLcd,0);
+    return;
+  }
+  // Clip all underlying labels too, so square transition snapshots have clean
+  // corners outside the LCD. Restore the original container style on exit.
+  parentRadiusBeforeLcd = lv_obj_get_style_radius(parent,LV_PART_MAIN);
+  parentClipBeforeLcd = lv_obj_get_style_clip_corner(parent,LV_PART_MAIN);
+  lv_obj_set_style_radius(parent,LV_RADIUS_CIRCLE,0);
+  lv_obj_set_style_clip_corner(parent,true,0);
   face=lv_obj_create(parent);
   lv_obj_remove_style_all(face);
   lv_obj_set_size(face,480,480);
