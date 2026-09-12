@@ -55,6 +55,7 @@ void clockDashboardHandleShortClick();
 bool clockDashboardRadarVisible();
 void clockDashboardSetRadarVisible(bool visible, int8_t direction = -1);
 bool clockDashboardAutomaticRotationAllowed();
+bool clockDashboardTransitionActive();
 void clockDashboardSetWifiAddress(const char *ipAddress);
 void clockDashboardSetFirmwareVersion(const char *version,
                                       bool updateAvailable);

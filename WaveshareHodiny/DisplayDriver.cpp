@@ -17,10 +17,9 @@ void *frameBuffer1 = nullptr;
 void *frameBuffer2 = nullptr;
 uint8_t *screenshotBuffer = nullptr;
 size_t screenshotOffset = 0;
-int8_t horizontalSwipePending = 0;
-bool horizontalSwipeLatched = false;
-int8_t verticalSwipePending = 0;
-bool verticalSwipeLatched = false;
+SwipeNavigation swipeNavigation;
+int8_t horizontalSwipeLatched = 0;
+int8_t verticalSwipeLatched = 0;
 bool singleClickPending = false;
 bool singleClickLatched = false;
 uint8_t partialRefreshWarmupFrames = 0;
@@ -83,7 +82,10 @@ void flushDisplay(lv_disp_drv_t *driver, const lv_area_t *area, lv_color_t *pixe
 }
 
 void readTouch(lv_indev_drv_t *, lv_indev_data_t *data) {
-  Touch_Read_Data();
+  if (!Touch_Read_Data()) {
+    data->state = LV_INDEV_STATE_REL;
+    return; // A failed I2C read is not evidence of a new gesture.
+  }
   const bool horizontalSwipe =
       touch_data.gesture == SWIPE_LEFT || touch_data.gesture == SWIPE_RIGHT;
   const bool verticalSwipe =
@@ -91,18 +93,20 @@ void readTouch(lv_indev_drv_t *, lv_indev_data_t *data) {
   const bool singleClick = touch_data.gesture == SINGLE_CLICK;
   if (horizontalSwipe) {
     verticalSwipeLatched = false;
-    if (!horizontalSwipeLatched) {
-      horizontalSwipeLatched = true;
-      horizontalSwipePending = touch_data.gesture == SWIPE_LEFT ? -1 : 1;
+    const int8_t direction = touch_data.gesture == SWIPE_LEFT ? -1 : 1;
+    if (horizontalSwipeLatched != direction) {
+      horizontalSwipeLatched = direction;
+      swipeNavigation.offer(direction, false, millis());
     }
     if (lv_indev_get_obj_act() != nullptr)
       lv_indev_wait_release(lv_indev_get_act());
     data->state = LV_INDEV_STATE_REL;
   } else if (verticalSwipe) {
     horizontalSwipeLatched = false;
-    if (!verticalSwipeLatched) {
-      verticalSwipePending = touch_data.gesture == SWIPE_UP ? -1 : 1;
-      verticalSwipeLatched = true;
+    const int8_t direction = touch_data.gesture == SWIPE_UP ? -1 : 1;
+    if (verticalSwipeLatched != direction) {
+      swipeNavigation.offer(direction, true, millis());
+      verticalSwipeLatched = direction;
     }
     if (lv_indev_get_obj_act() != nullptr)
       lv_indev_wait_release(lv_indev_get_act());
@@ -158,7 +162,8 @@ void displayDriverInit() {
   inputDriver.type = LV_INDEV_TYPE_POINTER;
   inputDriver.read_cb = readTouch;
   inputDriver.long_press_time = 800;
-  lv_indev_drv_register(&inputDriver);
+  lv_indev_t *input = lv_indev_drv_register(&inputDriver);
+  if (input != nullptr) lv_timer_set_period(input->driver->read_timer, 16);
 
   const esp_timer_create_args_t tickTimerArgs = {
       .callback = increaseTick,
@@ -211,16 +216,8 @@ void displayDriverSetPartialRefresh(bool enabled, bool rebuildBuffers) {
   displayDriverRefresh();
 }
 
-int8_t displayDriverTakeHorizontalSwipe() {
-  const int8_t direction = horizontalSwipePending;
-  horizontalSwipePending = 0;
-  return direction;
-}
-
-int8_t displayDriverTakeVerticalSwipe() {
-  const int8_t direction = verticalSwipePending;
-  verticalSwipePending = 0;
-  return direction;
+DisplaySwipe displayDriverTakeSwipe(bool allowed, bool transitioning) {
+  return swipeNavigation.take(millis(), allowed, transitioning);
 }
 
 bool displayDriverTakeSingleClick() {

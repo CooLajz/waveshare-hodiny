@@ -2,13 +2,13 @@
 
 #include <Arduino.h>
 #include <lvgl.h>
+#include "SwipeNavigation.h"
 
 void displayDriverInit();
 void displayDriverLoop();
 void displayDriverRefresh();
 void displayDriverSetPartialRefresh(bool enabled, bool rebuildBuffers = false);
-int8_t displayDriverTakeHorizontalSwipe();
-int8_t displayDriverTakeVerticalSwipe();
+DisplaySwipe displayDriverTakeSwipe(bool allowed, bool transitioning);
 bool displayDriverTakeSingleClick();
 bool displayDriverBeginFramebufferCapture(Print &output);
 bool displayDriverStreamFramebufferChunk(Print &output);

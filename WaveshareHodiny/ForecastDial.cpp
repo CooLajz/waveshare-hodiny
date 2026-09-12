@@ -1,4 +1,5 @@
 #include "ForecastDial.h"
+#include "ForecastFanRegion.h"
 #include "HourlyForecastService.h"
 #include "ClockTimezone.h"
 #include "ClockFonts.h"
@@ -17,6 +18,8 @@ lv_obj_t *centerTime = nullptr, *centerTimeShadow = nullptr;
 bool animationReady = false, animationShown = false;
 lv_color_t *fanPixels = nullptr;
 lv_img_dsc_t fanImage{};
+ForecastFanKey renderedFanKey{};
+bool fanInitialized = false;
 float currentTemperature = NAN;
 constexpr int CENTER_RADIUS = 108;
 void applyCenterColors() {
@@ -80,12 +83,18 @@ void rebuildFan() {
     colors[(local.tm_hour + 1 + i) % 12] = lv_color_to32(value ? temperatureColor(value->temperature) : lv_color_hex(0x30343A));
   }
   const bool stale = !data.fetchedAt || now - data.fetchedAt > 2 * 3600;
-  for (int y = 0; y < 480; ++y) {
-    for (int x = 0; x < 480; ++x) {
+  ForecastFanKey nextKey;
+  memcpy(nextKey.colors, colors, sizeof(colors));
+  nextKey.hour = local.tm_hour % 12;
+  nextKey.minute = local.tm_min;
+  nextKey.valid = valid;
+  nextKey.stale = stale;
+  const ForecastFanRegion region = forecastFanRegion(renderedFanKey, nextKey, fanInitialized);
+  for (int y = region.y1; y <= region.y2; ++y) {
+    for (int x = region.x1; x <= region.x2; ++x) {
       const float dx = x - 240, dy = y - 240;
-      const float radius = std::sqrt(dx * dx + dy * dy);
       lv_color_t color = lv_color_black();
-      if (radius <= 240) {
+      if (dx * dx + dy * dy <= 240 * 240) {
         float angle = std::atan2(dy, dx) * 180 / DIAL_PI + 90;
         if (angle < 0) angle += 360;
         const float position = angle / 30;
@@ -111,6 +120,8 @@ void rebuildFan() {
       fanPixels[y * 480 + x] = color;
     }
   }
+  renderedFanKey = nextKey;
+  fanInitialized = true;
 }
 void text(lv_draw_ctx_t *ctx, lv_point_t p, const char *value,
           const lv_font_t *font, lv_color_t color, int width = 64) {
@@ -367,4 +378,3 @@ void forecastDialSetAnimation(const lv_img_dsc_t *source) {
   lv_obj_align(currentAnimation, LV_ALIGN_CENTER, 0, -30);
   lv_timer_pause(reinterpret_cast<lv_gif_t *>(currentAnimation)->timer);
 }
-

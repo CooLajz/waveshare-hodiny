@@ -526,19 +526,20 @@ void maintainAutomaticRadarRotation() {
 }
 
 void maintainDisplayGestures() {
-  const bool radarAvailable =
+  const DisplaySwipe swipe = displayDriverTakeSwipe(
+      clockDashboardAutomaticRotationAllowed(), clockDashboardTransitionActive());
+  const bool radarAvailable = swipe.direction != 0 &&
       clockConfigRadarAvailable(runtimeConfigSnapshot());
-  const int8_t horizontalSwipeDirection = displayDriverTakeHorizontalSwipe();
-  if (horizontalSwipeDirection != 0 && clockDashboardAutomaticRotationAllowed()) {
+  const int8_t horizontalSwipeDirection = swipe.vertical ? 0 : swipe.direction;
+  if (horizontalSwipeDirection != 0) {
     const uint8_t pageCount = radarAvailable ? 3 : 2;
     const uint8_t page = clockDashboardRadarVisible() ? 2 :
         (activeAppearance.style == CLOCK_STYLE_FORECAST ? 1 : 0);
     const uint8_t next = (page + (horizontalSwipeDirection < 0 ? 1 : pageCount - 1)) % pageCount;
     showDisplayPage(next, horizontalSwipeDirection);
   }
-  const int8_t verticalSwipeDirection = displayDriverTakeVerticalSwipe();
-  if (verticalSwipeDirection != 0 &&
-      clockDashboardAutomaticRotationAllowed()) {
+  const int8_t verticalSwipeDirection = swipe.vertical ? swipe.direction : 0;
+  if (verticalSwipeDirection != 0) {
     if (clockDashboardRadarVisible()) {
       if (radarAvailable) handleRadarRangeChange(verticalSwipeDirection);
     } else if (activeAppearance.style != CLOCK_STYLE_FORECAST) {
@@ -552,6 +553,8 @@ void maintainDisplayGestures() {
       activeAppearance = appearance;
       clockDashboardSwipeAppearance(appearance, clockSwipeDirection);
       lastDisplayedSecond = -1;
+      displayModeStartedAt = millis();
+      radarRotationWaitingForCycle = false;
     }
   }
   if (displayDriverTakeSingleClick()) clockDashboardHandleShortClick();
@@ -1861,6 +1864,8 @@ void loop() {
     if (lastDisplayedSecond == -1) maintainNetworkTime();
     clockDashboardLoop();
     displayDriverLoop();
+    // Consume freshly read input before the next web/network/UI iteration.
+    maintainDisplayGestures();
   }
   if (firmwareUpdateDisplayRequested && firmwareUpdateDisplayActive) {
     firmwareUpdateDisplayPresented = true;

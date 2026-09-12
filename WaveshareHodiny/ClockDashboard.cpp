@@ -511,6 +511,8 @@ void setRadarVisible(bool visible, int8_t direction = -1) {
     // předchozího cyklu. Canvas znovu zobrazí až první snapshot nové animace.
     lv_obj_add_flag(radarCanvas, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(radarProgressBar, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(radarStatusLabel, englishLanguage() ? "LOADING RADAR" : "NAČÍTÁNÍ RADARU");
+    lv_obj_clear_flag(radarStatusLabel, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(radarPage);
@@ -539,8 +541,13 @@ void preparePageSlide() {
     if (distance != pageSlideDistance) slidePages(nullptr, distance);
     return;
   }
-  if (radarVisible && lv_obj_has_flag(radarCanvas, LV_OBJ_FLAG_HIDDEN) &&
-      millis() - pageSlidePrepareAt < 700) return;
+  if (radarVisible && lv_obj_has_flag(radarCanvas, LV_OBJ_FLAG_HIDDEN)) {
+    if (millis() - pageSlidePrepareAt < 120) return;
+    // Do not freeze navigation waiting for network work. Reveal the loading
+    // page; the radar worker will supply its first frame independently.
+    finishPageSlide(nullptr);
+    return;
+  }
   lv_obj_add_flag(pageSlideOverlay, LV_OBJ_FLAG_HIDDEN);
   lv_img_dsc_t snapshot = {};
   const bool captured = lv_snapshot_take_to_buf(
@@ -3486,6 +3493,8 @@ void clockDashboardSwipePage(const ClockAppearanceConfig &appearance, bool radar
     forecastDialSetVisible(false);
     lv_obj_add_flag(radarCanvas, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(radarProgressBar, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(radarStatusLabel, englishLanguage() ? "LOADING RADAR" : "NAČÍTÁNÍ RADARU");
+    lv_obj_clear_flag(radarStatusLabel, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(radarPage);
@@ -3878,6 +3887,10 @@ bool clockDashboardAutomaticRotationAllowed() {
   return !settingsVisible && !firmwareUpdateActive && !pageSlideActive;
 }
 
+bool clockDashboardTransitionActive() {
+  return !settingsVisible && !firmwareUpdateActive && pageSlideActive;
+}
+
 void clockDashboardSetRadarSnapshot(const uint16_t *pixels,
                                     const char *frameTime, uint16_t radiusKm,
                                     const char *message, bool loading,
@@ -3945,7 +3958,10 @@ void clockDashboardSetRadarSnapshot(const uint16_t *pixels,
                                                     : "ČHMÚ - %u km",
              radiusKm);
   lv_label_set_text(radarTitleLabel, title);
-  lv_label_set_text(radarStatusLabel, "");
+  lv_label_set_text(radarStatusLabel, pixels != nullptr ? "" :
+      (englishLanguage() ? "LOADING RADAR" : "NAČÍTÁNÍ RADARU"));
+  if (pixels != nullptr) lv_obj_add_flag(radarStatusLabel, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_clear_flag(radarStatusLabel, LV_OBJ_FLAG_HIDDEN);
   alignCenter(radarTitleLabel, 0, -205);
 }
 
