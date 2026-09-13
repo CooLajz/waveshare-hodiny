@@ -12,3 +12,5 @@ DisplaySwipe displayDriverTakeSwipe(bool allowed, bool transitioning);
 bool displayDriverTakeSingleClick();
 bool displayDriverBeginFramebufferCapture(Print &output);
 bool displayDriverStreamFramebufferChunk(Print &output);
+
+void displayDriverPrintRenderStats(Print &output);

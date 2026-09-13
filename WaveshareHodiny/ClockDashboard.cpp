@@ -3,6 +3,7 @@
 #include "WeatherIconMapping.h"
 #include "RetroLcd.h"
 #include "ForecastDial.h"
+#include "HourlyForecastService.h"
 
 #include <lvgl.h>
 
@@ -200,6 +201,11 @@ bool settingsVisible = false;
 bool suppressNextDashboardClick = false;
 unsigned long suppressDashboardClickUntil = 0;
 bool radarVisible = false;
+bool sunnyAnimationTest = false;
+bool forecastHomeAssistantEnabled = false;
+bool partialLayoutEnabled() {
+  return !radarVisible && (analogLayoutEnabled() || activeClockStyle == CLOCK_STYLE_FORECAST);
+}
 bool radarFeatureAvailable = true;
 bool nightModeEnabled = false;
 uint8_t nightVisualMode = CLOCK_NIGHT_VISUAL_RED;
@@ -457,8 +463,8 @@ void finishPageSlide(lv_anim_t *) {
   pageSlideActive = false;
   chmiRadarServiceHoldPlayback(false);
   lv_timer_set_period(lv_disp_get_default()->refr_timer, LV_DISP_DEF_REFR_PERIOD);
-  displayDriverSetPartialRefresh(analogLayoutEnabled(),
-                                 analogLayoutEnabled());
+  displayDriverSetPartialRefresh(partialLayoutEnabled(),
+                                 partialLayoutEnabled());
 }
 
 bool beginPageSlide(int8_t direction, bool vertical) {
@@ -3077,11 +3083,13 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
   alignCenter(firmwareUpdateCountdownLabel, 0, 35);
   // Změna vzhledu musí znovu naplnit oba framebuffery celým shodným
   // ciferníkem. Teprve potom se vrátíme k částečnému direct-mode renderu.
-  displayDriverSetPartialRefresh(analogLayoutEnabled(),
-                                 analogLayoutEnabled());
+  displayDriverSetPartialRefresh(partialLayoutEnabled(),
+                                 partialLayoutEnabled());
 }
 
 void clockDashboardApplyConfiguration(const ClockConfig &config) {
+  forecastHomeAssistantEnabled = config.dataSource == CLOCK_DATA_SOURCE_HOME_ASSISTANT &&
+      config.homeAssistantUrl[0] && config.homeAssistantToken[0];
   retroLcdSetLeadingHourZero(config.showLeadingHourZero);
   dashboardRuntimeConfig = config;
   dashboardRuntimeConfigAvailable = true;
@@ -3467,7 +3475,7 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
     rebuildAnalogDialCache();
   applyDashboardColors();
   displayDriverSetPartialRefresh(
-      analogLayoutEnabled(), analogLayoutEnabled() && valueLayerChanged);
+      partialLayoutEnabled(), partialLayoutEnabled() && valueLayerChanged);
   if (analogDialLayer != nullptr && analogLayoutEnabled())
     lv_obj_invalidate(analogDialLayer);
   invalidateAnalogHands();
@@ -3528,21 +3536,23 @@ static void updateRetroValues(const ClockValues &values) {
                  redNightVisualEnabled(), wifiConnected, webActive);
 }
 
-void clockDashboardUpdate(const ClockValues &values) {
+void clockDashboardUpdate(const ClockValues &input) {
   char text[32];
-  currentValues = values;
+  currentValues = input;
+  ClockValues values = input;
+  if (sunnyAnimationTest) { values.weatherCode = 800; values.weatherIsDay = true; }
   if (firmwareUpdateActive) return;
   if (activeClockStyle == CLOCK_STYLE_FORECAST) {
     lv_timer_pause(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
     lv_timer_pause(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
+    ForecastHour current = resolveForecastCurrent(forecastHomeAssistantEnabled,
+        values.forecastWeather, values.forecastTemperatureOverrideC, hourlyForecastSnapshot().current);
+    if (sunnyAnimationTest) { current.weatherCode = 800; current.isDay = true; }
     char key[48] = "";
-    const bool matches = weatherAnimationAssetKey(key, sizeof(key), values.weatherCode,
-        values.weatherIsDay, clockDashboardWeatherIconStyle(configuredWeatherIconStyle)) &&
+    const bool matches = weatherAnimationAssetKey(key, sizeof(key), current.weatherCode,
+        current.isDay, clockDashboardWeatherIconStyle(configuredWeatherIconStyle)) &&
         strcmp(key, weatherAnimationKey) == 0;
-    float temperature = values.weatherTemperatureC;
-    if (!std::isfinite(temperature) && outsideConfigured && strcmp(outsideUnit, "°C") == 0)
-      temperature = values.leftTemperatureC;
-    forecastDialSetWeather(values.weatherCode, values.weatherIsDay, temperature,
+    forecastDialSetWeather(current.weatherCode, current.isDay, current.temperature,
         animatedWeatherIconsEnabled && weatherAnimationAvailable && !weatherAnimationRevealPending && matches);
     forecastDialUpdate(redNightVisualEnabled());
     return;
@@ -3818,6 +3828,7 @@ void clockDashboardLoop() {
     weatherAnimationRevealPending = false;
     clockDashboardUpdate(currentValues);
   }
+  if (activeClockStyle == CLOCK_STYLE_FORECAST) return;
   const bool smoothSecondEffectActive =
       !retroLcdEnabled() && !analogLayoutEnabled() && secondRingEnabled &&
       (secondEffect == CLOCK_SECOND_EFFECT_LINE ||
@@ -4078,7 +4089,7 @@ void clockDashboardSetDate(const char *dateText) {
 
 void clockDashboardSetSecond(uint8_t second) {
   if (firmwareUpdateActive) return;
-  if (retroLcdEnabled()) { displayedSecond = second; return; }
+  if (retroLcdEnabled() || activeClockStyle == CLOCK_STYLE_FORECAST) { displayedSecond = second; return; }
   if (second > SECOND_DOT_COUNT) second = SECOND_DOT_COUNT;
   if (displayedSecond == second) return;
   const bool analogLayout = analogLayoutEnabled();
@@ -4140,6 +4151,10 @@ void clockDashboardSetSecond(uint8_t second) {
 void clockDashboardSetTime(const char *timeText, const char *period) {
   if (firmwareUpdateActive) return;
   strlcpy(displayedTimePeriod, period ? period : "", sizeof(displayedTimePeriod));
+  if (activeClockStyle == CLOCK_STYLE_FORECAST) {
+    strlcpy(displayedTimeText, timeText, sizeof(displayedTimeText));
+    return; // Forecast updates HH:mm itself once per minute, with no seconds.
+  }
   updateTimePeriod();
   if (retroLcdEnabled()) {
     strlcpy(displayedTimeText, timeText, sizeof(displayedTimeText));
@@ -4175,6 +4190,12 @@ void clockDashboardSetRetroPreview(bool enabled) {
     if (leftWeatherDecoderKey[0]) lv_timer_resume(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
     if (rightWeatherDecoderKey[0]) lv_timer_resume(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
   }
-  displayDriverSetPartialRefresh(analogLayoutEnabled(), true);
+  displayDriverSetPartialRefresh(partialLayoutEnabled(), true);
   lv_obj_invalidate(lv_scr_act());
 }
+
+void clockDashboardSetSunnyTest(bool enabled) {
+  sunnyAnimationTest = enabled;
+  clockDashboardUpdate(currentValues);
+}
+bool clockDashboardSunnyTest() { return sunnyAnimationTest; }

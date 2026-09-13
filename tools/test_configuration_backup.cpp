@@ -16,7 +16,7 @@ void testMigration() {
   ClockConfig current; clockConfigApplyDefaults(current);
   strcpy(current.homeAssistantToken,"synthetic-test-token");
   const struct { uint32_t schema; size_t prefix; } cases[] = {
-      {20,2096},{24,2108},{25,2108},{26,2108},{27,2452},{28,2688},{29,2752},{30,2756}};
+      {20,2096},{24,2108},{25,2108},{26,2108},{27,2452},{28,2688},{29,2752},{30,2884}};
   for(auto test:cases){
     std::vector<uint8_t> record(test.prefix+12);
     uint32_t magic=0x57484346;memcpy(record.data(),&magic,4);memcpy(record.data()+4,&test.schema,4);
@@ -25,7 +25,7 @@ void testMigration() {
     uint32_t hash=checksum(record.data()+8,test.prefix);memcpy(record.data()+8+test.prefix,&hash,4);
     const auto before=fakeNvs::values;
     ClockConfig decoded;assert(clockConfigDecodeRecord(record.data(),record.size(),decoded));
-    assert(decoded.schemaVersion==30);assert(decoded.forecastDisplaySeconds==20);assert(!strcmp(decoded.homeAssistantToken,"synthetic-test-token"));
+    assert(decoded.schemaVersion==30);assert(!decoded.forecastTemperatureEntityId[0]);assert(decoded.forecastDisplaySeconds==20);assert(!strcmp(decoded.homeAssistantToken,"synthetic-test-token"));
     if(test.schema==25)assert(decoded.language==CLOCK_LANGUAGE_ENGLISH);
     assert(fakeNvs::values==before); // Decoder must be pure, including migrations.
     record[12]^=1;assert(!clockConfigDecodeRecord(record.data(),record.size(),decoded));
@@ -117,6 +117,7 @@ void testCompleteSnapshot() {
   strcpy(source.homeAssistantUrl,"http://synthetic.invalid:8123");
   strcpy(source.homeAssistantToken,"synthetic-complete-token");
   strcpy(source.tmepExportKey,"synthetic-tmep-key"); strcpy(source.tmepExportId,"123");
+  strcpy(source.forecastTemperatureEntityId,"sensor.forecast_temperature");
   source.clockDisplaySeconds=0;source.radarDisplaySeconds=0;source.forecastDisplaySeconds=37;
   source.metricAColorScale.count=2;
   source.metricAColorScale.points[0]={1.0001f,0xffffff};
@@ -141,7 +142,7 @@ void testCompleteSnapshot() {
   prefs.begin("web-auth");assert(prefs.remove("credential"));
   uint8_t plain[SETTINGS_IMAGE_CAPACITY];size_t size;BackupMetadata header;
   assert(backupDecrypt(file,strlen(file),"synthetic-password",header,plain,sizeof(plain),size));
-  assert(settingsImport(plain,size));ClockConfig restored;assert(clockConfigLoad(restored));assert(restored.forecastDisplaySeconds==37);assert(restored.clockDisplaySeconds==0&&restored.radarDisplaySeconds==0);
+  assert(settingsImport(plain,size));ClockConfig restored;assert(clockConfigLoad(restored));assert(!strcmp(restored.forecastTemperatureEntityId,"sensor.forecast_temperature"));assert(restored.forecastDisplaySeconds==37);assert(restored.clockDisplaySeconds==0&&restored.radarDisplaySeconds==0);
   assert(!strcmp(restored.homeAssistantToken,source.homeAssistantToken));
   assert(!strcmp(restored.tmepExportKey,source.tmepExportKey));
   assert(restored.metricAColorScale.points[0].value==source.metricAColorScale.points[0].value);

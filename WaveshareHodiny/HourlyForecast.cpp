@@ -35,6 +35,20 @@ bool parseHourlyForecast(const char *json, HourlyForecast &result) {
   for (size_t i = 1; i < 4; ++i)
     ok = ok && cJSON_GetArraySize(arrays[i]) == count;
   HourlyForecast parsed;
+  const cJSON *current = cJSON_GetObjectItemCaseSensitive(root, "current");
+  const cJSON *temperature = cJSON_GetObjectItemCaseSensitive(current, "temperature_2m");
+  const cJSON *code = cJSON_GetObjectItemCaseSensitive(current, "weather_code");
+  const cJSON *day = cJSON_GetObjectItemCaseSensitive(current, "is_day");
+  if (cJSON_IsNumber(temperature) && std::isfinite(temperature->valuedouble) &&
+      temperature->valuedouble >= -100 && temperature->valuedouble <= 70)
+    parsed.current.temperature = temperature->valuedouble;
+  if (cJSON_IsNumber(code) && code->valuedouble == std::floor(code->valuedouble) &&
+      code->valuedouble >= 0 && code->valuedouble <= 99 && cJSON_IsNumber(day) &&
+      (day->valuedouble == 0 || day->valuedouble == 1)) {
+    parsed.current.weatherCode = forecastWeatherCode(code->valueint);
+    parsed.current.isDay = day->valueint == 1;
+    parsed.current.valid = parsed.current.weatherCode >= 0;
+  }
   for (int i = 0; ok && i < count; ++i) {
     const cJSON *t = cJSON_GetArrayItem(arrays[0], i);
     if (!cJSON_IsNumber(t) || !std::isfinite(t->valuedouble) ||

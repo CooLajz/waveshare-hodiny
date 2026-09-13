@@ -59,7 +59,6 @@ uint8_t requestedFrameCount = 6;
 uint8_t mapOpacity = 100;
 uint8_t pauseSeconds = 5;
 uint16_t *displayBuffers[DISPLAY_BUFFER_COUNT] = {};
-uint16_t *decodeBuffer = nullptr;
 uint8_t *preparedFrames[MAX_ANIMATION_FRAME_COUNT] = {};
 bool preparedFrameReady[MAX_ANIMATION_FRAME_COUNT] = {};
 uint32_t preparedFrameRevisions[MAX_ANIMATION_FRAME_COUNT] = {};
@@ -115,7 +114,7 @@ uint32_t pendingFrameRevisions[MAX_PENDING_REFRESH_FRAMES] = {};
 size_t pendingRefreshCount = 0;
 uint16_t *lineBuffer = nullptr;
 size_t lineCapacity = 0;
-uint16_t *decodeTarget = nullptr;
+uint8_t *decodeTarget = nullptr;
 int imageWidth = 0;
 int imageHeight = 0;
 int sourceX[CHMI_RADAR_WIDTH] = {};
@@ -129,6 +128,7 @@ void advanceAnimation(unsigned long now);
 bool showPreparedFrame(size_t index, unsigned long now);
 int firstPreparedFrame();
 uint8_t rgb565ToRgb332(uint16_t color);
+uint16_t rgb332ToRgb565(uint8_t color);
 uint16_t nightRadarColor(uint8_t color);
 void applyNightRadarPalette(uint16_t *buffer);
 
@@ -212,16 +212,11 @@ bool ensureBuffers() {
     }
     if (buffer == nullptr) return false;
   }
-  if (decodeBuffer == nullptr) {
-    decodeBuffer = static_cast<uint16_t *>(heap_caps_malloc(
-        RADAR_PIXEL_COUNT * sizeof(uint16_t),
-        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  }
   if (pngBuffer == nullptr) {
     pngBuffer = static_cast<uint8_t *>(heap_caps_malloc(
         PNG_CAPACITY, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   }
-  return pngBuffer != nullptr && decodeBuffer != nullptr;
+  return pngBuffer != nullptr;
 }
 
 bool ensurePreparedFrame(size_t index) {
@@ -467,7 +462,7 @@ void drawDecodedLine(PNGDRAW *draw) {
                               0x00000000);
   for (int targetY = 0; targetY < CHMI_RADAR_HEIGHT; ++targetY) {
     if (sourceY[targetY] != draw->y) continue;
-    uint16_t *row = decodeTarget + targetY * CHMI_RADAR_WIDTH;
+    uint8_t *row = decodeTarget + targetY * CHMI_RADAR_WIDTH;
     const long dy = targetY - CHMI_RADAR_HEIGHT / 2;
     for (int targetX = 0; targetX < CHMI_RADAR_WIDTH; ++targetX) {
       const long dx = targetX - CHMI_RADAR_WIDTH / 2;
@@ -475,7 +470,7 @@ void drawDecodedLine(PNGDRAW *draw) {
       const int source = sourceX[targetX];
       if (source >= 0 && source < imageWidth && source <= dataX1 &&
           draw->y >= dataY0) {
-        row[targetX] = lineBuffer[source];
+        row[targetX] = rgb565ToRgb332(lineBuffer[source]);
       }
     }
     if ((targetY & 7) == 0) {
@@ -504,11 +499,21 @@ uint16_t blendRgb565(uint16_t background, uint16_t foreground,
   return static_cast<uint16_t>((red << 11) | (green << 5) | blue);
 }
 
-void setMapPixel(uint16_t *buffer, int x, int y, uint16_t color,
+void blendMapPixel(uint16_t &pixel, uint16_t color, uint8_t opacity) {
+  pixel = blendRgb565(pixel, color, opacity);
+}
+
+void blendMapPixel(uint8_t &pixel, uint16_t color, uint8_t opacity) {
+  // Hotové snímky jsou RGB332. Průhlednou mapu mícháme nad touto paletou,
+  // bez celoplošného RGB565 mezibufferu; neprůhledné barvy zůstávají shodné.
+  pixel = rgb565ToRgb332(blendRgb565(rgb332ToRgb565(pixel), color, opacity));
+}
+
+template <typename Pixel>
+void setMapPixel(Pixel *buffer, int x, int y, uint16_t color,
                  uint8_t opacity) {
   if (x >= 0 && x < CHMI_RADAR_WIDTH && y >= 0 && y < CHMI_RADAR_HEIGHT) {
-    uint16_t &pixel = buffer[y * CHMI_RADAR_WIDTH + x];
-    pixel = blendRgb565(pixel, color, opacity);
+    blendMapPixel(buffer[y * CHMI_RADAR_WIDTH + x], color, opacity);
   }
 }
 
@@ -517,7 +522,8 @@ uint8_t lineOutCode(int x, int y) {
          (y < 0 ? 4 : 0) | (y >= CHMI_RADAR_HEIGHT ? 8 : 0);
 }
 
-void drawMapLine(uint16_t *buffer, int x0, int y0, int x1, int y1,
+template <typename Pixel>
+void drawMapLine(Pixel *buffer, int x0, int y0, int x1, int y1,
                  uint16_t color, uint8_t opacity) {
   uint8_t code0 = lineOutCode(x0, y0);
   uint8_t code1 = lineOutCode(x1, y1);
@@ -589,14 +595,16 @@ const uint8_t *mapGlyph(char character) {
                                                 : nullptr;
 }
 
-void fillMapRect(uint16_t *buffer, int x, int y, int width, int height,
+template <typename Pixel>
+void fillMapRect(Pixel *buffer, int x, int y, int width, int height,
                  uint16_t color, uint8_t opacity) {
   for (int row = y; row < y + height; ++row)
     for (int column = x; column < x + width; ++column)
       setMapPixel(buffer, column, row, color, opacity);
 }
 
-void drawMapText(uint16_t *buffer, int x, int y, const char *text,
+template <typename Pixel>
+void drawMapText(Pixel *buffer, int x, int y, const char *text,
                  uint16_t color, uint8_t opacity) {
   for (size_t index = 0; text[index] != '\0'; ++index) {
     const char character = static_cast<char>(
@@ -637,7 +645,8 @@ bool mapBoxesOverlap(const MapLabelBox &left, const MapLabelBox &right) {
          left.y < right.y + right.height && left.y + left.height > right.y;
 }
 
-void drawMapOverlay(uint16_t *buffer, float markerLatitude,
+template <typename Pixel>
+void drawMapOverlay(Pixel *buffer, float markerLatitude,
                     float markerLongitude, uint16_t radiusKm, int cropX1,
                     int cropX2, int cropY1, int cropY2, uint8_t opacity) {
   if (opacity == 0) return;
@@ -720,7 +729,8 @@ void drawMapOverlay(uint16_t *buffer, float markerLatitude,
   }
 }
 
-void drawDisplayRing(uint16_t *buffer) {
+template <typename Pixel>
+void drawDisplayRing(Pixel *buffer) {
   const int centerX = CHMI_RADAR_WIDTH / 2;
   const int centerY = CHMI_RADAR_HEIGHT / 2;
   constexpr uint16_t gray = 0x4208;
@@ -729,7 +739,7 @@ void drawDisplayRing(uint16_t *buffer) {
     const int x = centerX + lroundf(cosf(angle) * 238.0f);
     const int y = centerY + lroundf(sinf(angle) * 238.0f);
     if (x >= 0 && x < CHMI_RADAR_WIDTH && y >= 0 && y < CHMI_RADAR_HEIGHT)
-      buffer[y * CHMI_RADAR_WIDTH + x] = gray;
+      setMapPixel(buffer, x, y, gray, 100);
   }
 }
 
@@ -790,7 +800,7 @@ bool showBaseMap(float latitude, float longitude, uint16_t radiusKm,
 
 bool decodeRadar(const uint8_t *pngData, size_t pngSize, float latitude,
                  float longitude, uint16_t radiusKm, uint8_t mapOpacityValue,
-                 uint16_t *target) {
+                 uint8_t *target) {
   if (pngData == nullptr || !ensurePngDecoder() ||
       pngDecoder->openRAM(const_cast<uint8_t *>(pngData),
                           static_cast<int>(pngSize), drawDecodedLine) !=
@@ -831,8 +841,7 @@ bool decodeRadar(const uint8_t *pngData, size_t pngSize, float latitude,
   }
   dataX1 = longitudeToX(LON_DATA_RIGHT);
   dataY0 = latitudeToY(LAT_DATA_TOP);
-  memset(target, 0,
-         CHMI_RADAR_WIDTH * CHMI_RADAR_HEIGHT * sizeof(uint16_t));
+  memset(target, 0, RADAR_PIXEL_COUNT);
   decodedLineCount = 0;
   decodedLinesSequential = true;
   decodeTarget = target;
@@ -972,24 +981,13 @@ void applyNightRadarPalette(uint16_t *buffer) {
     buffer[pixel] = nightRadarColor(rgb565ToRgb332(buffer[pixel]));
 }
 
-bool packDecodedFrame(size_t index) {
-  if (!ensurePreparedFrame(index)) return false;
-  uint8_t *target = preparedFrames[index];
-  for (size_t pixel = 0; pixel < RADAR_PIXEL_COUNT; ++pixel)
-    target[pixel] = rgb565ToRgb332(decodeBuffer[pixel]);
-  return true;
-}
-
-bool packPendingFrame(size_t slot) {
+bool ensurePendingFrame(size_t slot) {
   if (slot >= MAX_PENDING_REFRESH_FRAMES) return false;
   if (pendingPreparedFrames[slot] == nullptr) {
     pendingPreparedFrames[slot] = static_cast<uint8_t *>(heap_caps_malloc(
         RADAR_PIXEL_COUNT, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   }
-  if (pendingPreparedFrames[slot] == nullptr) return false;
-  for (size_t pixel = 0; pixel < RADAR_PIXEL_COUNT; ++pixel)
-    pendingPreparedFrames[slot][pixel] = rgb565ToRgb332(decodeBuffer[pixel]);
-  return true;
+  return pendingPreparedFrames[slot] != nullptr;
 }
 
 bool cachePendingPng(size_t slot, size_t size) {
@@ -1013,9 +1011,15 @@ bool prepareFrame(size_t index, const uint8_t *pngData, size_t pngSize,
                   const char *fileName, float latitude, float longitude,
                   uint16_t radiusKm, uint8_t mapOpacityValue,
                   uint32_t revision) {
+  if (!requestMatches(revision) || !ensurePreparedFrame(index)) return false;
+  // Dekódujeme přímo do cache. Rozpracovaný snímek nesmí přehrávač použít,
+  // ani když dekódování selže nebo se během něj změní požadovaná revize.
+  portENTER_CRITICAL(&stateMux);
+  preparedFrameReady[index] = false;
+  portEXIT_CRITICAL(&stateMux);
   if (!decodeRadar(pngData, pngSize, latitude, longitude, radiusKm,
-                   mapOpacityValue, decodeBuffer) ||
-      !packDecodedFrame(index) || !requestMatches(revision)) {
+                   mapOpacityValue, preparedFrames[index]) ||
+      !requestMatches(revision)) {
     return false;
   }
   char decodedTime[6] = "";
@@ -1389,9 +1393,10 @@ bool refreshLatestFrame(float latitude, float longitude, uint16_t radiusKm,
     size_t pngSize = 0;
     if (!downloadPngWithRetry(fileName, pngSize, revision) ||
         !cachePendingPng(slot, pngSize) ||
+        !ensurePendingFrame(slot) ||
         !decodeRadar(pngBuffer, pngSize, latitude, longitude, radiusKm,
-                     mapOpacityValue, decodeBuffer) ||
-        !packPendingFrame(slot) || !requestMatches(revision)) {
+                     mapOpacityValue, pendingPreparedFrames[slot]) ||
+        !requestMatches(revision)) {
       setStatus(false, "Nove snimky CHMU se nepodarilo pripravit");
       pendingRefreshCount = 0;
       return false;
@@ -1649,8 +1654,6 @@ void chmiRadarServicePrepareForFirmwareUpdate() {
     if (buffer != nullptr) heap_caps_free(buffer);
     buffer = nullptr;
   }
-  if (decodeBuffer != nullptr) heap_caps_free(decodeBuffer);
-  decodeBuffer = nullptr;
   if (pngBuffer != nullptr) heap_caps_free(pngBuffer);
   pngBuffer = nullptr;
   if (lineBuffer != nullptr) heap_caps_free(lineBuffer);

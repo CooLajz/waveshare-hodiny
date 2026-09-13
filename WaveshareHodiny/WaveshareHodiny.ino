@@ -64,6 +64,7 @@ ClockConfig configSaveBuffer;
 ClockConfig dashboardConfigBuffer;
 ClockAppearanceConfig persistedAppearance;
 ClockAppearanceConfig activeAppearance;
+ClockAppearanceConfig clockPageAppearance;
 ClockAppearanceConfig pendingAppearance;
 SemaphoreHandle_t runtimeConfigMutex = nullptr;
 TaskHandle_t homeAssistantTaskHandle = nullptr;
@@ -226,9 +227,21 @@ bool previewClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
       static_cast<uint8_t>(CLOCK_DATE_FORMAT_DAY_MONTH));
   activeAppearance.analogDateColor &= 0xFFFFFF;
   activeAppearance.monochromeWeatherIconColor &= 0xFFFFFF;
+  if (activeAppearance.style != CLOCK_STYLE_FORECAST)
+    clockPageAppearance = activeAppearance;
   pendingAppearance = activeAppearance;
   clockAppearanceApplyPending = true;
   return true;
+}
+
+// Updating saved clock settings must not navigate away from the forecast page.
+void applySavedClockAppearance() {
+  const bool forecastVisible = activeAppearance.style == CLOCK_STYLE_FORECAST;
+  clockPageAppearance = persistedAppearance;
+  activeAppearance = persistedAppearance;
+  if (forecastVisible) activeAppearance.style = CLOCK_STYLE_FORECAST;
+  pendingAppearance = activeAppearance;
+  clockAppearanceApplyPending = true;
 }
 
 bool saveClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
@@ -247,9 +260,7 @@ bool saveClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
   normalized.monochromeWeatherIconColor &= 0xFFFFFF;
   if (!clockAppearanceSave(normalized)) return false;
   persistedAppearance = normalized;
-  activeAppearance = normalized;
-  pendingAppearance = normalized;
-  clockAppearanceApplyPending = true;
+  applySavedClockAppearance();
   return true;
 }
 
@@ -259,9 +270,7 @@ void applyCommittedSettingsFromWeb() {
   if (!clockConfigLoad(saved)) return;
   clockAppearanceLoad(persistedAppearance, saved.leftWeatherIconColor,
                       saved.dateFormat, saved.dateColor);
-  activeAppearance = persistedAppearance;
-  pendingAppearance = persistedAppearance;
-  clockAppearanceApplyPending = true;
+  applySavedClockAppearance();
   xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
   persistedConfig = saved;
   runtimeConfig = saved;
@@ -470,12 +479,11 @@ bool previewRadarRangeFromWeb(uint16_t radiusKm) {
 }
 
 void showDisplayPage(uint8_t page, int8_t direction) {
-  static ClockAppearanceConfig clockAppearance = persistedAppearance;
   if (!clockDashboardRadarVisible() && activeAppearance.style != CLOCK_STYLE_FORECAST)
-    clockAppearance = activeAppearance;
-  if (clockAppearance.style == CLOCK_STYLE_FORECAST) clockAppearance.style = CLOCK_STYLE_DIGITAL;
+    clockPageAppearance = activeAppearance;
+  if (clockPageAppearance.style == CLOCK_STYLE_FORECAST) clockPageAppearance.style = CLOCK_STYLE_DIGITAL;
   if (page != 2) {
-    activeAppearance = clockAppearance;
+    activeAppearance = clockPageAppearance;
     if (page == 1) activeAppearance.style = CLOCK_STYLE_FORECAST;
   }
   clockDashboardSwipePage(activeAppearance, page == 2, direction);
@@ -675,6 +683,11 @@ void handleUsbCommands() {
         } else {
           screenshotTransferActive = true;
         }
+      } else if (usbCommand == "DISPLAYSTATS" && !screenshotTransferActive) {
+        displayDriverPrintRenderStats(Serial);
+      } else if (usbCommand == "SUNTEST" || usbCommand == "SUNTESTOFF") {
+        clockDashboardSetSunnyTest(usbCommand == "SUNTEST");
+        Serial.println(clockDashboardSunnyTest() ? "SUN_TEST_ON" : "SUN_TEST_OFF");
       } else if (usbCommand == "FORECAST" && !screenshotTransferActive) {
         ClockAppearanceConfig appearance = activeAppearance;
         appearance.style = CLOCK_STYLE_FORECAST;
@@ -1371,13 +1384,16 @@ bool fetchHomeAssistantStates(NetworkClient &client, const ClockConfig &config,
       config.metricB.entityId,
       config.sunEntityId,
       config.dayNightLightEntityId,
+      config.forecastTemperatureEntityId,
   };
   values.sunStateAvailable = false;
   values.dayNightLightStateAvailable = false;
   uint8_t configuredCount = 0;
   uint8_t successfulCount = 0;
   int lastStatus = 0;
-  for (size_t index = 0; index < 7; ++index) {
+  values.forecastWeather = ForecastHour{};
+  values.forecastTemperatureOverrideC = NAN;
+  for (size_t index = 0; index < 8; ++index) {
     if (entityIds[index][0] == '\0') continue;
     ++configuredCount;
     String payload;
@@ -1393,15 +1409,19 @@ bool fetchHomeAssistantStates(NetworkClient &client, const ClockConfig &config,
     } else {
       applied = applyHomeAssistantState(config, entityIds[index], state, values);
     }
+    if (index == 7) {
+      values.forecastTemperatureOverrideC = forecastEntityTemperature(payload.c_str(), true);
+      applied = std::isfinite(values.forecastTemperatureOverrideC);
+    }
     if (index == 0) {
-      double temperature;
-      values.weatherTemperatureC = extractJsonNumberField(payload, "temperature", temperature) ? temperature : NAN;
-      String unit;
-      if (extractJsonStringField(payload, "temperature_unit", unit) && unit == "°F")
-        values.weatherTemperatureC = (values.weatherTemperatureC - 32.0f) / 1.8f;
+      values.weatherTemperatureC = forecastEntityTemperature(payload.c_str(), false);
+      values.forecastWeather.temperature = values.weatherTemperatureC;
+      values.forecastWeather.weatherCode = values.weatherCode;
+      values.forecastWeather.valid = applied && values.weatherCode >= 0;
     }
     if (applied) ++successfulCount;
   }
+  values.forecastWeather.isDay = values.weatherIsDay;
   const bool apiResponded = successfulCount > 0;
   String detail = String(successfulCount) + '/' + configuredCount +
                   F(" entit načteno");
@@ -1752,6 +1772,7 @@ void setup() {
   clockAppearanceLoad(persistedAppearance, legacyWeatherIconColor,
                       persistedConfig.dateFormat, persistedConfig.dateColor);
   activeAppearance = persistedAppearance;
+  clockPageAppearance = persistedAppearance;
   runtimeConfig = persistedConfig;
   applyDevelopmentDefaults(runtimeConfig);
 #if !FIRMWARE_RELEASE
@@ -1832,8 +1853,14 @@ void loop() {
   const ClockConfig animationConfig = runtimeConfigSnapshot();
   const uint8_t weatherIconStyle =
       clockDashboardWeatherIconStyle(animationConfig.weatherIconStyle);
-  weatherAnimationServiceLoop(sampleValues.weatherCode,
-                              sampleValues.weatherIsDay,
+  const ForecastHour forecastCurrent = resolveForecastCurrent(
+      animationConfig.dataSource == CLOCK_DATA_SOURCE_HOME_ASSISTANT &&
+          animationConfig.homeAssistantUrl[0] && animationConfig.homeAssistantToken[0],
+      sampleValues.forecastWeather, sampleValues.forecastTemperatureOverrideC,
+      hourlyForecastSnapshot().current);
+  const bool forecastPage = activeAppearance.style == CLOCK_STYLE_FORECAST;
+  weatherAnimationServiceLoop(clockDashboardSunnyTest() ? 800 : (forecastPage ? forecastCurrent.weatherCode : sampleValues.weatherCode),
+                              clockDashboardSunnyTest() ? true : (forecastPage ? forecastCurrent.isDay : sampleValues.weatherIsDay),
                               weatherIconStyle,
                               !clockDashboardRadarVisible() &&
                                   animationConfig.animatedWeatherIcons &&

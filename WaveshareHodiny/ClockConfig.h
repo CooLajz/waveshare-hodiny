@@ -233,6 +233,8 @@ struct ClockConfig {
   ClockMetricColorScale rightValueColorScale;
   char timeZone[CLOCK_TIMEZONE_LENGTH] = "Europe/Prague";
   uint16_t forecastDisplaySeconds = 20;
+  uint16_t forecastReserved = 0; // Reserved alignment.
+  char forecastTemperatureEntityId[CLOCK_ENTITY_ID_LENGTH] = "";
 };
 
 static_assert(offsetof(ClockConfig, language) == 2106 &&
@@ -243,8 +245,9 @@ static_assert(offsetof(ClockConfig, language) == 2106 &&
                   sizeof(ClockSideValueConfig) == 34 &&
                   offsetof(ClockConfig, timeZone) == 2688 &&
                   offsetof(ClockConfig, forecastDisplaySeconds) == 2752 &&
-                  sizeof(ClockConfig) == 2756,
-              "Schema 30 must preserve the complete schema 29 prefix.");
+                  offsetof(ClockConfig, forecastTemperatureEntityId) == 2756 &&
+                  sizeof(ClockConfig) == 2884,
+              "Schema 30 must preserve the complete released schema 29 prefix.");
 
 bool clockConfigBegin();
 bool clockConfigLoad(ClockConfig &config);

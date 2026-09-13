@@ -4,7 +4,11 @@
 
 #include "ClockConfig.h"
 
+#include "ForecastWeatherSource.h"
+
 struct ClockValues {
+  ForecastHour forecastWeather;
+  float forecastTemperatureOverrideC = NAN;
   int weatherCode = -1;
   float weatherTemperatureC = NAN;
   bool weatherIsDay = true;
@@ -85,3 +89,6 @@ void clockDashboardSetRadarSnapshot(const uint16_t *pixels,
                                     uint8_t currentFrameNumber,
                                     uint8_t animationFrameCount,
                                     uint8_t pauseSeconds);
+
+void clockDashboardSetSunnyTest(bool enabled);
+bool clockDashboardSunnyTest();

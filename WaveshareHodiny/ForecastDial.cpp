@@ -158,6 +158,25 @@ void text(lv_draw_ctx_t *ctx, lv_point_t p, const char *value,
                    static_cast<lv_coord_t>(p.y + font->line_height / 2)};
   lv_draw_label(ctx, &dsc, &area, value, nullptr);
 }
+void drawIconShadow(lv_event_t *event) {
+  if (lv_event_get_code(event) == LV_EVENT_REFR_EXT_DRAW_SIZE) {
+    auto *size = static_cast<lv_coord_t *>(lv_event_get_param(event));
+    if (*size < 2) *size = 2;
+    return;
+  }
+  if (lv_event_get_code(event) != LV_EVENT_DRAW_MAIN_BEGIN) return;
+  auto *iconObject = lv_event_get_target(event);
+  const void *source = lv_img_get_src(iconObject);
+  if (!source) return;
+  lv_area_t bounds;
+  lv_obj_get_coords(iconObject, &bounds);
+  bounds.x1 += 2; bounds.x2 += 2; bounds.y1 += 2; bounds.y2 += 2;
+  lv_draw_img_dsc_t shadow;
+  lv_draw_img_dsc_init(&shadow);
+  shadow.recolor = lv_color_black(); shadow.recolor_opa = LV_OPA_COVER;
+  lv_draw_img(lv_event_get_draw_ctx(event), &shadow, &bounds, source);
+}
+
 void draw(lv_event_t *event) {
   lv_draw_ctx_t *ctx = lv_event_get_draw_ctx(event);
   lv_area_t area;
@@ -171,6 +190,19 @@ void draw(lv_event_t *event) {
   const time_t firstHour = now - local.tm_min * 60 - local.tm_sec + 3600;
   const lv_color_t fg = lv_color_hex(red ? 0xEE4232 : 0xF6F6F6);
   const lv_color_t muted = lv_color_hex(red ? 0x802018 : 0x9099A2);
+  // Icon frames only need the solid center beneath them. Avoid traversing
+  // the outer forecast decorations when the clip lies entirely in the disk.
+  const lv_area_t *clip = ctx->clip_area;
+  const int dx = std::max(std::abs(clip->x1 - center.x), std::abs(clip->x2 - center.x));
+  const int dy = std::max(std::abs(clip->y1 - center.y), std::abs(clip->y2 - center.y));
+  if (dx * dx + dy * dy < (CENTER_RADIUS - 8) * (CENTER_RADIUS - 8)) {
+    lv_draw_rect_dsc_t fill;
+    lv_draw_rect_dsc_init(&fill);
+    fill.bg_opa = LV_OPA_COVER;
+    fill.bg_color = std::isfinite(currentTemperature) ? lv_color_mix(temperatureColor(currentTemperature), lv_color_black(), 166) : lv_color_hex(0x30343A);
+    lv_draw_rect(ctx, &fill, clip);
+    return;
+  }
   if (fanPixels) {
     lv_draw_img_dsc_t background;
     lv_draw_img_dsc_init(&background);
@@ -200,6 +232,20 @@ void draw(lv_event_t *event) {
     divider.round_start = true;
     divider.round_end = false;
     lv_draw_line(ctx, &divider, &start, &edge);
+    // Center the marker on the disk boundary so it overlaps both sides.
+    const lv_point_t anchor = point(center, angle, CENTER_RADIUS);
+    lv_area_t dot = {static_cast<lv_coord_t>(anchor.x - 4), static_cast<lv_coord_t>(anchor.y - 4),
+                     static_cast<lv_coord_t>(anchor.x + 4), static_cast<lv_coord_t>(anchor.y + 4)};
+    lv_draw_rect_dsc_t marker;
+    lv_draw_rect_dsc_init(&marker);
+    marker.radius = LV_RADIUS_CIRCLE;
+    marker.bg_opa = LV_OPA_COVER;
+    marker.bg_color = lv_color_black();
+    lv_area_t shadow = dot;
+    ++shadow.x1; ++shadow.x2; ++shadow.y1; ++shadow.y2;
+    lv_draw_rect(ctx, &marker, &shadow);
+    marker.bg_color = fg;
+    lv_draw_rect(ctx, &marker, &dot);
   }
   lv_draw_arc_dsc_t ring;
   lv_draw_arc_dsc_init(&ring);
@@ -266,22 +312,6 @@ void draw(lv_event_t *event) {
     }
   }
 
-  // Reuse the decoded GIF frame so its shadow stays exactly synchronized.
-  lv_obj_t *iconObject = animationShown ? currentAnimation : currentIcon;
-  if (iconObject && !lv_obj_has_flag(iconObject, LV_OBJ_FLAG_HIDDEN)) {
-    const void *source = lv_img_get_src(iconObject);
-    if (source) {
-      lv_area_t bounds;
-      lv_obj_get_coords(iconObject, &bounds);
-      bounds.x1 += 2; bounds.x2 += 2;
-      bounds.y1 += 2; bounds.y2 += 2;
-      lv_draw_img_dsc_t shadow;
-      lv_draw_img_dsc_init(&shadow);
-      shadow.recolor = lv_color_black();
-      shadow.recolor_opa = LV_OPA_COVER;
-      lv_draw_img(ctx, &shadow, &bounds, source);
-    }
-  }
 
 }
 }
@@ -308,7 +338,11 @@ lv_obj_t *forecastDialCreate(lv_obj_t *parent) {
   }
   currentIcon = lv_img_create(dial);
   lv_obj_align(currentIcon, LV_ALIGN_CENTER, 0, -30);
+  lv_obj_add_event_cb(currentIcon, drawIconShadow, LV_EVENT_ALL, nullptr);
+  lv_obj_refresh_ext_draw_size(currentIcon);
   currentAnimation = lv_gif_create(dial);
+  lv_obj_add_event_cb(currentAnimation, drawIconShadow, LV_EVENT_ALL, nullptr);
+  lv_obj_refresh_ext_draw_size(currentAnimation);
   lv_obj_align(currentAnimation, LV_ALIGN_CENTER, 0, -30);
   lv_obj_add_flag(currentAnimation, LV_OBJ_FLAG_HIDDEN);
   temperatureShadow = lv_label_create(dial);

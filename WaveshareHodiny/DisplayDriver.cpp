@@ -26,10 +26,20 @@ uint8_t partialRefreshWarmupFrames = 0;
 bool partialRefreshWarmupRequested = false;
 bool partialRefreshEnableRequested = false;
 
+#if !FIRMWARE_RELEASE
+uint32_t measuredFrames = 0, measuredPixels = 0, measuredSince = 0, measuredRenderMs = 0;
+void monitorRender(lv_disp_drv_t *, uint32_t elapsed, uint32_t pixels) {
+  ++measuredFrames;
+  measuredPixels += pixels;
+  measuredRenderMs += elapsed;
+}
+#endif
+
 constexpr size_t FRAMEBUFFER_BYTES = 480 * 480 * sizeof(lv_color_t);
 constexpr size_t SCREENSHOT_CHUNK_BYTES = 2048;
 
 void flushDisplay(lv_disp_drv_t *driver, const lv_area_t *area, lv_color_t *pixels) {
+
   // V direct mode může LVGL zavolat flush pro několik samostatných
   // invalidovaných oblastí téhož snímku. Fyzický framebuffer přepneme až po
   // vykreslení poslední z nich; jinak by LCD zobrazilo rozpracovaný mezistav a
@@ -153,6 +163,11 @@ void displayDriverInit() {
   displayDriver.hor_res = 480;
   displayDriver.ver_res = 480;
   displayDriver.flush_cb = flushDisplay;
+#if !FIRMWARE_RELEASE
+  // Direct-mode flush area is the whole framebuffer; monitor_cb reports the
+  // actual invalidated/rendered area instead of the buffer handed to DMA.
+  displayDriver.monitor_cb = monitorRender;
+#endif
   displayDriver.full_refresh = 1;
   displayDriver.draw_buf = &drawBuffer;
   lv_disp_drv_register(&displayDriver);
@@ -257,4 +272,17 @@ bool displayDriverStreamFramebufferChunk(Print &output) {
   screenshotOffset +=
       output.write(screenshotBuffer + screenshotOffset, count);
   return screenshotOffset >= FRAMEBUFFER_BYTES;
+}
+
+void displayDriverPrintRenderStats(Print &output) {
+#if !FIRMWARE_RELEASE
+  const uint32_t now = millis();
+  output.printf("DISPLAY_STATS ms=%lu frames=%lu pixels=%lu render_ms=%lu partial=%u\n",
+      static_cast<unsigned long>(now - measuredSince),
+      static_cast<unsigned long>(measuredFrames),
+      static_cast<unsigned long>(measuredPixels),
+      static_cast<unsigned long>(measuredRenderMs), unsigned(displayDriver.direct_mode));
+  measuredFrames = measuredPixels = measuredRenderMs = 0;
+  measuredSince = now;
+#endif
 }

@@ -485,7 +485,7 @@ bool clockConfigValidate(const ClockConfig &c) {
   VALID_BOOL(metricA.custom); VALID_BOOL(metricB.custom);
   VALID_BOOL(leftValue.custom); VALID_BOOL(rightValue.custom);
   VALID_TEXT(homeAssistantUrl); VALID_TEXT(homeAssistantToken);
-  VALID_TEXT(weatherEntityId); VALID_TEXT(sunEntityId); VALID_TEXT(dayNightLightEntityId);
+  VALID_TEXT(forecastTemperatureEntityId); VALID_TEXT(weatherEntityId); VALID_TEXT(sunEntityId); VALID_TEXT(dayNightLightEntityId);
   VALID_TEXT(leftSide.name); VALID_TEXT(leftSide.temperatureEntityId); VALID_TEXT(leftSide.icon);
   VALID_TEXT(rightSide.name); VALID_TEXT(rightSide.temperatureEntityId); VALID_TEXT(rightSide.icon);
   VALID_TEXT(metricA.preset); VALID_TEXT(metricA.name); VALID_TEXT(metricA.entityId); VALID_TEXT(metricA.suffix);

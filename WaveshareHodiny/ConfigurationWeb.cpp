@@ -1558,6 +1558,9 @@ void handleGetConfig() {
   result += F(",\"controlSecret\":\"");
   result += jsonEscape(controlSecret.c_str());
   result += F("\"");
+  result += F(",\"forecastTemperatureEntityId\":\"");
+  result += jsonEscape(config.forecastTemperatureEntityId);
+  result += '\"';
   result += F(",\"weatherEntityId\":\"");
   result += jsonEscape(config.weatherEntityId);
   result += F("\",\"sunEntityId\":\"");
@@ -1810,7 +1813,8 @@ void handleSaveConfig() {
   }
   const struct { const char *name; size_t capacity; } textLimits[] = {
       {"haUrl", CLOCK_HA_URL_LENGTH}, {"haToken", CLOCK_HA_TOKEN_LENGTH},
-      {"weatherEntity", CLOCK_ENTITY_ID_LENGTH}, {"sunEntity", CLOCK_ENTITY_ID_LENGTH},
+      {"weatherEntity", CLOCK_ENTITY_ID_LENGTH},
+      {"forecastTemperatureEntity", CLOCK_ENTITY_ID_LENGTH}, {"sunEntity", CLOCK_ENTITY_ID_LENGTH},
       {"dayNightLightEntity", CLOCK_ENTITY_ID_LENGTH}, {"openMeteoCity", CLOCK_OPEN_METEO_CITY_LENGTH},
       {"timeZone", CLOCK_TIMEZONE_LENGTH}};
   for (const auto &field : textLimits) {
@@ -2016,6 +2020,14 @@ void handleSaveConfig() {
   clockConfigCopy(config.homeAssistantToken, sizeof(config.homeAssistantToken),
       !submittedToken.isEmpty() ? submittedToken.c_str() :
       (url == previouslySaved.homeAssistantUrl ? previouslySaved.homeAssistantToken : ""));
+  if (server.hasArg("forecastTemperatureEntity")) {
+    String entity = server.arg("forecastTemperatureEntity");
+    entity.trim();
+    if (!entity.isEmpty() && !entity.startsWith("sensor.")) {
+      sendError(400, F("Teplotní entita předpovědi musí být sensor entita.")); return;
+    }
+    clockConfigCopy(config.forecastTemperatureEntityId, sizeof(config.forecastTemperatureEntityId), entity);
+  }
   clockConfigCopy(config.weatherEntityId, sizeof(config.weatherEntityId),
                   server.arg("weatherEntity"));
   clockConfigCopy(config.sunEntityId, sizeof(config.sunEntityId),

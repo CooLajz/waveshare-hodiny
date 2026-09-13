@@ -77,7 +77,7 @@ void hourlyForecastRefresh(const ClockConfig &config) {
   url += F("&longitude=");
   url += String(config.openMeteoLongitude, 5);
   // UTC epochs avoid ambiguous local timestamps when daylight saving time changes.
-  url += F("&hourly=temperature_2m,weather_code,is_day&forecast_hours=24&timeformat=unixtime&timezone=auto");
+  url += F("&current=temperature_2m,weather_code,is_day&hourly=temperature_2m,weather_code,is_day&forecast_hours=24&timeformat=unixtime&timezone=auto");
   WiFiClientSecure client;
   client.setCACert(FIRMWARE_RELEASE_ROOT_CA);
   HTTPClient http;

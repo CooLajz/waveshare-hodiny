@@ -43,6 +43,12 @@ The project is Czech and the firmware defaults to Czech. English can be selected
 in the device web configuration; the setting is stored persistently and also
 changes the system text and verbal date shown on the display.
 
+The forecast's center temperature uses an optional HA temperature sensor set in
+Weather → Forecast, then HA weather temperature, then current Open-Meteo data for
+the selected location. HA sources apply only when HA is active and configured;
+other displayed values are never used as a fallback. The temperature sensor does
+not change the weather icon or hourly forecast.
+
 The hourly forecast page shows the next twelve whole hours, with
 temperature badges, larger shadowed day/night icons and a temperature-colored
 angular gradient, a solid current-temperature center and a time divider starting at its edge, separating the end and start of the forecast without blending across it. Swipe horizontally between the clock, forecast and radar pages.

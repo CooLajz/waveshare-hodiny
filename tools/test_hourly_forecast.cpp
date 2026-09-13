@@ -17,6 +17,8 @@ int main(int argc, char **argv) {
   assert(!parseHourlyForecast("{",f));
   assert(parseHourlyForecast(R"({"hourly":{"time":[1789214400],"temperature_2m":[100],"weather_code":[0],"is_day":[1]}})", f));
   assert(!f.hours[0].valid);
+  assert(parseHourlyForecast(R"({"current":{"temperature_2m":14.8,"weather_code":3,"is_day":1},"hourly":{"time":[1789214400],"temperature_2m":[14],"weather_code":[3],"is_day":[1]}})",f));
+  assert(f.current.valid && f.current.temperature==14.8f && f.current.weatherCode==804);
   if (argc > 1) {
     std::ifstream input(argv[1]); std::stringstream buffer; buffer << input.rdbuf();
     assert(parseHourlyForecast(buffer.str().c_str(),f));

@@ -5,6 +5,11 @@
 const char CONFIGURATION_LOCALIZATION_JS[] PROGMEM = R"JS(
 (() => {
   const en = {
+    "Předpověď":"Forecast",
+    "Přednostní entita teploty z HA":"Preferred HA temperature entity",
+    "Hodinová předpověď pochází z Open-Meteo pro vybranou polohu. Aktuální počasí používá aktivní HA weather, jinak Open-Meteo.":"Hourly forecasts use Open-Meteo for the selected location. Current conditions use active HA weather, otherwise Open-Meteo.",
+    "Volitelné. Tato teplota má přednost před HA weather. Při nedostupnosti se použije HA weather, poté Open-Meteo. Podporované jednotky: °C, °F a K. Hodnoty ostatních polí se nepoužívají.":"Optional. This temperature takes priority over HA weather. If unavailable, HA weather is used, then Open-Meteo. Supported units: °C, °F and K. Other display fields are never used.",
+    "Teplotní entita předpovědi musí být sensor entita.":"The forecast temperature entity must be a sensor entity.",
     "Hodinová předpověď":"Hourly forecast",
     "Secret je uložený v zařízení a je součástí šifrované kompletní zálohy.":"The secret is stored on the device and included in the encrypted full backup.",
     "Kompletní nastavení včetně přístupových údajů. Bez nastavení Wi-Fi.":"Complete settings including credentials. Wi-Fi settings are excluded.",

@@ -55,6 +55,9 @@ pozicích 12, 3, 6 a 9 hodin.
 - dvě univerzální horní hodnoty s vlastním názvem, jednotkou, přesností,
   ikonou a plynulou barevnou škálou,
 - animované i statické ikony počasí založené na Meteocons,
+- teplota uprostřed předpovědi má samostatný zdroj: volitelné HA teplotní
+  čidlo v sekci Počasí → Předpověď, jinak teplota HA weather, následně
+  aktuální Open-Meteo podle polohy; ostatní zobrazované hodnoty se nepoužívají,
 - samostatná stránka předpovědi Open-Meteo: následujících 12 celých hodin,
   teploty, větší denní/noční ikony se stínem a plynulý teplotní přechod po obvodu
   s vyplněným středem podle aktuální teploty a radiální čárou od jeho okraje, která odděluje začátek a konec předpovědi;
