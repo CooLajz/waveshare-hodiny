@@ -1,4 +1,5 @@
 #include "ClockConfig.h"
+#include "ConfigPsramBuffer.h"
 
 #include "SettingsStore.h"
 #include <nvs_flash.h>
@@ -541,23 +542,29 @@ bool clockConfigValidate(const ClockConfig &c) {
 bool clockConfigLoad(ClockConfig &config) {
   SettingsPreferences preferences;
   if (!preferences.begin(CONFIG_NAMESPACE, true, CONFIG_PARTITION)) return false;
-  static uint8_t record[sizeof(ConfigRecord)];
+  static ConfigPsramBuffer<ConfigRecord> buffer;
+  ConfigRecord *storage = buffer.get();
+  if (storage == nullptr) return false;
+  auto &record = *storage;
   const size_t size = preferences.getBytesLength(CONFIG_KEY);
   if (size == 0) {
     clockConfigApplyDefaults(config);
     return clockConfigSave(config);
   }
-  if (size > sizeof(record) || preferences.getBytes(CONFIG_KEY, record, sizeof(record)) != size)
+  if (size > sizeof(record) || preferences.getBytes(CONFIG_KEY, &record, sizeof(record)) != size)
     return false;
-  if (!clockConfigDecodeRecord(record, size, config)) return false;
+  if (!clockConfigDecodeRecord(&record, size, config)) return false;
   uint32_t schema;
-  memcpy(&schema, record + 4, sizeof(schema));
+  memcpy(&schema, reinterpret_cast<const uint8_t *>(&record) + 4, sizeof(schema));
   return schema == CLOCK_CONFIG_SCHEMA_VERSION || clockConfigSave(config);
 }
 
 bool clockConfigDecodeRecord(const void *data, size_t storedSize, ClockConfig &config) {
   clockConfigApplyDefaults(config);
-  static ConfigRecord record;
+  static ConfigPsramBuffer<ConfigRecord> buffer;
+  ConfigRecord *storage = buffer.get();
+  if (storage == nullptr) return false;
+  ConfigRecord &record = *storage;
   record = ConfigRecord{};
   const bool supportedSize = storedSize == sizeof(record) ||
       storedSize == sizeof(ConfigRecordV29) || storedSize == sizeof(ConfigRecordV28) || storedSize == sizeof(ConfigRecordV27) ||
@@ -740,7 +747,10 @@ bool clockConfigDecodeRecord(const void *data, size_t storedSize, ClockConfig &c
 }
 
 bool clockConfigSave(const ClockConfig &config) {
-  static ConfigRecord record;
+  static ConfigPsramBuffer<ConfigRecord> buffer;
+  ConfigRecord *storage = buffer.get();
+  if (storage == nullptr) return false;
+  ConfigRecord &record = *storage;
   record = ConfigRecord{};
   record.magic = CONFIG_MAGIC;
   record.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;

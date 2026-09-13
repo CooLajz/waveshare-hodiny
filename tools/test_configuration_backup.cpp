@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstdio>
 #include <vector>
+#include "backup_test_support/esp_heap_caps.h"
 #include "backup_test_support/Preferences.h"
 #include "../WaveshareHodiny/ConfigurationBackup.h"
 #include "../WaveshareHodiny/ClockConfig.h"
@@ -188,4 +189,31 @@ void testCompleteSnapshot() {
   assert(clockAppearanceLoad(restoredAppearance));assert(!restoredAppearance.retroFixedWeekday);assert(restoredAppearance.retroDateFormat==0);
   puts("PASS: encrypted full settings restore over clean target, HA/TMEP credentials, web auth, appearance, exact floats and reboot");
 }
-int main(){testMigration();testStorage();testCrypto();testCompleteSnapshot();testCorruptStoreRecovery();}
+void testConfigAllocationFailure() {
+  fakeNvs::values.clear();
+  settingsStoreTestReset();
+  assert(settingsStoreBegin());
+  const auto before = fakeNvs::values;
+  ClockConfig config;
+  clockConfigApplyDefaults(config);
+  failPsramAllocation = true;
+  assert(!clockConfigSave(config));
+  assert(!clockConfigLoad(config));
+  uint8_t record[sizeof(ClockConfig) + 12] = {};
+  assert(!clockConfigDecodeRecord(record, sizeof(record), config));
+  assert(fakeNvs::values == before);
+  failPsramAllocation = false;
+  // Failed first allocations remain retryable. Exercise nested load/decode
+  // and repeated saves so their scratch buffers cannot alias one another.
+  assert(clockConfigSave(config));
+  ClockConfig restored;
+  assert(clockConfigLoad(restored));
+  for (uint8_t brightness : {21, 82, 37}) {
+    config.dayBrightness = brightness;
+    assert(clockConfigSave(config));
+    assert(clockConfigLoad(restored));
+    assert(restored.dayBrightness == brightness);
+  }
+  puts("PASS: PSRAM exhaustion causes no writes; retry and independent config buffers");
+}
+int main(){testConfigAllocationFailure();testMigration();testStorage();testCrypto();testCompleteSnapshot();testCorruptStoreRecovery();}

@@ -1,4 +1,5 @@
 #include "ConfigurationWeb.h"
+#include "ConfigPsramBuffer.h"
 
 #include <HTTPClient.h>
 #include <WebServer.h>
@@ -2013,7 +2014,12 @@ void handleSaveConfig() {
   }
   clockConfigCopy(config.homeAssistantUrl, sizeof(config.homeAssistantUrl), url);
   const String submittedToken = server.arg("haToken");
-  static ClockConfig previouslySaved;
+  static ConfigPsramBuffer<ClockConfig> previousConfigStorage;
+  ClockConfig *previousConfig = previousConfigStorage.get();
+  if (previousConfig == nullptr) {
+    sendError(503, F("Nedostatek paměti pro uložení nastavení.")); return;
+  }
+  ClockConfig &previouslySaved = *previousConfig;
   if (!clockConfigLoad(previouslySaved)) {
     sendError(500, F("Původní nastavení nelze bezpečně načíst.")); return;
   }

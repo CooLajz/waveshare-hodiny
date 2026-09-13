@@ -1,3 +1,4 @@
+#include "ConfigPsramBuffer.h"
 #include "ScreenRotation.h"
 #include "ForecastDial.h"
 #include "ClockTimeFormat.h"
@@ -60,8 +61,9 @@ namespace {
 ClockValues sampleValues;
 ClockConfig runtimeConfig;
 ClockConfig persistedConfig;
-ClockConfig configSaveBuffer;
-ClockConfig dashboardConfigBuffer;
+ConfigPsramBuffer<ClockConfig> configSaveStorage;
+ConfigPsramBuffer<ClockConfig> dashboardConfigStorage;
+bool committedSettingsApplyPending = false;
 ClockAppearanceConfig persistedAppearance;
 ClockAppearanceConfig activeAppearance;
 ClockAppearanceConfig clockPageAppearance;
@@ -179,6 +181,9 @@ bool previewDigitalAppearanceFromWeb(const ClockConfig &config) {
 
 void applyPendingDigitalAppearance() {
   if (!digitalAppearanceApplyPending) return;
+  ClockConfig *storage = dashboardConfigStorage.get();
+  if (storage == nullptr) return;
+  ClockConfig &dashboardConfigBuffer = *storage;
   digitalAppearanceApplyPending = false;
   xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
   dashboardConfigBuffer = runtimeConfig;
@@ -188,6 +193,9 @@ void applyPendingDigitalAppearance() {
 }
 
 bool saveRuntimeConfig(const ClockConfig &config, bool tokenWasSubmitted) {
+  ClockConfig *storage = configSaveStorage.get();
+  if (storage == nullptr) return false;
+  ClockConfig &configSaveBuffer = *storage;
   configSaveBuffer = config;
   if (!tokenWasSubmitted) {
     clockConfigCopy(configSaveBuffer.homeAssistantToken,
@@ -266,8 +274,12 @@ bool saveClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
 
 // Called only after the complete settings transaction has committed.
 void applyCommittedSettingsFromWeb() {
-  ClockConfig &saved = configSaveBuffer;
+  committedSettingsApplyPending = true;
+  ClockConfig *storage = configSaveStorage.get();
+  if (storage == nullptr) return;
+  ClockConfig &saved = *storage;
   if (!clockConfigLoad(saved)) return;
+  committedSettingsApplyPending = false;
   clockAppearanceLoad(persistedAppearance, saved.leftWeatherIconColor,
                       saved.dateFormat, saved.dateColor);
   applySavedClockAppearance();
@@ -294,6 +306,9 @@ void applyPendingRuntimeConfiguration() {
       static_cast<long>(millis() - runtimeConfigurationApplyAt) < 0) {
     return;
   }
+  ClockConfig *storage = dashboardConfigStorage.get();
+  if (storage == nullptr) return;
+  ClockConfig &dashboardConfigBuffer = *storage;
   runtimeConfigurationApplyPending = false;
   runtimeConfigurationApplyAt = 0;
   automaticRadarRotationPaused = true;
@@ -1567,6 +1582,14 @@ bool resolveLocationTimezone(const ClockConfig &config) {
 }
 
 void applyResolvedTimezone() {
+  portENTER_CRITICAL(&resolvedTimezoneMux);
+  const bool hasPending = resolvedTimezonePending;
+  portEXIT_CRITICAL(&resolvedTimezoneMux);
+  if (!hasPending) return;
+  static ConfigPsramBuffer<ClockConfig> buffer;
+  ClockConfig *storage = buffer.get();
+  if (storage == nullptr) return;
+  ClockConfig &config = *storage;
   char name[CLOCK_TIMEZONE_LENGTH];
   float latitude, longitude;
   portENTER_CRITICAL(&resolvedTimezoneMux);
@@ -1579,7 +1602,6 @@ void applyResolvedTimezone() {
   }
   portEXIT_CRITICAL(&resolvedTimezoneMux);
   if (!pending) return;
-  static ClockConfig config;
   loadRuntimeConfigForWeb(config);
   // Discard stale replies after the user selects another city or imports settings.
   if (config.timeZone[0] != '\0' ||
@@ -1708,7 +1730,10 @@ void homeAssistantTask(void *) {
       if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(remaining)) == 0) break;
       if (!consumeDayNightLightRefreshRequest()) break;
 
-      static ClockConfig lightConfig;
+      static ConfigPsramBuffer<ClockConfig> lightConfigStorage;
+      ClockConfig *storage = lightConfigStorage.get();
+      if (storage == nullptr) break;
+      ClockConfig &lightConfig = *storage;
       static ClockValues lightValues;
       lightConfig = runtimeConfigSnapshot();
       lightValues = lastAvailableValues;
@@ -1844,6 +1869,7 @@ void loop() {
   handleUsbCommands();
 #endif
   wifiProvisioningLoop();
+  if (committedSettingsApplyPending) applyCommittedSettingsFromWeb();
   applyFirmwareUpdateDisplayRequest();
   applyResolvedTimezone();
   maintainNetworkTime();
