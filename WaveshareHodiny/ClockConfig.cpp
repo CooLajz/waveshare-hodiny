@@ -235,7 +235,10 @@ void normalizeConfig(ClockConfig &config) {
                               static_cast<uint8_t>(2));
     if (slot.sensorId[0] == '\0' || slot.field[0] == '\0' ||
         slot.unit[0] == '\0') {
+      // Open-Meteo also stores its display precision in this shared slot.
+      const uint8_t decimals = slot.decimals;
       slot = ClockTmepSlotConfig{};
+      slot.decimals = decimals;
     }
   }
   config.timeColor &= 0xFFFFFF;
