@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="${0:A:h}"
+source "$ROOT_DIR/tools/arduino_toolchain.sh"
 BUILD_PATH="$ROOT_DIR/.arduino/build-waveshare-hodiny-develop"
 ARDUINO_CONFIG_FILE="${ARDUINO_CONFIG_FILE:-$ROOT_DIR/WaveshareHodiny/local/arduino-cli.yaml}"
 if [[ ! -f "$ARDUINO_CONFIG_FILE" ]]; then
@@ -16,6 +17,7 @@ fi
 /opt/homebrew/bin/arduino-cli \
   --config-file "$ARDUINO_CONFIG_FILE" \
   upload --fqbn esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=custom,PSRAM=opi,USBMode=hwcdc,CDCOnBoot=default \
+  "${ARDUINO_UPLOAD_PROPERTIES[@]}" \
   --build-path "$BUILD_PATH" \
   --port "$PORT" \
   "$ROOT_DIR/WaveshareHodiny"

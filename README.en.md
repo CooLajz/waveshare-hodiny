@@ -633,6 +633,13 @@ WIFI_WORK_PASSWORD=
 
 ### Release build
 
+On ARM Macs, `build.sh`, `build-release.sh`, and `upload.sh` share native tools
+without Rosetta. Python esptool 4.6 and Arduino ctags 5.8-arduino11 are cached
+in the ignored `.arduino/native-tools` directory. Missing tools are prepared
+automatically by `tools/setup_native_arduino_tools.sh`. Initial preparation
+requires internet access, Python with pip, and Command Line Tools. Python
+dependencies are separated by interpreter version. Linux CI is unchanged.
+
 Choose a valid SemVer version and build in the separate release workflow:
 
 ```bash

@@ -768,6 +768,13 @@ ignorovaného adresáře `WaveshareHodiny/local/`.
 
 ### Release build
 
+Na ARM Macu používají `build.sh`, `build-release.sh` a `upload.sh` společnou
+nativní sadu nástrojů bez Rosetty. Pythonový esptool 4.6 a Arduino ctags
+5.8-arduino11 se ukládají do ignorované `.arduino/native-tools`; při chybějící
+cache se automaticky připraví přes `tools/setup_native_arduino_tools.sh`.
+První příprava vyžaduje internet, Python s pip a Command Line Tools. Python
+závislosti jsou oddělené podle verze interpretu. Linuxový CI postup se nemění.
+
 Verzi zvol jako platný SemVer 2.0.0:
 
 ```sh

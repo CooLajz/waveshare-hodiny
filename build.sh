@@ -10,7 +10,7 @@ fi
 BUILD_PATH="$ROOT_DIR/.arduino/build-waveshare-hodiny-develop"
 OUTPUT_DIR="$ROOT_DIR/build/waveshare-hodiny-develop"
 ARDUINO_CLI_BIN="${ARDUINO_CLI_BIN:-$(command -v arduino-cli || true)}"
-PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || true)}"
+source "$ROOT_DIR/tools/arduino_toolchain.sh"
 if [[ -z "$ARDUINO_CLI_BIN" || -z "$PYTHON_BIN" ]]; then
   echo "Chybí arduino-cli nebo python3 v PATH." >&2
   exit 1
@@ -29,6 +29,7 @@ fi
 "$ARDUINO_CLI_BIN" \
   --config-file "$ARDUINO_CONFIG_FILE" \
   compile \
+  "${ARDUINO_TOOL_PROPERTIES[@]}" \
   --fqbn esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=custom,PSRAM=opi,USBMode=hwcdc,CDCOnBoot=default \
   --build-property 'compiler.c.extra_flags=-MMD -c -DLV_CONF_PATH=ClockLvglConfig.h' \
   --build-property 'compiler.cpp.extra_flags=-MMD -c -DLV_CONF_PATH=ClockLvglConfig.h -DWAVESHARE_DEVELOPMENT_BUILD=1' \

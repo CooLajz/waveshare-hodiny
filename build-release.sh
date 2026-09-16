@@ -17,7 +17,7 @@ if [[ "$RELEASE_CHANNEL" == "public" ]]; then
 fi
 OUTPUT_DIR="$ROOT_DIR/build/waveshare-hodiny-release/$OUTPUT_SUFFIX"
 ARDUINO_CLI_BIN="${ARDUINO_CLI_BIN:-$(command -v arduino-cli || true)}"
-PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || true)}"
+source "$ROOT_DIR/tools/arduino_toolchain.sh"
 if [[ -z "$ARDUINO_CLI_BIN" || -z "$PYTHON_BIN" ]]; then
   echo "Chybí arduino-cli nebo python3 v PATH." >&2
   exit 1
@@ -36,6 +36,7 @@ mkdir -p "$OUTPUT_DIR"
 "$ARDUINO_CLI_BIN" \
   --config-file "$ARDUINO_CONFIG_FILE" \
   compile --clean --verbose \
+  "${ARDUINO_TOOL_PROPERTIES[@]}" \
   --fqbn esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=custom,PSRAM=opi,USBMode=hwcdc,CDCOnBoot=cdc \
   --build-property 'compiler.c.extra_flags=-MMD -c -DLV_CONF_PATH=ClockLvglConfig.h' \
   --build-property 'compiler.cpp.extra_flags=-MMD -c -DLV_CONF_PATH=ClockLvglConfig.h -DFIRMWARE_RELEASE=1' \
