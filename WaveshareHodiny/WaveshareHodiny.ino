@@ -1,5 +1,7 @@
 #include "ConfigPsramBuffer.h"
 #include "ScreenRotation.h"
+#include "DisplayNotification.h"
+#include "BuzzerService.h"
 #include "ForecastDial.h"
 #include "ClockTimeFormat.h"
 #include "HourlyForecastService.h"
@@ -511,7 +513,8 @@ void maintainAutomaticRadarRotation() {
   const ClockConfig config = runtimeConfigSnapshot();
   const bool allowed = config.automaticRadarRotation &&
       WiFi.status() == WL_CONNECTED && timeWasSynchronized &&
-      !displayForcedOff && clockDashboardAutomaticRotationAllowed();
+      !displayForcedOff && !displayNotificationActive() &&
+      clockDashboardAutomaticRotationAllowed();
   if (!allowed) {
     automaticRadarRotationPaused = true;
     radarRotationWaitingForCycle = false;
@@ -549,6 +552,11 @@ void maintainAutomaticRadarRotation() {
 }
 
 void maintainDisplayGestures() {
+  if (displayNotificationActive()) {
+    displayDriverTakeSwipe(false, false);
+    if (displayDriverTakeSingleClick()) displayNotificationDismiss();
+    return;
+  }
   const DisplaySwipe swipe = displayDriverTakeSwipe(
       clockDashboardAutomaticRotationAllowed(), clockDashboardTransitionActive());
   const bool radarAvailable = swipe.direction != 0 &&
@@ -1777,6 +1785,7 @@ void setup() {
   I2C_Init();
   Set_EXIOS(0x0C);
   TCA9554PWR_Init(0x70);
+  buzzerServiceBegin();
   runtimeConfigMutex = xSemaphoreCreateMutex();
   // Případná migrace konfigurace zapisuje do flash. Proveď ji dříve, než
   // spustíme RGB panel nad framebufferem v PSRAM, jinak může první start po
@@ -1900,6 +1909,7 @@ void loop() {
                                    strcmp(animationConfig.rightSide.icon,
                                           "weather") == 0));
   configurationWebLoop();
+  displayNotificationLoop();
   applyPendingRuntimeConfiguration();
   applyPendingClockAppearance();
   applyPendingDigitalAppearance();

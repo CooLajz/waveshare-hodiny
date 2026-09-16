@@ -1,5 +1,10 @@
 #include "ConfigurationWeb.h"
 #include "ConfigPsramBuffer.h"
+#include "DisplayNotification.h"
+#include "BuzzerService.h"
+#include "Touch_CST820.h"
+#include "NotificationRules.h"
+#include <cJSON.h>
 
 #include <HTTPClient.h>
 #include <WebServer.h>
@@ -113,6 +118,8 @@ class BoundedWebServer : public WebServer {
 
   bool postBodyTooLarge() const { return postBodyTooLarge_; }
   bool postBodyMalformed() const { return postBodyMalformed_; }
+  const char *rawPostBody() const { return postBody_; }
+  size_t rawPostLength() const { return postBodyLength_; }
 
   String arg(const String &name) {
     if (method() != HTTP_POST || !rawPostActive_) return WebServer::arg(name);
@@ -130,7 +137,14 @@ class BoundedWebServer : public WebServer {
   }
 
  private:
-  bool validRawBodyShape() const {
+  bool validRawBodyShape() {
+    // Notification JSON uses the same bounded transport as existing forms.
+    if (uri().startsWith("/api/control/") &&
+        uri().endsWith("/notification") &&
+        header("Content-Type").startsWith("application/json")) {
+      return postBodyLength_ <= 4096 &&
+          memchr(postBody_, '\0', postBodyLength_) == nullptr;
+    }
     size_t fieldStart = 0;
     while (fieldStart < postBodyLength_) {
       size_t fieldEnd = fieldStart;
@@ -2628,6 +2642,30 @@ void handleDiagnostics() {
                     currentDisplayPowerStatusCallback()
                 ? F("true")
                 : F("false");
+  const TouchDiagnostics touch = Touch_GetDiagnostics();
+  result += F(",\"touch\":{\"ready\":");
+  result += touch.ready ? F("true") : F("false");
+  result += F(",\"ioOk\":");
+  result += touch.ioOk ? F("true") : F("false");
+  result += F(",\"samples\":");
+  result += touch.samples;
+  result += F(",\"errors\":");
+  result += touch.errors;
+  result += F(",\"taps\":");
+  result += touch.taps;
+  result += '}';
+  const BuzzerSnapshot buzzer = buzzerServiceSnapshot();
+  result += F(",\"buzzer\":{\"ready\":");
+  result += buzzer.ready ? F("true") : F("false");
+  result += F(",\"active\":");
+  result += buzzer.active ? F("true") : F("false");
+  result += F(",\"ioOk\":");
+  result += buzzer.ioOk ? F("true") : F("false");
+  result += F(",\"requestedMs\":");
+  result += buzzer.requestedMs;
+  result += F(",\"lastPulseMs\":");
+  result += buzzer.lastPulseMs;
+  result += '}';
   result += F(",\"uptimeMs\":");
   result += millis();
   result += F(",\"currentMemory\":");
@@ -2731,6 +2769,8 @@ void handleDayNightRefresh() {
            F("{\"ok\":true,\"message\":\"Okamžitý refresh byl spuštěn.\"}"));
 }
 
+#include "NotificationWeb.h"
+
 void handleControlRequest() {
   const String uri = server.uri();
   constexpr char PREFIX[] = "/api/control/";
@@ -2750,6 +2790,14 @@ void handleControlRequest() {
     return;
   }
   const String command = uri.substring(secretEnd);
+  if (command == "/notification") {
+    if (!requestOriginAllowed()) {
+      sendError(403, F("Požadavek z cizí webové stránky byl odmítnut."));
+      return;
+    }
+    handleNotification();
+    return;
+  }
   if (command == "/display/off" || command == "/display/on") {
     if (currentDisplayPowerCallback == nullptr) {
       sendError(503, F("Ovládání displeje není nyní dostupné."));
@@ -2886,6 +2934,7 @@ class ControlRequestHandler final : public RequestHandler {
 
   bool handle(WebServer &, HTTPMethod, const String &) override {
     if (requireAcceptedPostBody()) handleControlRequest();
+    server.clearSensitivePost();
     return true;
   }
 

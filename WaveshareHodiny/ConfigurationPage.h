@@ -17,6 +17,8 @@ const char CONFIGURATION_PAGE[] PROGMEM = R"HTML(
     .backup-dialog::backdrop{background:#000a;backdrop-filter:blur(3px)}
     .backup-dialog h2{margin-bottom:10px}.backup-dialog p{color:var(--muted);line-height:1.5}.backup-fields{display:grid;gap:18px;margin-top:22px}.backup-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}.backup-actions .primary{width:auto}.backup-drop{display:block;width:100%;padding:24px 16px;border:1px dashed var(--line);border-radius:10px;text-align:center;background:var(--field);color:var(--text);cursor:pointer;overflow-wrap:anywhere}.backup-drop.dragging{border-color:var(--cyan);background:#4ccbec15}.backup-meta{padding:12px;border-radius:8px;background:var(--field);font-size:13px;line-height:1.6;white-space:pre-line;overflow-wrap:anywhere}.backup-toggle{display:flex;align-items:center;gap:8px;font-size:14px}.backup-toggle input{width:auto;min-height:auto}.backup-feedback{display:block;margin-top:16px;line-height:1.5;overflow-wrap:anywhere}.backup-progress{width:100%;height:5px;accent-color:var(--cyan);margin-top:16px}
 
+    #notificationTester .actions-inline{display:flex;align-items:center;gap:12px;flex-wrap:wrap}#notificationFeedback{flex:1;min-width:180px}#notificationTester{scroll-margin-top:150px}
+    #notificationTester textarea{box-sizing:border-box;width:100%;min-width:0;resize:vertical;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--text);font:inherit}#notificationResult{min-width:0}#notificationResult button{margin:8px 0 16px}#notificationJson{font-family:monospace!important;font-size:13px!important}
     html{background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text);font-size:16px}
     body{margin:0;background:var(--bg)}
     main{width:min(1180px,calc(100% - 40px));margin:0 auto;padding:38px 0 64px}
@@ -374,6 +376,26 @@ const char CONFIGURATION_PAGE[] PROGMEM = R"HTML(
       <div class="grid">
         <div class="span-6"><label for="webMode">Webový server</label><select id="webMode" name="webMode"><option value="timed">Zapnout na 10 minut</option><option value="always">Vždy zapnutý</option><option value="disabled">Vypnutý</option></select><span class="hint">Při vypnutí jej lze znovu povolit na displeji hodin.</span></div>
         <div class="span-6"><label for="controlApiBase">Ovládací API</label><input id="controlApiBase" readonly><span class="hint">Secret je uložený v zařízení a je součástí šifrované kompletní zálohy.</span></div>
+        <div class="span-12 advanced-band" id="notificationTester">
+          <h3>Notifikace na displeji</h3>
+          <div class="grid">
+            <div class="span-12"><label for="notificationTitle">Titulek</label><input id="notificationTitle" form="notificationTestForm" required value="Pračka doprala"></div>
+            <div class="span-12"><label for="notificationMessage">Text zprávy</label><textarea id="notificationMessage" form="notificationTestForm" required rows="3">Prádlo můžeš pověsit.</textarea><span class="hint">Nový řádek vložíš klávesou Enter.</span></div>
+            <div class="span-6"><label for="notificationTextColor">Barva textu</label><input id="notificationTextColor" form="notificationTestForm" type="color" value="#ffffff"></div>
+            <div class="span-6"><label for="notificationBackgroundColor">Barva pozadí</label><input id="notificationBackgroundColor" form="notificationTestForm" type="color" value="#124734"></div>
+            <div class="span-6"><label for="notificationSeconds">Doba zobrazení (s)</label><input id="notificationSeconds" form="notificationTestForm" type="number" min="0" max="86400" step="1" required value="15"><span class="hint">0 = do klepnutí na displej.</span></div>
+            <div class="span-6"><label for="notificationBeep">Délka pípnutí (ms)</label><input id="notificationBeep" form="notificationTestForm" type="number" min="0" max="5000" step="1" required value="150"><span class="hint">0 = bez zvuku.</span></div>
+            <div class="span-12 actions-inline"><button id="testNotification" type="button">Test</button><span id="notificationFeedback" class="hint" role="status"></span></div>
+            <div class="span-12 hidden" id="notificationResult">
+              <label for="notificationUrl">URL pro notifikaci (POST)</label><input id="notificationUrl" readonly>
+              <button id="copyNotificationUrl" type="button">Kopírovat URL</button>
+              <label for="notificationJson">JSON požadavku</label><textarea id="notificationJson" readonly rows="10" spellcheck="false"></textarea>
+              <button id="copyNotificationJson" type="button">Kopírovat JSON</button>
+              <span class="hint">Odešli metodou POST s Content-Type: application/json. URL obsahuje ovládací secret.</span>
+              <span class="hint" id="notificationCopyFeedback" role="status"></span>
+            </div>
+          </div>
+        </div>
         <div class="span-12 advanced-band" id="webPasswordSettings">
           <div class="grid">
             <div class="span-6"><label for="webPassword">Heslo webového nastavení <span class="password-label-state risk-state" id="webPasswordState">— bez hesla</span></label><input id="webPassword" type="password" minlength="6" maxlength="20" autocomplete="new-password" placeholder="6–20 znaků"><span class="hint">Heslo se ukládá bezpečně v zařízení a není součástí zálohy.</span></div>
@@ -393,6 +415,7 @@ const char CONFIGURATION_PAGE[] PROGMEM = R"HTML(
     <div class="footer"><button class="primary" id="saveButton" type="submit">Uložit nastavení</button><span class="feedback" id="saveFeedback" role="status"></span></div>
   </form>
 </main>
+<form id="notificationTestForm"></form>
 <dialog id="backupDialog" class="backup-dialog" aria-labelledby="backupTitle" aria-describedby="backupDescription">
   <form id="backupForm">
     <h2 id="backupTitle">Exportovat zálohu</h2>
@@ -454,6 +477,35 @@ let tmepLiveCatalogRequested=false;
 let configuredOpenMeteoSlots=[];
 function encode(data){const body=new URLSearchParams();Object.entries(data).forEach(([k,v])=>body.set(k,v??""));return body}
 async function request(url,data){const options={cache:"no-store",signal:AbortSignal.timeout(15000),...(data?{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},body:encode(data)}:{})};const response=await fetch(url,options);let payload;try{payload=await response.json()}catch{throw new Error(tr("Neplatná odpověď zařízení"))}if(!response.ok||payload?.ok!==true){const error=new Error(tr(payload?.message||"Požadavek se nezdařil"));error.status=response.status;throw error}return payload}
+let notificationApiUrl="";
+async function sendTestNotification(){
+  if($("testNotification").disabled||!$("notificationTestForm").reportValidity())return;
+  const feedback=$("notificationFeedback");
+  const payload={title:$("notificationTitle").value,message:$("notificationMessage").value,durationSeconds:Number($("notificationSeconds").value),beep:Number($("notificationBeep").value),textColor:$("notificationTextColor").value.toUpperCase(),backgroundColor:$("notificationBackgroundColor").value.toUpperCase()};
+  $("notificationUrl").value=notificationApiUrl;
+  $("notificationJson").value=JSON.stringify(payload,null,2);
+  $("notificationResult").classList.remove("hidden");
+  if(!notificationApiUrl){feedback.textContent=tr("URL ovládacího API není dostupná. Obnov stránku.");return}
+  $("testNotification").disabled=true;feedback.textContent=tr("Odesílám notifikaci…");
+  try{
+    const response=await fetch(notificationApiUrl,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),cache:"no-store",signal:AbortSignal.timeout(15000)});
+    const result=await response.json();
+    if(!response.ok||result.ok!==true)throw new Error(tr(result.message||result.error||"Notifikaci se nepodařilo odeslat."));
+    feedback.textContent=tr("Notifikace byla odeslána do hodin.");
+  }catch(error){feedback.textContent=error.name==="TimeoutError"||error instanceof TypeError?tr("Odeslání nebylo potvrzeno. Zkontroluj displej před dalším pokusem."):error.message}
+  finally{$("testNotification").disabled=false}
+}
+async function copyNotificationField(id){
+  const field=$(id);let copied=false;
+  try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(field.value);copied=true}}catch{}
+  if(!copied){field.focus();field.select();try{copied=document.execCommand("copy")}catch{}}
+  $("notificationCopyFeedback").textContent=tr(copied?"Zkopírováno.":"Text je označený. Zkopíruj jej ručně.");
+}
+$("testNotification").addEventListener("click",sendTestNotification);
+$("notificationTestForm").addEventListener("submit",event=>{event.preventDefault();sendTestNotification()});
+$("notificationTester").addEventListener("input",event=>event.stopPropagation());
+$("copyNotificationUrl").addEventListener("click",()=>copyNotificationField("notificationUrl"));
+$("copyNotificationJson").addEventListener("click",()=>copyNotificationField("notificationJson"));
 function tr(text){return window.clockUiTranslate?.(text)||text}
 function createSaveConfirmationId(){const bytes=new Uint8Array(16);if(!globalThis.crypto?.getRandomValues)throw new Error(tr("Prohlížeč nepodporuje bezpečný identifikátor operace."));globalThis.crypto.getRandomValues(bytes);return Array.from(bytes,byte=>byte.toString(16).padStart(2,"0")).join("")}
 
@@ -518,7 +570,7 @@ function updateAutomaticRadarRotationControls(){$("automaticRadarRotationSetting
 function applyConfig(config){$("retroProgressSegments").value=String(config.retroProgressSegments??10);$("retroProgressSegmentsValue").textContent=$("retroProgressSegments").value;$("retroProgressSource").value=String(config.retroProgressSource??4);$("retroProgressMin").value=String(config.retroProgressMin??0);$("retroProgressMax").value=String(config.retroProgressMax??100);validateRetroProgress();$("retroLeftSource").value=String(config.retroLeftSource??2);$("retroRightSource").value=String(config.retroRightSource??3);$("retroMetricADigits").value=String(config.retroMetricADigits??3);$("retroMetricBDigits").value=String(config.retroMetricBDigits??4);$("retroBackgroundColor").value=config.activeRetroBackgroundColor||config.retroBackgroundColor||"#b7c1a5";$("retroForegroundColor").value=config.activeRetroForegroundColor||config.retroForegroundColor||"#20261c";$("animatedScreenTransitions").checked=config.animatedScreenTransitions!==false;formInputDirty=config.digitalPreviewActive===true;radarPreviewDirty=false;appearancePreviewDirty=false;setLocationTimeZone(config.timeZone);applyAppearanceState(config);$("dataSource").value=config.dataSource||"open-meteo";$("openMeteoCity").value=config.openMeteoCity||"Brno";$("openMeteoLatitude").value=String(config.openMeteoLatitude??49.1951);$("openMeteoLongitude").value=String(config.openMeteoLongitude??16.6068);applyRadarRangeState(config);$("radarFrameCount").value=String(config.radarFrameCount??6);$("radarPauseSeconds").value=String(config.radarPauseSeconds??5);setRange("radarMapOpacity",config.radarMapOpacity??100);renderOpenMeteoSlots(config.openMeteoSlots);$("openMeteoFeedback").textContent=`Vybraná lokalita: ${config.openMeteoCity||"Brno"}`;$("haUrl").value=config.homeAssistantUrl||"";$("tokenState").textContent=config.tokenConfigured?"Token je uložen":"Token není součástí zálohy";$("haToken").placeholder=config.tokenConfigured?"Zadej pouze při změně":"Zadej token";$("weatherEntity").value=config.weatherEntityId||"";$("forecastTemperatureEntity").value=config.forecastTemperatureEntityId||"";$("sunEntity").value=config.sunEntityId||"";$("sunriseOffsetMinutes").value=String(config.sunriseOffsetMinutes??0);$("sunsetOffsetMinutes").value=String(config.sunsetOffsetMinutes??config.sunOffsetMinutes??0);$("nightVisualMode").value=config.nightVisualMode||"red";sunTimes.sunrise=Number(config.nextSunriseTimestamp)||0;sunTimes.sunset=Number(config.nextSunsetTimestamp)||0;$("weatherIconMode").value=config.animatedWeatherIcons===false?"static-monochrome":`animated-${config.weatherIconStyle||"monochrome"}`;updateWeatherIconControls();setSide("left",config.leftSide);setSide("right",config.rightSide);setMetric("metricA",config.metricA);setMetric("metricB",config.metricB);renderColorScale("leftValueColor",config.leftValueColorScale||[{value:0,color:config.leftSide?.color||"#4ccbec"}]);renderColorScale("rightValueColor",config.rightValueColorScale||[{value:0,color:config.rightSide?.color||"#ffb843"}]);renderColorScale("metricAColor",config.metricAColorScale);renderColorScale("metricBColor",config.metricBColorScale);setRange("dayBrightness",config.dayBrightness);setRange("nightBrightness",config.nightBrightness);$("automaticDayNight").checked=config.automaticDayNight;$("automaticRadarRotation").checked=config.automaticRadarRotation===true;$("clockDisplaySeconds").value=String(config.clockDisplaySeconds??120);$("radarDisplaySeconds").value=String(config.radarDisplaySeconds??20);$("forecastDisplaySeconds").value=String(config.forecastDisplaySeconds??20);updateAutomaticRadarRotationControls();$("automaticFirmwareUpdate").checked=config.automaticFirmwareUpdate;$("webMode").value=config.webMode||"always";$("timeFont").value=config.timeFont||"barlow";$("timeColor").value=config.timeColor||"#f6f6f6";$("timeColonEffect").value=config.timeColonEffect||(config.blinkingTimeColon?"fade":"steady");$("showLeadingHourZero").checked=config.showLeadingHourZero!==false;$("dateFormat").value=config.dateFormat||"weekday-day-month";$("dateColor").value=config.dateColor||"#b5b5b5";$("leftWeatherIconColor").value=config.leftWeatherIconColor||"#ffffff";$("rightWeatherIconColor").value=config.rightWeatherIconColor||"#ffffff";$("secondEffect").value=config.secondRingEnabled===false?"off":config.secondEffect||"dots";updateSecondEffectControls();$("secondRingBackgroundDotSize").value=String(config.secondRingBackgroundDotSize??3);$("secondDotSize").value=String(config.secondDotSize??3);$("secondRingBackgroundColor").value=config.secondRingBackgroundColor||"#ffffff";$("secondRingBackgroundBrightness").value=String(config.secondRingBackgroundBrightness??0);$("secondRingBackgroundBrightnessValue").textContent=String(config.secondRingBackgroundBrightness??0);$("secondDotColor").value=config.secondDotColor||"#ffffff";$("secondDotBrightness").value=String(config.secondDotBrightness??175);$("secondDotBrightnessValue").textContent=String(config.secondDotBrightness??175);updateDataSource()}
 function countryForConfig(config){return config.openMeteoCountry||"CZ"}
 let supportedBackupSchemas=[];
-function applyCompleteConfig(config){if(Array.isArray(config.supportedBackupSchemas))supportedBackupSchemas=config.supportedBackupSchemas;const country=countryForConfig(config);$("openMeteoCountry").value=country;applyConfig(config);tmepKeyConfigured=config.tmepKeyConfigured===true;$("tmepExportUrl").value="";$("tmepKeyState").textContent=tmepKeyConfigured?"Exportní URL je uložená":"Exportní URL zatím není uložená";$("tmepExportUrl").placeholder=tmepKeyConfigured?"Vlož pouze při změně":"Vlož celý exportní odkaz z TMEP.cz";$("removeTmep").classList.toggle("hidden",!tmepKeyConfigured);if(tmepKeyConfigured&&config.dataSource!=="home-assistant")setTimeout(()=>refreshTmepCatalogForSelection(),0);updateRadarAvailability(config.radarAvailable===true||country==="CZ");applyDeviceLanguage(config.language||"cs");$("dayNightLightEntity").value=config.dayNightLightEntityId||"";$("controlApiBase").value=config.controlSecret?`${location.origin}/api/control/${config.controlSecret}`:"Secret se nepodařilo načíst";updateWebPasswordControls(config.webPasswordConfigured)}
+function applyCompleteConfig(config){notificationApiUrl=config.controlSecret?`${location.origin}/api/control/${config.controlSecret}/notification`:"";if(Array.isArray(config.supportedBackupSchemas))supportedBackupSchemas=config.supportedBackupSchemas;const country=countryForConfig(config);$("openMeteoCountry").value=country;applyConfig(config);tmepKeyConfigured=config.tmepKeyConfigured===true;$("tmepExportUrl").value="";$("tmepKeyState").textContent=tmepKeyConfigured?"Exportní URL je uložená":"Exportní URL zatím není uložená";$("tmepExportUrl").placeholder=tmepKeyConfigured?"Vlož pouze při změně":"Vlož celý exportní odkaz z TMEP.cz";$("removeTmep").classList.toggle("hidden",!tmepKeyConfigured);if(tmepKeyConfigured&&config.dataSource!=="home-assistant")setTimeout(()=>refreshTmepCatalogForSelection(),0);updateRadarAvailability(config.radarAvailable===true||country==="CZ");applyDeviceLanguage(config.language||"cs");$("dayNightLightEntity").value=config.dayNightLightEntityId||"";$("controlApiBase").value=config.controlSecret?`${location.origin}/api/control/${config.controlSecret}`:"Secret se nepodařilo načíst";updateWebPasswordControls(config.webPasswordConfigured)}
 async function fetchConfig(){let lastError;for(let attempt=0;attempt<4;attempt++){try{return await request("/api/config")}catch(error){lastError=error;if(error.status>=400&&error.status<500)throw error;if(attempt<3)await new Promise(resolve=>setTimeout(resolve,500*(attempt+1)))}}throw lastError}
 async function loadConfig(){const config=await fetchConfig();applyCompleteConfig(config);return config}
 async function reloadConfigAfterSave(id){const config=await fetchConfig();if(config.saveConfirmationId!==id)throw new Error(tr("Uložení nebylo potvrzeno. Zadané hodnoty zůstávají ve formuláři."));applyCompleteConfig(config);return config}

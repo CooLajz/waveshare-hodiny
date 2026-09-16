@@ -1,9 +1,32 @@
 #include "Touch_CST820.h"
+#include "TouchGestureTracker.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
+
+namespace {
+SemaphoreHandle_t sampleMutex() {
+  static StaticSemaphore_t storage;
+  static SemaphoreHandle_t mutex = xSemaphoreCreateMutexStatic(&storage);
+  return mutex;
+}
+TaskHandle_t sampler = nullptr;
+CST820_Touch latest = {};
+GESTURE pendingGesture = NONE;
+uint32_t pendingAt = 0;
+bool sampleValid = false;
+bool ignoreUntilRelease = false;
+TouchGestureTracker tracker;
+TouchDiagnostics diagnostics;
+void sampleTouch(void *);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // I2C读写
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 bool I2C_Read_Touch(uint8_t Driver_addr, uint8_t Reg_addr, uint8_t *Reg_data, uint32_t Length)
 {
+  I2CBusGuard guard;
   Wire.beginTransmission(Driver_addr);
   Wire.write(Reg_addr);
   if ( Wire.endTransmission(true)){
@@ -22,6 +45,7 @@ bool I2C_Read_Touch(uint8_t Driver_addr, uint8_t Reg_addr, uint8_t *Reg_data, ui
 }
 bool I2C_Write_Touch(uint8_t Driver_addr, uint8_t Reg_addr, const uint8_t *Reg_data, uint32_t Length)
 {
+  I2CBusGuard guard;
   Wire.beginTransmission(Driver_addr);
   Wire.write(Reg_addr);
   for (int i = 0; i < Length; i++) {
@@ -41,7 +65,8 @@ uint8_t Touch_Init(void) {
   CST820_AutoSleep(false);
   uint16_t Verification = CST820_Read_cfg();
 
-  // attachInterrupt(CST820_INT_PIN, Touch_CST820_ISR, interrupt);
+  if (!sampler && xTaskCreate(sampleTouch, "touch-sampler", 3072, nullptr, 2, &sampler) != pdPASS)
+    return false;
 
   return true;
 }
@@ -79,33 +104,63 @@ void CST820_AutoSleep(bool Sleep_State) {
 
 // reads sensor and touches
 // updates Touch Points
+namespace {
+void sampleTouch(void *) {
+  for (;;) {
+    xSemaphoreTake(sampleMutex(), portMAX_DELAY);
+    uint8_t buf[6] = {};
+    sampleValid = !I2C_Read_Touch(CST820_ADDR, CST820_REG_GestureID, buf, 6);
+    diagnostics.ioOk = sampleValid;
+    if (sampleValid) {
+      ++diagnostics.samples;
+      latest.points = buf[1] ? 1 : 0;
+      // Release packets may omit coordinates; keep the last contact position.
+      if (latest.points) {
+        latest.x = ((buf[2] & 0x0f) << 8) | buf[3];
+        latest.y = ((buf[4] & 0x0f) << 8) | buf[5];
+      }
+      const uint32_t now = millis();
+      const uint8_t event = tracker.sample(latest.points, latest.x, latest.y, buf[0], now);
+      if (event == SINGLE_CLICK) ++diagnostics.taps;
+      if (ignoreUntilRelease) {
+        if (!latest.points && !buf[0]) ignoreUntilRelease = false;
+      } else if (event) {
+        pendingGesture = static_cast<GESTURE>(event);
+        pendingAt = now;
+      }
+    } else {
+      // An I2C failure is not a release and must not synthesize a tap.
+      ++diagnostics.errors;
+      tracker = TouchGestureTracker{};
+      ignoreUntilRelease = true;
+    }
+    xSemaphoreGive(sampleMutex());
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
+}
+
 uint8_t Touch_Read_Data(void) {
-  uint8_t buf[6] = {0};
-  uint8_t touchpad_cnt = 0;
-  if (I2C_Read_Touch(CST820_ADDR, CST820_REG_GestureID, buf, 6)) {
+  xSemaphoreTake(sampleMutex(), portMAX_DELAY);
+  touch_data = latest;
+  touch_data.gesture = uint32_t(millis() - pendingAt) <= 1500 ? pendingGesture : NONE;
+  pendingGesture = NONE;
+  const bool valid = sampleValid;
+  if (!valid || ignoreUntilRelease) {
     touch_data.points = 0;
     touch_data.gesture = NONE;
-    return false;
   }
-  /* touched gesture */
-  if (buf[0] != 0x00)
-    touch_data.gesture = (GESTURE)buf[0];
-  if (buf[1] != 0x00) {
-
-    noInterrupts();
-    /* Number of touched points */
-    touch_data.points = (uint8_t)buf[1];
-    if(touch_data.points > CST820_LCD_TOUCH_MAX_POINTS)
-        touch_data.points = CST820_LCD_TOUCH_MAX_POINTS;
-    /* Fill coordinates */
-    touch_data.x = ((buf[2] & 0x0F) << 8) + buf[3];
-    touch_data.y = ((buf[4] & 0x0F) << 8) + buf[5];
-
-    interrupts();
-    // printf(" points=%d \r\n",touch_data.points);
-  }
-  return true;
+  xSemaphoreGive(sampleMutex());
+  return valid;
 }
+
+void Touch_DiscardPending() {
+  xSemaphoreTake(sampleMutex(), portMAX_DELAY);
+  pendingGesture = NONE;
+  ignoreUntilRelease = latest.points != 0 || !sampleValid;
+  xSemaphoreGive(sampleMutex());
+}
+
 void example_touchpad_read(void){
   Touch_Read_Data();
   if (touch_data.gesture != NONE ||  touch_data.points != 0x00) {
@@ -162,4 +217,12 @@ String Touch_GestureName(void) {
       return "UNKNOWN";
       break;
   }
+}
+
+TouchDiagnostics Touch_GetDiagnostics() {
+  xSemaphoreTake(sampleMutex(), portMAX_DELAY);
+  TouchDiagnostics result = diagnostics;
+  result.ready = sampler != nullptr;
+  xSemaphoreGive(sampleMutex());
+  return result;
 }

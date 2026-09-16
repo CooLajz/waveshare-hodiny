@@ -456,6 +456,81 @@ Secret je uložený v zařízení, ověřuje se konstantním časem a je součá
 šifrované kompletní zálohy. Přesný tvar endpointů a příklady požadavků jsou zobrazené
 přímo v aktuálním webovém rozhraní firmware.
 
+### Notifikace na displeji
+
+V nastavení **Systém → Webový server a API** je testovací formulář pro nadpis,
+zprávu, obě barvy, dobu zobrazení a délku pípnutí. Tlačítko **Test** odešle
+notifikaci a zobrazí přesný JSON a URL s tlačítky pro zkopírování.
+Testovací hodnoty se neukládají do konfigurace hodin.
+
+`POST /api/control/<SECRET>/notification` přijímá `application/json` nebo
+`application/x-www-form-urlencoded`. Použij základní URL z pole **Ovládací API**
+ve webovém nastavení a připoj `/notification`. Stejně jako ostatní ovládací
+příkazy funguje i při zamčeném webovém nastavení.
+
+| Pole | Význam |
+| --- | --- |
+| `title` | Povinný nadpis, 1–96 bajtů UTF-8, větší písmo 30 px. |
+| `message` | Povinná zpráva, 1–768 bajtů UTF-8, písmo 22 px; podporuje `\n`. |
+| `durationSeconds` | Celé číslo 0–86400. Vynechání nebo 0 = pevná notifikace, kladná hodnota = automatické zavření po daném počtu sekund. |
+| `beep` | Celé číslo 0–5000, délka jednoho pípnutí v milisekundách. Vynechání nebo 0 = bez zvuku. |
+| `textColor` | Barva nadpisu i zprávy ve formátu `#RRGGBB`, výchozí `#FFFFFF`. |
+| `backgroundColor` | Barva pozadí ve formátu `#RRGGBB`, výchozí `#000000`. |
+
+Příklad časové notifikace na 15 sekund (IP a secret jsou zástupné hodnoty):
+
+```bash
+curl --request POST 'http://IP_DISPLEJE/api/control/SECRET/notification' \
+  --header 'Content-Type: application/json' \
+  --data '{"title":"Pračka doprala","message":"Prádlo už můžeš pověsit.","durationSeconds":15,"beep":150,"textColor":"#FFFFFF","backgroundColor":"#124734"}'
+```
+
+Pro pevnou notifikaci nastav `"durationSeconds":0`. Klepnutí zavře oba typy;
+pevná notifikace se sama časem nezavře. Nový požadavek nahradí předchozí
+notifikaci a začne nový interval. Fronta ani uložení notifikací přes restart
+se nepoužívá.
+
+Pípnutí začne jednou při přijetí notifikace. Jeho délka je nezávislá na
+`durationSeconds` a na zavření notifikace klepnutím. Nová notifikace nahradí i
+předchozí pípnutí; nula nebo vynechané `beep` případný předchozí zvuk zastaví.
+V červeném nočním režimu má notifikace červený text na černém pozadí.
+Po návratu do denního režimu se obnoví barvy z požadavku; noční režim
+s pouhým snížením jasu barvy nemění.
+Pípnutí i časový interval začínají až po vykreslení notifikace a potvrzení
+předání snímku displeji, nikoli při přijetí HTTP požadavku.
+Časování běží v samostatné úloze, takže čekání webu nebo vykreslování pípnutí
+neprodlužuje. Neplatná hodnota (např. `true`, záporné číslo, desetinné číslo
+nebo hodnota nad 5000) vrací 400 bez změny zprávy či zvuku. JSON vyžaduje číslo;
+formulář přijímá jeho zápis číslicemi. Regulace hlasitosti se nepoužívá.
+Diagnostika `/api/status` obsahuje `buzzer.ready`, `active`, `ioOk`,
+`requestedMs` a `lastPulseMs`. Stav a poslední délka vycházejí z ověřeného
+výstupního registru a času obsluhy; nejsou měřením skutečného zvuku.
+
+Notifikace překryje aktuální stránku včetně nastavení. Během zobrazení jsou
+gesta a automatické střídání stránek pozastavené; po zavření se odkryje původní
+stránka. Nadpis a zpráva se podle skutečných rozměrů textu společně centrují
+svisle i vodorovně. Každý řádek má vlastní šířku podle
+kruhu v dané výšce: nahoře a dole je užší, uprostřed širší. Zalamování používá
+skutečné rozměry písma a každý řádek zůstává alespoň 16 px uvnitř displeje. Příliš dlouhý text končí
+výpustkou. Písmo obsahuje latinku a českou diakritiku; emoji a další
+abecedy nepodporuje. Český znak může zabírat více bajtů UTF-8.
+
+Úspěch vrací HTTP 200 a například
+`{"ok":true,"active":true,"durationSeconds":15,"beep":150,"replaced":false}`.
+Neplatná data vracejí 400, chybný secret 401, nepodporovaný typ obsahu 415.
+JSON tělo má limit 4096 bajtů, formulář navíc používá společné limity webového
+serveru (maximálně 1024 zakódovaných bajtů na hodnotu). Při chybě se stávající
+notifikace nemění. Požadavek se odmítne s 409 při ručně vypnutém podsvícení
+nebo probíhající práci s aktualizací firmware. Notifikace respektuje aktuální
+jas; zahájení instalace firmware ji zavře.
+
+Test validace a časování bez zařízení:
+
+```bash
+c++ -std=c++11 tools/test_notification_rules.cpp -o /tmp/test_notification_rules
+/tmp/test_notification_rules
+```
+
 ## Sestavení ze zdrojů
 
 ### Závislosti

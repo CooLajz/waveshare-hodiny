@@ -15,6 +15,8 @@
 #include "DisplayDriver.h"
 #include "ChmiRadarService.h"
 #include "FirmwareUpdateService.h"
+#include "DisplayNotification.h"
+#include "BuzzerService.h"
 
 namespace {
 const lv_color_t COLOR_BACKGROUND = LV_COLOR_MAKE(0, 0, 0);
@@ -2190,6 +2192,7 @@ void renderTimeColon(unsigned long now, bool force = false) {
 }
 
 void applyDashboardColors() {
+  displayNotificationSetRedNight(redNightVisualEnabled());
   const bool animationIsMonochrome =
       strncmp(weatherAnimationKey, "monochrome-", 11) == 0;
   if (redNightVisualEnabled()) {
@@ -3542,6 +3545,18 @@ void clockDashboardUpdate(const ClockValues &input) {
   ClockValues values = input;
   if (sunnyAnimationTest) { values.weatherCode = 800; values.weatherIsDay = true; }
   if (firmwareUpdateActive) return;
+  // Vyhodnoť automatiku před předčasnými návraty jednotlivých ciferníků,
+  // také při jejím zapnutí během již probíhající noci.
+  if (automaticDayNightEnabled && currentValues.sunStateAvailable) {
+    const bool lightForcesDay = currentValues.dayNightLightStateAvailable &&
+                                currentValues.dayNightLightOn;
+    const bool desiredNightMode = !currentValues.weatherIsDay && !lightForcesDay;
+    if (nightModeEnabled != desiredNightMode) {
+      // Setter znovu vykreslí aktuální hodnoty již v cílovém režimu.
+      clockDashboardSetNightMode(desiredNightMode);
+      return;
+    }
+  }
   if (activeClockStyle == CLOCK_STYLE_FORECAST) {
     lv_timer_pause(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
     lv_timer_pause(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
@@ -3615,12 +3630,6 @@ void clockDashboardUpdate(const ClockValues &input) {
     if (metricAChanged || metricBChanged) updateAnalogMetricDivider();
     applyAnalogColors();
     applyConnectionStatusColors();
-    if (automaticDayNightEnabled && currentValues.sunStateAvailable) {
-      const bool lightForcesDay = currentValues.dayNightLightStateAvailable &&
-                                  currentValues.dayNightLightOn;
-      clockDashboardSetNightMode(!currentValues.weatherIsDay &&
-                                 !lightForcesDay);
-    }
     return;
   }
   char desiredAnimationKey[48] = "";
@@ -3708,13 +3717,7 @@ void clockDashboardUpdate(const ClockValues &input) {
   const lv_color_t statusColor =
       values.homeAssistantOnline ? COLOR_AIR : COLOR_ERROR;
   lv_obj_set_style_text_color(statusLabel, statusColor, 0);
-  if (automaticDayNightEnabled && currentValues.sunStateAvailable) {
-    const bool lightForcesDay = currentValues.dayNightLightStateAvailable &&
-                                currentValues.dayNightLightOn;
-    clockDashboardSetNightMode(!currentValues.weatherIsDay && !lightForcesDay);
-  } else {
-    applyDashboardColors();
-  }
+  applyDashboardColors();
 }
 
 void clockDashboardSetWeatherAnimation(const uint8_t *gifData, size_t size,
@@ -4009,6 +4012,8 @@ void clockDashboardSetFirmwareUpdateActive(bool active) {
   if (firmwareUpdateOverlay == nullptr || firmwareUpdateActive == active) return;
   firmwareUpdateActive = active;
   if (active) {
+    displayNotificationDismiss();
+    buzzerServicePlay(0);
     clockDashboardSetFirmwareUpdateBlack(false);
     lv_obj_add_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(radarPage, LV_OBJ_FLAG_HIDDEN);

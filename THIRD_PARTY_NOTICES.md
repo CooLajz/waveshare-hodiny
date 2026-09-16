@@ -69,6 +69,8 @@ Vygenerovaná data písem LVGL v `ClockCzechFont*.c` používají znaky písma
 Montserrat. Volitelná písma hodin používají znaky vygenerované z Barlow Bold
 1.408, Liberation Sans Bold 2.1.5, DSEG7 Modern Bold 0.46 a Doto Bold. Přesné
 zdrojové soubory písem a jejich licence jsou uložené v `assets/fonts/`.
+`ClockNotificationFont22.c` a `ClockNotificationFont30.c` používají Liberation
+Sans Bold z `assets/fonts/liberation-sans/` (SIL OFL 1.1).
 `ClockIconsFont42.c` používá vybrané znaky Font Awesome Free.
 
 ## Meteocons

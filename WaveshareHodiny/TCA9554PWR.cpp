@@ -1,8 +1,46 @@
 #include "TCA9554PWR.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
+namespace {
+SemaphoreHandle_t outputMutex() {
+  static StaticSemaphore_t storage;
+  static SemaphoreHandle_t mutex = xSemaphoreCreateMutexStatic(&storage);
+  return mutex;
+}
+
+bool readOutput(uint8_t &value) {
+  I2CBusGuard transaction;
+  Wire.beginTransmission(TCA9554_ADDRESS);
+  Wire.write(TCA9554_OUTPUT_REG);
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom(static_cast<uint8_t>(TCA9554_ADDRESS),
+                       static_cast<uint8_t>(1)) != 1 || !Wire.available()) return false;
+  value = Wire.read();
+  return true;
+}
+}
+
+bool Set_EXIO_Checked(uint8_t pin, uint8_t state) {
+  if (pin < 1 || pin > 8 || state > 1) return false;
+  if (xSemaphoreTake(outputMutex(), pdMS_TO_TICKS(100)) != pdTRUE) return false;
+  uint8_t current = 0;
+  bool ok = readOutput(current);
+  if (ok) {
+    const uint8_t mask = 1U << (pin - 1);
+    const uint8_t next = state ? current | mask : current & ~mask;
+    if (next != current) ok = I2C_Write_EXIO(TCA9554_OUTPUT_REG, next) == 0;
+    uint8_t confirmed = 0;
+    ok = ok && readOutput(confirmed) && confirmed == next;
+  }
+  xSemaphoreGive(outputMutex());
+  return ok;
+}
 
 /*****************************************************  Operation register REG   ****************************************************/
 uint8_t I2C_Read_EXIO(uint8_t REG)                             // Read the value of the TCA9554PWR register REG
 {
+  I2CBusGuard transaction;
   Wire.beginTransmission(TCA9554_ADDRESS);
   Wire.write(REG);
   uint8_t result = Wire.endTransmission();
@@ -18,6 +56,7 @@ uint8_t I2C_Read_EXIO(uint8_t REG)                             // Read the value
 }
 uint8_t I2C_Write_EXIO(uint8_t REG,uint8_t Data)              // Write Data to the REG register of the TCA9554PWR
 {
+  I2CBusGuard transaction;
   Wire.beginTransmission(TCA9554_ADDRESS);
   Wire.write(REG);
   Wire.write(Data);
@@ -61,24 +100,13 @@ uint8_t Read_EXIOS(uint8_t REG = TCA9554_INPUT_REG)       // Read the level of a
 /********************************************************** Set the EXIO output status **********************************************************/
 void Set_EXIO(uint8_t Pin,uint8_t State)                  // Sets the level state of the Pin without affecting the other pins
 {
-  uint8_t Data;
-  if(State < 2 && Pin < 9 && Pin > 0){
-    uint8_t bitsStatus = Read_EXIOS(TCA9554_OUTPUT_REG);
-    if(State == 1)
-      Data = (0x01 << (Pin-1)) | bitsStatus;
-    else if(State == 0)
-      Data = (~(0x01 << (Pin-1))) & bitsStatus;
-    uint8_t result = I2C_Write_EXIO(TCA9554_OUTPUT_REG,Data);
-    if (result != 0) {
-      printf("Failed to set GPIO!!!\r\n");
-    }
-  }
-  else
-    printf("Parameter error, please enter the correct parameter!\r\n");
+  if (!Set_EXIO_Checked(Pin, State)) printf("Failed to set GPIO!!!\r\n");
 }
 void Set_EXIOS(uint8_t PinState)                          // Set 7 pins to the PinState state such as :PinState=0x23, 0010 0011 state (the highest bit is not used)
 {
+  if (xSemaphoreTake(outputMutex(), pdMS_TO_TICKS(100)) != pdTRUE) return;
   uint8_t result = I2C_Write_EXIO(TCA9554_OUTPUT_REG,PinState);
+  xSemaphoreGive(outputMutex());
   if (result != 0) {
     printf("Failed to set GPIO!!!\r\n");
   }

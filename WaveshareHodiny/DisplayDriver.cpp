@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "Display_ST7701.h"
+#include "DisplayNotification.h"
 #include "FirmwareBuild.h"
 #include "Touch_CST820.h"
 
@@ -18,10 +19,7 @@ void *frameBuffer2 = nullptr;
 uint8_t *screenshotBuffer = nullptr;
 size_t screenshotOffset = 0;
 SwipeNavigation swipeNavigation;
-int8_t horizontalSwipeLatched = 0;
-int8_t verticalSwipeLatched = 0;
 bool singleClickPending = false;
-bool singleClickLatched = false;
 uint8_t partialRefreshWarmupFrames = 0;
 bool partialRefreshWarmupRequested = false;
 bool partialRefreshEnableRequested = false;
@@ -59,6 +57,8 @@ void flushDisplay(lv_disp_drv_t *driver, const lv_area_t *area, lv_color_t *pixe
     // předstírání, že čekání na bezpečné uvolnění framebufferu uspělo.
     LCD_Resync();
   }
+
+  displayNotificationFramePresented(framePresented);
 
   if (framePresented && partialRefreshWarmupFrames > 0) {
     // Direct mode předpokládá, že oba framebuffery obsahují stejný výchozí
@@ -102,33 +102,20 @@ void readTouch(lv_indev_drv_t *, lv_indev_data_t *data) {
       touch_data.gesture == SWIPE_UP || touch_data.gesture == SWIPE_DOWN;
   const bool singleClick = touch_data.gesture == SINGLE_CLICK;
   if (horizontalSwipe) {
-    verticalSwipeLatched = false;
     const int8_t direction = touch_data.gesture == SWIPE_LEFT ? -1 : 1;
-    if (horizontalSwipeLatched != direction) {
-      horizontalSwipeLatched = direction;
-      swipeNavigation.offer(direction, false, millis());
-    }
+    swipeNavigation.offer(direction, false, millis());
     if (lv_indev_get_obj_act() != nullptr)
       lv_indev_wait_release(lv_indev_get_act());
     data->state = LV_INDEV_STATE_REL;
   } else if (verticalSwipe) {
-    horizontalSwipeLatched = false;
     const int8_t direction = touch_data.gesture == SWIPE_UP ? -1 : 1;
-    if (verticalSwipeLatched != direction) {
-      swipeNavigation.offer(direction, true, millis());
-      verticalSwipeLatched = direction;
-    }
+    swipeNavigation.offer(direction, true, millis());
     if (lv_indev_get_obj_act() != nullptr)
       lv_indev_wait_release(lv_indev_get_act());
     data->state = LV_INDEV_STATE_REL;
   } else {
-    horizontalSwipeLatched = false;
-    verticalSwipeLatched = false;
-    if (singleClick && !singleClickLatched) {
+    if (singleClick) {
       singleClickPending = true;
-      singleClickLatched = true;
-    } else if (!singleClick) {
-      singleClickLatched = false;
     }
     if (touch_data.points > 0) {
       data->point.x = touch_data.x;
@@ -239,6 +226,14 @@ bool displayDriverTakeSingleClick() {
   if (!singleClickPending) return false;
   singleClickPending = false;
   return true;
+}
+
+void displayDriverDiscardTouchUntilRelease() {
+  swipeNavigation.take(millis(), false, false);
+  singleClickPending = false;
+  Touch_DiscardPending();
+  lv_indev_t *input = nullptr;
+  while ((input = lv_indev_get_next(input))) lv_indev_wait_release(input);
 }
 
 bool displayDriverBeginFramebufferCapture(Print &output) {

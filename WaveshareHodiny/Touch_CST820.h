@@ -62,3 +62,14 @@ String Touch_GestureName(void);
 uint8_t Touch_Read_Data(void);
 void example_touchpad_read(void);
 void IRAM_ATTR Touch_CST820_ISR(void);
+
+void Touch_DiscardPending();
+
+struct TouchDiagnostics {
+  bool ready = false;
+  bool ioOk = false;
+  uint32_t samples = 0;
+  uint32_t errors = 0;
+  uint32_t taps = 0;
+};
+TouchDiagnostics Touch_GetDiagnostics();
