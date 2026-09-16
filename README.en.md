@@ -70,9 +70,10 @@ a page; all-zero durations leave the current page unchanged even when enabled.
 - two generic top values with individual names, units, precision, icons and
   smooth color scales,
 - static and animated weather icons based on Meteocons,
+- a separate twelve-hour Open-Meteo forecast page with current conditions in the center,
 - CHMI precipitation radar with a Czech map, cities and 1–15 frames,
 - 25, 50, 100 and 200 km radar ranges plus a full-country view,
-- optional automatic rotation between the clock and radar,
+- optional automatic rotation between clock, forecast and radar with independent durations,
 - two additional values such as CO₂, VOC, particulate matter, humidity,
   pressure or battery level,
 - personal TMEP.cz sensors as an optional extension to Open-Meteo values,
@@ -83,6 +84,8 @@ a page; all-zero durations leave the current page unchanged even when enabled.
 - initial Wi-Fi provisioning through Improv Serial on either USB-C connector,
 - A/B OTA updates that preserve Wi-Fi and device configuration,
 - a Home Assistant control API protected by a random secret,
+- API display notifications with a title, multiline message, colors, optional beep,
+  timeout or tap-to-dismiss behavior,
 - basic settings directly on the touchscreen.
 
 ## Required hardware
@@ -216,6 +219,7 @@ The web interface configures:
   the fixed web header provides flag buttons for changing it at any time,
 - the data source and shared geographic location,
 - Home Assistant URL, token, weather and sun entities,
+- an optional HA sensor overriding the forecast's current center temperature,
 - left and right top values with type, name, unit, precision, icon and color
   scale,
 - `Monochrome`, `Flat` and `Line` animated weather icon styles,
@@ -227,6 +231,49 @@ The web interface configures:
 - an optional web password,
 - backup import/export, restart, display controls and live diagnostics.
 
+### Hourly weather forecast
+
+The forecast is a separate page, not a fourth clock face. Swipe horizontally
+through **Clock → Forecast → Radar → Clock**, or in reverse. Outside Czechia,
+the radar is omitted and you switch between clock and forecast.
+
+The next **twelve whole hours** appear around the dial with temperatures and
+day/night weather icons. A smooth temperature-colored fan shows the expected
+temperatures; a radial divider separates the start and end of the time range.
+Current weather and temperature appear in the center. Times use the saved
+location's time zone, and red night mode applies the night palette.
+
+Hourly data always comes from Open-Meteo for the saved location, even when
+Home Assistant supplies the clock's other values. No account or API token is
+required. Successful requests refresh approximately every ten minutes; failed
+requests schedule another attempt after one minute. Missing hourly values are
+not displayed as 0 °C.
+
+The current center temperature uses this priority:
+
+1. The optional HA temperature sensor in **Weather → Forecast**.
+2. Temperature from the active HA weather entity.
+3. Current Open-Meteo temperature for the saved location.
+
+HA sources apply only when Home Assistant is active and configured. Supported
+sensor units are °C, °F and K, converted to °C. An unavailable value or unsupported
+unit falls back to the next source. This setting does not change the weather
+icon or hourly forecast; top values and metrics A/B are not fallback sources.
+
+### Automatic page rotation
+
+Enable automatic screen rotation in the web interface and configure each page
+for 0–3600 seconds. Default durations are clock 120 s, forecast 20 s and radar
+20 s; rotation itself is disabled after a clean installation. **0 skips a page**;
+all-zero durations leave the current page unchanged. Manual swipes can still
+open pages excluded from automatic rotation.
+
+Rotation requires Wi-Fi and synchronized time. It pauses in settings, with the
+display switched off or while a notification is active. A loading/unavailable
+radar is temporarily skipped without stalling clock/forecast rotation. Outside
+Czechia, only clock and forecast rotate. Radar finishes its current animation
+cycle before leaving, so its configured duration is a minimum.
+
 ### CHMI precipitation radar
 
 Radar imagery comes from the open MAX_Z composite published by the Czech
@@ -237,7 +284,7 @@ outline and a range-specific selection of cities.
 The radar is available only when Open-Meteo location search identifies the
 saved country as `CZ`. For locations outside Czechia, the firmware does not
 start the radar, download its data in the background or respond to radar
-gestures, and automatic screen rotation is disabled. Open-Meteo weather and
+gestures, and automatic screen rotation skips the radar. Open-Meteo weather and
 Home Assistant remain available without this restriction.
 
 One frame creates a static view; 2–15 frames create an animation from oldest to
@@ -257,12 +304,13 @@ shown on the clock and amber marks the saved default. The preview becomes
 persistent only after saving the configuration. A range selected on the device
 is temporary and the saved web value is restored after a restart.
 
-Automatic rotation is disabled by default and provides separate clock and radar
+Automatic rotation is disabled by default and provides separate clock, forecast and radar
 durations. The radar duration is a minimum: an animation already in progress,
-including its final pause, always completes before the clock returns. After a
+including its final pause, always completes before switching pages. After a
 restart, background cache preparation begins only after Wi-Fi is connected and
 time synchronization has completed. The first automatic transition waits for
-the complete animation, so playback starts immediately from the oldest frame.
+the complete animation before including the radar, without blocking other pages;
+playback then starts immediately from the oldest frame.
 With automatic rotation disabled, radar data is not downloaded in the
 background and loading starts when the radar is opened manually.
 
@@ -325,15 +373,18 @@ See [the backup format and storage contract](docs/configuration-backup.md).
 
 ## Touchscreen settings
 
-Long-press anywhere on the clock or radar to open the settings pages. A
-horizontal swipe in either direction switches between the clock and radar.
+Long-press on the clock, forecast or radar to open the settings pages.
+Horizontal swipes cycle through clock, forecast and radar; the opposite direction
+cycles back. Outside Czechia, only clock and forecast are available.
 On the clock, swiping up cycles Digital → Analog → Retro LCD; swiping down
 cycles in reverse. This is temporary: restart restores the saved clock face.
 With animated transitions enabled, faces slide vertically in the swipe
 direction over 500 ms; otherwise they switch immediately.
 On the radar, swiping up zooms in and swiping down zooms out; this range change
-remains temporary until restart. With automatic day/night mode disabled, a
-short tap on either screen switches the appearance. Arrow buttons move between
+remains temporary until restart. Vertical swipes on the forecast do not change
+the clock face or radar range. With automatic day/night mode disabled, a
+short tap on a main page switches the appearance. A tap on an active notification
+dismisses it instead. Arrow buttons move between
 the three settings pages; swipes are not used inside the settings menu.
 Available controls include day/night brightness, automatic mode, weather icons,
 seconds effects, web-server mode and OTA checks.
@@ -374,6 +425,163 @@ automatic updates use the same implementation and validation.
 The web interface shows a control endpoint containing a random 128-bit secret.
 It can refresh data, control the backlight and invoke other supported actions.
 Treat the URL as a credential and never publish it in screenshots, logs or Git.
+
+### Display notifications
+
+Use `POST /api/control/<SECRET>/notification` with JSON or form-encoded data.
+The **System → Web server and API** notification tester displays the exact URL
+and JSON with copy buttons. Test values are not saved in the clock configuration.
+The endpoint also works when web settings are password-locked.
+
+| Field | Meaning |
+| --- | --- |
+| `title` | Required, 1–96 UTF-8 bytes; single line. |
+| `message` | Required, 1–768 UTF-8 bytes; supports `\n`. |
+| `durationSeconds` | Integer 0–86400; omitted or 0 = until tapped. |
+| `beep` | Integer 0–5000 milliseconds; omitted or 0 = silent. |
+| `textColor` | `#RRGGBB`, default `#FFFFFF`. |
+| `backgroundColor` | `#RRGGBB`, default `#000000`. |
+
+A tap dismisses either timed or fixed notifications. New requests replace the
+previous notification; there is no queue or persistence across restart. Sound
+and the timeout start only after the first successfully presented display frame,
+not when the HTTP request arrives. A new notification replaces the previous beep;
+zero/omitted `beep` cancels it. Red night mode uses red text on black, restoring
+request colors on return to day mode. Brightness-only night mode keeps the colors.
+Notifications overlay the current page and pause gestures/automatic rotation.
+Long text is truncated with an ellipsis; Latin text and Czech diacritics are
+supported, not emoji or other alphabets.
+
+Success returns HTTP 200, for example
+`{"ok":true,"active":true,"durationSeconds":15,"beep":150,"replaced":false}`.
+Errors include 400 (invalid fields), 401 (wrong secret), 415 (unsupported content
+type), 409 (display manually off or firmware update busy), and 503 (notification
+or requested buzzer unavailable). Invalid requests leave the previous overlay
+unchanged. JSON requires actual numbers, not strings, and has a 4096-byte body
+limit. Form values have a 1024-byte encoded-value limit. Notifications respect
+brightness; starting firmware installation dismisses them.
+
+#### cURL
+
+Timed notification with a 150 ms beep (replace the placeholder IP and secret):
+
+```bash
+curl --fail-with-body --show-error --max-time 10 \
+  --request POST 'http://DISPLAY_IP/api/control/SECRET/notification' \
+  --header 'Content-Type: application/json' \
+  --data '{"title":"Laundry finished","message":"You can hang up the laundry.","durationSeconds":15,"beep":150,"textColor":"#FFFFFF","backgroundColor":"#124734"}'
+```
+
+Fixed, silent notification with a newline:
+
+```bash
+curl --fail-with-body --show-error --max-time 10 \
+  --request POST 'http://DISPLAY_IP/api/control/SECRET/notification' \
+  --header 'Content-Type: application/json' \
+  --data '{"title":"Open window","message":"The bedroom window is open.\nClose it before leaving.","durationSeconds":0,"beep":0}'
+```
+
+`--fail-with-body` requires cURL 7.76 or later. Use `--fail` on older versions
+(without the error response body).
+
+#### Node-RED
+
+Connect standard **Inject → Function → HTTP request → Debug** nodes; no extra
+package is required. Set the Node-RED process environment variable
+`WAVESHARE_NOTIFICATION_URL` to the full notification URL from the clock's web
+interface and restart Node-RED. Keep the real URL out of shared flow exports.
+
+Paste this into the **Function** node:
+
+```javascript
+const url = env.get("WAVESHARE_NOTIFICATION_URL");
+if (!url) {
+    node.error("Missing WAVESHARE_NOTIFICATION_URL");
+    return null;
+}
+
+msg.url = url;
+msg.headers = { "Content-Type": "application/json" };
+msg.payload = JSON.stringify({
+    title: "Laundry finished",
+    message: "You can hang up the laundry.\nTap to dismiss.",
+    durationSeconds: 15,
+    beep: 150,
+    textColor: "#FFFFFF",
+    backgroundColor: "#124734"
+});
+return msg;
+```
+
+Set **HTTP request** to **POST**, leave its URL blank to use `msg.url`, and
+return a parsed JSON object. Debug only `msg.payload`, not the entire message
+containing the secret URL. An optional second Debug node can show
+`msg.statusCode`: success is 200 with `msg.payload.ok` equal to `true`.
+Deploy and click Inject. Set `durationSeconds` to 0 for a fixed overlay or
+`beep` to 0 for silence. Replace Inject with an event/automation later;
+always use `JSON.stringify` when building messages from your own data.
+
+See the official Node-RED recipes for [msg.url](https://cookbook.nodered.org/http/set-request-url),
+[request headers](https://cookbook.nodered.org/http/set-request-header), and
+[JSON responses](https://cookbook.nodered.org/http/parse-json-response).
+
+#### Home Assistant: notify action
+
+The [RESTful Notifications](https://www.home-assistant.io/integrations/notify.rest/)
+platform provides `notify.waveshare_hodiny` without a custom integration or HA
+token. Authorization uses the clock's secret URL. Home Assistant must have
+network access to the clock's web server.
+
+Add the real URL to your local `secrets.yaml`; never publish it:
+
+```yaml
+waveshare_notification_url: "http://DISPLAY_IP/api/control/SECRET/notification"
+```
+
+Add this entry to `configuration.yaml`. If `notify:` already exists, append to
+its list instead of declaring a second top-level key.
+
+```yaml
+notify:
+  - platform: rest
+    name: waveshare_hodiny
+    resource: !secret waveshare_notification_url
+    method: POST
+    message_param_name: message
+    title_param_name: title
+    data:
+      durationSeconds: "{{ (data | default({})).get('durationSeconds', 15) }}"
+      beep: "{{ (data | default({})).get('beep', 0) }}"
+      textColor: "{{ (data | default({})).get('textColor', '#FFFFFF') }}"
+      backgroundColor: "{{ (data | default({})).get('backgroundColor', '#000000') }}"
+```
+
+Check configuration and restart Home Assistant. Test this YAML under
+**Developer tools → Actions**, or add it as a list item under automation
+`actions:` or script `sequence:`:
+
+```yaml
+action: notify.waveshare_hodiny
+data:
+  title: "Laundry finished"
+  message: |-
+    You can hang up the laundry.
+    Tap to dismiss.
+  data:
+    durationSeconds: 15
+    beep: 150
+    textColor: "#FFFFFF"
+    backgroundColor: "#124734"
+```
+
+Nested `data:` belongs to the HA notify interface, not the clock API. The
+notifier extracts only the four supported options. Omitting nested `data:`
+defaults to 15 seconds, silence and white text on black. Send `durationSeconds: 0`
+to keep the message until tapped. Always supply both `title` and `message`.
+Use **POST** (form data), not **POST_JSON**: notifier templates render strings,
+which the clock's form parser accepts as integers. Keep messages short because
+the encoded form-value limit applies. Use a trusted local network or VPN;
+do not expose the clock API to the internet or publish its URL in logs/screenshots.
 
 ## Building from source
 

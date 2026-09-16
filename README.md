@@ -67,7 +67,7 @@ pozicích 12, 3, 6 a 9 hodin.
 - srážkový radar ČHMÚ s mapou České republiky, městy a 1 až 15 snímky,
 - rozsahy 25, 50, 100 a 200 km nebo celou ČR ovládané svislým gestem swipe,
 - červenou noční paletu radaru se zachováním rozlišení intenzity srážek,
-- volitelné automatické střídání hodin a radaru se samostatnou dobou zobrazení,
+- volitelné automatické střídání hodin, předpovědi a radaru se samostatnou dobou zobrazení,
 - dvě další měřené veličiny, například CO₂, VOC, vlhkost, tlak nebo baterii,
 - vlastní čidla TMEP.cz jako volitelný doplněk hodnot Open-Meteo,
 - vlastní jednotky, počet desetinných míst a plynulé barevné škály,
@@ -78,6 +78,8 @@ pozicích 12, 3, 6 a 9 hodin.
 - prvotní nastavení Wi-Fi přes Improv Serial,
 - A/B OTA aktualizace se zachováním Wi-Fi a konfigurace,
 - ovládací API pro Home Assistant chráněné náhodným secretem,
+- notifikace přes API s nadpisem, víceřádkovou zprávou, barvami, časovým limitem
+  nebo zavřením klepnutím a volitelným pípnutím,
 - základní nastavení také přímo na dotykovém displeji.
 
 ## Potřebný hardware
@@ -223,16 +225,60 @@ Web umožňuje nastavit:
   lze kdykoli přepnout vlajkami v pevném horním pruhu webu,
 - zdroj dat Open-Meteo nebo Home Assistant a společnou polohu zařízení,
 - Home Assistant URL, token, entitu počasí a entitu slunce,
+- přednostní HA čidlo pro aktuální teplotu uprostřed předpovědi,
 - levou a pravou horní hodnotu včetně typu, názvu, jednotky, přesnosti, ikony
   a barevné škály,
 - styl animovaných ikon `Monochrome`, `Flat` nebo `Line`,
 - meteoradar ČHMÚ s obrysem ČR, městy, pohledy 25, 50, 100, 200 km nebo celá ČR a volbou 1 až 15 snímků,
 - měřené hodnoty A a B, jednotky, přesnost a barevné škály,
 - barvu hodin, data a obou částí vteřinového efektu,
-- denní/noční jas, ruční nebo automatický režim a automatické střídání hodin s radarem,
+- denní/noční jas, ruční nebo automatický režim a automatické střídání tří stránek,
 - automatické OTA aktualizace a režim webového serveru,
 - volitelné heslo webového nastavení,
 - export/import zálohy, restart, ovládání podsvícení a živou diagnostiku.
+
+### Hodinová předpověď počasí
+
+Předpověď je samostatná obrazovka, nikoli čtvrtý ciferník. Vodorovným swipem
+listuješ **Hodiny → Předpověď → Meteoradar → Hodiny**, opačným směrem zpět.
+Mimo ČR se radar vynechá a přepínáš mezi hodinami a předpovědí.
+
+Po obvodu je následujících **12 celých hodin** s teplotou a denní/noční ikonou
+počasí. Barevný vějíř plynule znázorňuje očekávané teploty, radiální čára
+odděluje začátek a konec časového rozsahu. Uprostřed je aktuální počasí a teplota.
+Časy používají uložené časové pásmo polohy. V červeném nočním režimu se vzhled
+přizpůsobí noční paletě.
+
+Hodinová data vždy pocházejí z Open-Meteo pro uloženou polohu — i když jsou
+ostatní hodnoty hodin z Home Assistantu. Nevyžadují účet ani API token.
+Při úspěšném načtení se obnovují přibližně po 10 minutách, při chybě se další
+pokus plánuje po minutě. Chybějící hodinová hodnota se nezobrazuje jako 0 °C.
+
+Aktuální teplota uprostřed má vlastní pořadí zdrojů:
+
+1. Volitelné teplotní čidlo HA z **Počasí → Předpověď → Přednostní entita teploty z HA**.
+2. Teplota aktivní entity HA weather.
+3. Aktuální teplota Open-Meteo pro vybranou polohu.
+
+HA zdroje se použijí jen při aktivním a nakonfigurovaném Home Assistantu.
+Čidlo může používat °C, °F nebo K; firmware teplotu převede na °C. Při
+`unknown`, `unavailable` nebo nepodporované jednotce pokračuje dalším zdrojem.
+Tato volba nemění ikonu počasí ani hodinovou předpověď a nepřebírá hodnotu
+z horních polí nebo metrik A/B.
+
+### Automatické střídání obrazovek
+
+Ve webu zapni **Automaticky střídat obrazovky** a nastav dobu pro každou stránku
+v rozsahu 0–3600 sekund. Výchozí časy jsou hodiny 120 s, předpověď 20 s a radar
+20 s; samotné střídání je po čisté instalaci vypnuté. **0 vynechá danou stránku**,
+všechny tři nuly nechají aktuální stránku beze změny. Ruční swipe funguje i pro
+stránku vynechanou automatickým střídáním.
+
+Střídání čeká na Wi-Fi a synchronizovaný čas a pozastaví se v nastavení,
+při vypnutém displeji nebo aktivní notifikaci. Nedostupný či nepřipravený radar
+se dočasně přeskočí, aniž by zastavil střídání hodin a předpovědi. Mimo ČR se
+střídají pouze hodiny a předpověď. Radar svůj rozběhnutý animační cyklus před
+přechodem dokončí, takže jeho nastavená doba je minimum.
 
 ### Meteoradar ČHMÚ
 
@@ -244,7 +290,7 @@ obrys státu a města přizpůsobená jednotlivým rozsahům.
 Meteoradar je dostupný pouze pro polohy, které vyhledávání Open-Meteo označí
 kódem země `CZ`. U lokality mimo Českou republiku firmware radar nespouští,
 nestahuje jeho data na pozadí, nereaguje na radarová gesta a automatické
-střídání obrazovek vypne. Počasí Open-Meteo i Home Assistant zůstávají bez
+střídání radar vynechá. Počasí Open-Meteo i Home Assistant zůstávají bez
 tohoto omezení.
 
 Počet snímků lze nastavit od 1 do 15. Jeden snímek znamená statický radar;
@@ -268,12 +314,12 @@ konfigurace se změna zapíše až tlačítkem **Uložit změny**. Rozsah zvolen
 dotykem na displeji zůstává pouze do restartu; po něm se obnoví hodnota
 naposledy uložená přes web.
 
-Automatické střídání hodin a radaru je ve výchozím stavu vypnuté. Po zapnutí
-lze nastavit samostatnou dobu zobrazení hodin a radaru. Nastavený čas radaru
+Automatické střídání hodin, předpovědi a radaru je ve výchozím stavu vypnuté.
+Každá stránka má samostatnou dobu zobrazení. Nastavený čas radaru
 je minimální: rozběhnutý animační cyklus se vždy dokončí včetně závěrečné
-pauzy, takže přechod zpět na hodiny nepřeruší animaci uprostřed. Po restartu
+pauzy, takže přechod na další stránku nepřeruší animaci uprostřed. Po restartu
 se příprava cache spustí na pozadí až po připojení Wi-Fi a synchronizaci času.
-První automatický přechod na radar počká na kompletní animaci; další přechody
+Automatické střídání radar zařadí až po přípravě kompletní animace; další přechody
 ji proto zobrazí okamžitě od nejstaršího snímku. Je-li automatické střídání
 vypnuté, firmware radar na pozadí nestahuje a načítání začne až při ručním
 otevření.
@@ -366,9 +412,9 @@ Podrobnosti formátu, transakcí a migračních testů jsou v
 
 ## Nastavení na displeji
 
-Nastavení otevře dlouhý stisk kdekoliv na hodinách i meteoradaru. Mezi hodinami
-a meteoradarem přepne vodorovné gesto swipe doleva nebo doprava. Protože jsou
-obrazovky pouze dvě, oba směry vždy zobrazí druhou obrazovku.
+Nastavení otevře dlouhý stisk na hodinách, předpovědi i meteoradaru.
+Vodorovné gesto listuje mezi třemi stránkami; opačný směr prochází zpět.
+Mimo ČR jsou dostupné pouze hodiny a předpověď.
 
 Na hodinách swipe nahoru cyklí ciferníky Digitální → Analogový → Retro LCD,
 swipe dolů prochází opačným směrem. Přepnutí je dočasné; po restartu se vrátí
@@ -380,11 +426,12 @@ na displeji je dočasná a nezapisuje se do flash.
 
 | Obrazovka a gesto | Výsledek |
 | --- | --- |
-| Hodiny: swipe doleva nebo doprava | Otevře meteoradar |
+| Kterákoli hlavní stránka: vodorovný swipe | Další / předchozí stránka: hodiny, předpověď, meteoradar |
 | Hodiny: swipe nahoru / dolů | Další / předchozí ciferník |
-| Meteoradar: swipe doleva nebo doprava | Vrátí hodiny |
-| Hodiny nebo meteoradar: dlouhý stisk kdekoliv | Otevře nastavení |
-| Hodiny nebo meteoradar: krátký dotyk při vypnuté automatice den/noc | Přepne denní a noční režim |
+| Předpověď: swipe nahoru / dolů | Nemění ciferník ani rozsah |
+| Kterákoli hlavní stránka: dlouhý stisk | Otevře nastavení |
+| Kterákoli hlavní stránka: krátký dotyk při vypnuté automatice den/noc | Přepne denní a noční režim |
+| Aktivní notifikace: krátké klepnutí | Zavře zprávu a odkryje původní stránku |
 | Meteoradar: swipe nahoru | Přiblíží rozsah |
 | Meteoradar: swipe dolů | Oddálí rozsah |
 
@@ -477,20 +524,35 @@ příkazy funguje i při zamčeném webovém nastavení.
 | `textColor` | Barva nadpisu i zprávy ve formátu `#RRGGBB`, výchozí `#FFFFFF`. |
 | `backgroundColor` | Barva pozadí ve formátu `#RRGGBB`, výchozí `#000000`. |
 
+#### cURL
+
 Příklad časové notifikace na 15 sekund (IP a secret jsou zástupné hodnoty):
 
 ```bash
-curl --request POST 'http://IP_DISPLEJE/api/control/SECRET/notification' \
+curl --fail-with-body --show-error --max-time 10 \
+  --request POST 'http://IP_DISPLEJE/api/control/SECRET/notification' \
   --header 'Content-Type: application/json' \
   --data '{"title":"Pračka doprala","message":"Prádlo už můžeš pověsit.","durationSeconds":15,"beep":150,"textColor":"#FFFFFF","backgroundColor":"#124734"}'
 ```
+
+Pevná notifikace do klepnutí na displej, bez zvuku a s novým řádkem ve zprávě:
+
+```bash
+curl --fail-with-body --show-error --max-time 10 \
+  --request POST 'http://IP_DISPLEJE/api/control/SECRET/notification' \
+  --header 'Content-Type: application/json' \
+  --data '{"title":"Otevřené okno","message":"Okno v ložnici je otevřené.\nPřed odchodem ho zavři.","durationSeconds":0,"beep":0}'
+```
+
+`--fail-with-body` vyžaduje cURL 7.76 nebo novější. U staršího cURL použij
+`--fail` (bez těla chybové odpovědi).
 
 Pro pevnou notifikaci nastav `"durationSeconds":0`. Klepnutí zavře oba typy;
 pevná notifikace se sama časem nezavře. Nový požadavek nahradí předchozí
 notifikaci a začne nový interval. Fronta ani uložení notifikací přes restart
 se nepoužívá.
 
-Pípnutí začne jednou při přijetí notifikace. Jeho délka je nezávislá na
+Pípnutí zazní jednou při prvním zobrazení notifikace. Jeho délka je nezávislá na
 `durationSeconds` a na zavření notifikace klepnutím. Nová notifikace nahradí i
 předchozí pípnutí; nula nebo vynechané `beep` případný předchozí zvuk zastaví.
 V červeném nočním režimu má notifikace červený text na černém pozadí.
@@ -523,6 +585,110 @@ serveru (maximálně 1024 zakódovaných bajtů na hodnotu). Při chybě se stá
 notifikace nemění. Požadavek se odmítne s 409 při ručně vypnutém podsvícení
 nebo probíhající práci s aktualizací firmware. Notifikace respektuje aktuální
 jas; zahájení instalace firmware ji zavře.
+HTTP 503 znamená, že se notifikaci nepodařilo zobrazit nebo není dostupný
+bzučák pro požadované pípnutí.
+
+#### Node-RED
+
+Použij běžné uzly **Inject → Function → HTTP request → Debug**; další balíček
+není potřeba. Do prostředí procesu Node-RED nastav proměnnou
+`WAVESHARE_NOTIFICATION_URL` na celou URL notifikace z webu hodin
+(`http://IP_DISPLEJE/api/control/SECRET/notification`) a restartuj Node-RED.
+URL obsahuje secret: neukládej ji do veřejně sdíleného exportu flow.
+
+Do uzlu **Function** vlož:
+
+```javascript
+const url = env.get("WAVESHARE_NOTIFICATION_URL");
+if (!url) {
+    node.error("Chybí WAVESHARE_NOTIFICATION_URL");
+    return null;
+}
+
+msg.url = url;
+msg.headers = { "Content-Type": "application/json" };
+msg.payload = JSON.stringify({
+    title: "Pračka doprala",
+    message: "Prádlo už můžeš pověsit.\nKlepnutím zavřeš zprávu.",
+    durationSeconds: 15,
+    beep: 150,
+    textColor: "#FFFFFF",
+    backgroundColor: "#124734"
+});
+return msg;
+```
+
+V uzlu **HTTP request** nastav metodu **POST**, URL nech prázdnou (použije
+`msg.url`) a návratový typ nastav na parsovaný JSON objekt. V **Debug** zobrazuj
+jen `msg.payload`, ne celou zprávu s tajnou URL. Pro kontrolu HTTP výsledku lze
+přidat druhý Debug pro `msg.statusCode`: úspěch je 200 a `msg.payload.ok` je
+`true`. Po **Deploy** klikni na Inject. Pro trvalou zprávu změň
+`durationSeconds` na 0, pro ticho `beep` na 0. Inject můžeš později nahradit
+událostí nebo automatizací. Návazné uzly mohou změnit jednotlivé hodnoty ve
+Function; pokud sestavuješ zprávu z vlastních dat, vždy použij `JSON.stringify`.
+
+Viz oficiální návody Node-RED pro [URL z msg.url](https://cookbook.nodered.org/http/set-request-url),
+[hlavičky požadavku](https://cookbook.nodered.org/http/set-request-header) a
+[parsovanou JSON odpověď](https://cookbook.nodered.org/http/parse-json-response).
+
+#### Home Assistant: akce notify
+
+Hodiny lze přidat přes [RESTful Notifications](https://www.home-assistant.io/integrations/notify.rest/)
+a volat jako `notify.waveshare_hodiny`. Nevyžaduje to vlastní integraci ani
+Home Assistant token: autorizaci zajišťuje secret hodin v URL. Home Assistant
+musí mít síťový přístup k webovému serveru hodin.
+
+Do lokálního `secrets.yaml` přidej skutečnou URL (nepublikuj ji):
+
+```yaml
+waveshare_notification_url: "http://IP_DISPLEJE/api/control/SECRET/notification"
+```
+
+Do `configuration.yaml` přidej následující položku. Pokud již máš `notify:`,
+připoj ji do existujícího seznamu, nevytvářej druhý klíč `notify:`.
+
+```yaml
+notify:
+  - platform: rest
+    name: waveshare_hodiny
+    resource: !secret waveshare_notification_url
+    method: POST
+    message_param_name: message
+    title_param_name: title
+    data:
+      durationSeconds: "{{ (data | default({})).get('durationSeconds', 15) }}"
+      beep: "{{ (data | default({})).get('beep', 0) }}"
+      textColor: "{{ (data | default({})).get('textColor', '#FFFFFF') }}"
+      backgroundColor: "{{ (data | default({})).get('backgroundColor', '#000000') }}"
+```
+
+Zkontroluj konfiguraci a restartuj Home Assistant. Pak v **Vývojářské nástroje
+→ Akce** vyzkoušej následující YAML; stejnou akci můžeš vložit do seznamu
+`actions:` automatizace nebo `sequence:` skriptu:
+
+```yaml
+action: notify.waveshare_hodiny
+data:
+  title: "Pračka doprala"
+  message: |-
+    Prádlo už můžeš pověsit.
+    Klepnutím zavřeš zprávu.
+  data:
+    durationSeconds: 15
+    beep: 150
+    textColor: "#FFFFFF"
+    backgroundColor: "#124734"
+```
+
+Vnořené `data:` je součást rozhraní Home Assistant notify, ne JSON pole API
+hodin. Konfigurace REST notifieru z něj vybírá pouze čtyři podporované volby.
+Bez vnořeného `data:` se použije 15 sekund, žádný zvuk a bílý text na černém
+pozadí. Pro zprávu do klepnutí pošli `durationSeconds: 0`. `title` i `message`
+vždy vyplň. Používáme metodu **POST** (formulář), ne **POST_JSON**: šablony
+notifieru vracejí text, který formulářové API hodin umí převést na celá čísla.
+U formuláře platí výše uvedený limit zakódované hodnoty, takže používej krátké
+zprávy. V žádném příkladu neotevírej API hodin do internetu; používej důvěryhodnou
+lokální síť nebo VPN a skutečnou URL nesdílej v logu ani screenshotu.
 
 Test validace a časování bez zařízení:
 
