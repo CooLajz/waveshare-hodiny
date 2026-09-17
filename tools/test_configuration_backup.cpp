@@ -1,4 +1,5 @@
 #include <cassert>
+#include "../WaveshareHodiny/ClockStyleAutosave.h"
 #include <cstdio>
 #include <vector>
 #include "backup_test_support/esp_heap_caps.h"
@@ -98,7 +99,7 @@ void testCorruptStoreRecovery() {
   fakeNvs::values.clear(); settingsStoreTestReset(); assert(settingsStoreBegin());
   SettingsPreferences mode;mode.begin("web-mode");assert(mode.putUChar("mode",1)==1);
   uint8_t image[SETTINGS_IMAGE_CAPACITY];size_t length;assert(settingsExport(image,sizeof(image),length));
-  const unsigned active=fakeNvs::values.at("clockcfg/settings-v1/active")[0];
+  const unsigned active=(fakeNvs::values.at("clockcfg/settings-v1/commit")[0]&1);
   fakeNvs::values.at("clockcfg/settings-v1/slot"+std::to_string(active))[36]^=1;
   settingsStoreTestReset();assert(!settingsStoreBegin());
   assert(!settingsTransactionBegin()); // Ordinary saves cannot overwrite corrupt storage.
@@ -216,4 +217,98 @@ void testConfigAllocationFailure() {
   }
   puts("PASS: PSRAM exhaustion causes no writes; retry and independent config buffers");
 }
-int main(){testConfigAllocationFailure();testMigration();testStorage();testCrypto();testCompleteSnapshot();testCorruptStoreRecovery();}
+void testStyleAutosave() {
+  ClockStyleAutosave save;
+  assert(!save.due(20000));
+  save.select(1, 0, 100);
+  assert(!save.due(15099));assert(save.due(15100));
+  save.select(2, 0, 15000);
+  assert(!save.due(29999));assert(save.due(30000) && save.style()==2);
+  save.completed(true,30000);assert(!save.due(60000));
+  save.select(1,2,60000);save.select(2,2,61000);
+  assert(!save.due(90000)); // Return to saved face: no flash write.
+  save.select(0,2,100000);save.cancel();assert(!save.due(120000));
+  save.select(1,2,UINT32_MAX-5000);
+  assert(!save.due(9998));assert(save.due(9999));
+  save.completed(false,10000);
+  assert(!save.due(24999));assert(save.due(25000) && save.style()==1);
+
+  settingsStoreTestReset();fakeNvs::values.clear();fakeNvs::fault=fakeNvs::None;
+  assert(settingsStoreBegin());
+  ClockAppearanceConfig original;
+  original.retroForegroundColor=0x123456;
+  assert(clockAppearanceSave(original));
+  SettingsPreferences receipt;assert(receipt.begin("save-state"));
+  assert(receipt.putString("receipt","0123456789abcdef0123456789abcdef")==32);
+  uint8_t before[SETTINGS_IMAGE_CAPACITY],after[SETTINGS_IMAGE_CAPACITY];
+  size_t beforeSize=0,afterSize=0;
+  assert(settingsExport(before,sizeof(before),beforeSize));
+  fakeNvs::writes.clear();
+  assert(clockAppearanceSaveStyle(CLOCK_STYLE_ANALOG));
+  assert(fakeNvs::writes.size()==1);
+  assert(fakeNvs::writes[0].first=="clockcfg/settings-v1/style" && fakeNvs::writes[0].second==8);
+  settingsStoreTestReset();assert(settingsStoreBegin());
+  assert(settingsExport(after,sizeof(after),afterSize));
+  assert(beforeSize==afterSize);
+  // Stable key ID 1 is the style byte; all other settings and receipt stay intact.
+  for(size_t pos=0;pos<beforeSize;) {
+    const size_t size=before[pos+1]|(size_t(before[pos+2])<<8);
+    if(before[pos]==1) { assert(size==1);assert(after[pos+3]==CLOCK_STYLE_ANALOG); }
+    else assert(!memcmp(before+pos,after+pos,size+3));
+    pos+=size+3;
+  }
+  assert(!clockAppearanceSaveStyle(CLOCK_STYLE_FORECAST));
+  assert(settingsTransactionBegin());assert(!clockAppearanceSaveStyle(CLOCK_STYLE_DIGITAL));
+  assert(settingsTransactionActive());settingsTransactionAbort();
+  fakeNvs::fault=fakeNvs::StyleWrite;
+  assert(!clockAppearanceSaveStyle(CLOCK_STYLE_RETRO_LCD));
+  fakeNvs::fault=fakeNvs::None;
+  settingsStoreTestReset();assert(settingsStoreBegin());
+  ClockAppearanceConfig restored;assert(clockAppearanceLoad(restored));
+  assert(restored.style==CLOCK_STYLE_ANALOG && restored.retroForegroundColor==0x123456);
+  fakeNvs::writes.clear();assert(clockAppearanceSaveStyle(CLOCK_STYLE_ANALOG));
+  assert(fakeNvs::writes.empty()); // No-op does not touch NVS.
+  const auto overrideBaseline=fakeNvs::values;
+  for(auto fault:{fakeNvs::SlotWrite,fakeNvs::SlotRead,fakeNvs::SelectorWrite,
+                  fakeNvs::PowerAfterSlot,fakeNvs::PowerAfterSelector}) {
+    settingsStoreTestReset();fakeNvs::values=overrideBaseline;fakeNvs::fault=fakeNvs::None;
+    assert(settingsStoreBegin());assert(settingsImport(before,beforeSize));
+    fakeNvs::fault=fault;fakeNvs::slotWritten=false;
+    try{assert(!settingsTransactionCommit());}catch(const std::runtime_error&){}
+    fakeNvs::fault=fakeNvs::None;settingsStoreTestReset();assert(settingsStoreBegin());
+    assert(clockAppearanceLoad(restored));
+    assert(restored.style==(fault==fakeNvs::PowerAfterSelector?original.style:CLOCK_STYLE_ANALOG));
+  }
+  // Restoring identical old bytes repeatedly must never resurrect an override,
+  // even after both physical snapshot slots have been reused.
+  for(int i=0;i<4;++i) {
+    assert(settingsImport(before,beforeSize));assert(settingsTransactionCommit());
+    settingsStoreTestReset();assert(settingsStoreBegin());
+    assert(clockAppearanceLoad(restored));assert(restored.style==original.style);
+  }
+  assert(clockAppearanceSaveStyle(CLOCK_STYLE_RETRO_LCD));
+  uint8_t exported[SETTINGS_IMAGE_CAPACITY];size_t exportedSize=0;
+  assert(settingsExport(exported,sizeof(exported),exportedSize));
+  assert(clockAppearanceSaveStyle(CLOCK_STYLE_ANALOG));
+  assert(settingsImport(exported,exportedSize));assert(settingsTransactionCommit());
+  settingsStoreTestReset();assert(settingsStoreBegin());
+  assert(clockAppearanceLoad(restored));assert(restored.style==CLOCK_STYLE_RETRO_LCD);
+  fakeNvs::fault=fakeNvs::PowerAfterStyle;
+  try{clockAppearanceSaveStyle(CLOCK_STYLE_DIGITAL);assert(false);}catch(const std::runtime_error&){}
+  fakeNvs::fault=fakeNvs::None;settingsStoreTestReset();assert(settingsStoreBegin());
+  assert(clockAppearanceLoad(restored));assert(restored.style==CLOCK_STYLE_DIGITAL);
+  // Migrate an old active-slot selector without a full write on the first swipe.
+  Preferences disk;assert(disk.begin("settings-v1",false,"clockcfg"));
+  const uint8_t legacySlot=disk.getUInt("commit")&1;
+  disk.remove("style");disk.remove("commit");disk.putUChar("active",legacySlot);
+  settingsStoreTestReset();assert(settingsStoreBegin());fakeNvs::writes.clear();
+  assert(clockAppearanceSaveStyle(CLOCK_STYLE_ANALOG));assert(fakeNvs::writes.size()==1);
+  settingsStoreTestReset();assert(settingsStoreBegin());assert(clockAppearanceLoad(restored));
+  assert(restored.style==CLOCK_STYLE_ANALOG);
+  assert(settingsImport(before,beforeSize));assert(settingsTransactionCommit());
+  settingsStoreTestReset();assert(settingsStoreBegin());assert(clockAppearanceLoad(restored));
+  assert(restored.style==original.style);
+  puts("PASS: single 8-byte NVS write, no-op, legacy migration, snapshot/override power loss, export and restore precedence");
+  puts("PASS: style autosave debounce, cancellation, rollover, retry, reboot, preservation of other settings and failed writes");
+}
+int main(){testStyleAutosave();testConfigAllocationFailure();testMigration();testStorage();testCrypto();testCompleteSnapshot();testCorruptStoreRecovery();}

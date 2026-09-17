@@ -344,6 +344,11 @@ bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
   return true;
 }
 
+bool clockAppearanceSaveStyle(uint8_t style) {
+  if (style > CLOCK_STYLE_RETRO_LCD) return false;
+  return settingsSaveClockStyle(style);
+}
+
 bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
   if (!std::isfinite(appearance.retroProgressMin) || !std::isfinite(appearance.retroProgressMax) ||
       appearance.retroProgressMin >= appearance.retroProgressMax || appearance.retroProgressSource > 4 ||

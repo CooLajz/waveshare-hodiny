@@ -5,9 +5,10 @@
 #include <stdexcept>
 namespace fakeNvs {
 inline std::map<std::string, std::vector<uint8_t>> values;
-enum Fault { None, SlotWrite, SlotRead, SelectorWrite, PowerAfterSlot, PowerAfterSelector };
+enum Fault { None, SlotWrite, SlotRead, SelectorWrite, PowerAfterSlot, PowerAfterSelector, StyleWrite, PowerAfterStyle };
 inline Fault fault = None;
 inline bool slotWritten = false;
+inline std::vector<std::pair<std::string,size_t>> writes;
 }
 class Preferences {
   std::string prefix;
@@ -28,14 +29,19 @@ class Preferences {
   }
   size_t putBytes(const char *key, const void *data, size_t size) {
     const bool slot=std::string(key).find("slot")==0;
-    const bool selector=std::string(key)=="active";
+    const bool selector=std::string(key)=="active"||std::string(key)=="commit";
+    const bool style=std::string(key)=="style";
+    if(style&&fakeNvs::fault==fakeNvs::StyleWrite)return 0;
+    fakeNvs::writes.emplace_back(prefix+key,size);
     if((slot&&fakeNvs::fault==fakeNvs::SlotWrite)||(selector&&fakeNvs::fault==fakeNvs::SelectorWrite))return 0;
     fakeNvs::values[prefix+key]=std::vector<uint8_t>(static_cast<const uint8_t *>(data),static_cast<const uint8_t *>(data)+size);
     if(slot)fakeNvs::slotWritten=true;
-    if((slot&&fakeNvs::fault==fakeNvs::PowerAfterSlot)||(selector&&fakeNvs::fault==fakeNvs::PowerAfterSelector))throw std::runtime_error("simulated power loss");
+    if((style&&fakeNvs::fault==fakeNvs::PowerAfterStyle)||(slot&&fakeNvs::fault==fakeNvs::PowerAfterSlot)||(selector&&fakeNvs::fault==fakeNvs::PowerAfterSelector))throw std::runtime_error("simulated power loss");
     return size;
   }
   uint8_t getUChar(const char *key,uint8_t fallback=0){uint8_t v;return getBytes(key,&v,1)==1?v:fallback;}
+  uint64_t getULong64(const char *key,uint64_t fallback=0){uint64_t v;return getBytes(key,&v,8)==8?v:fallback;}
+  size_t putULong64(const char *key,uint64_t v){return putBytes(key,&v,8);}
   uint32_t getUInt(const char *key,uint32_t fallback=0){uint32_t v;return getBytes(key,&v,4)==4?v:fallback;}
   float getFloat(const char *key,float fallback=0){float v;return getBytes(key,&v,4)==4?v:fallback;}
   bool getBool(const char *key,bool fallback=false){return getUChar(key,fallback)!=0;}

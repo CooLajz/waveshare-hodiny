@@ -8,6 +8,8 @@ constexpr size_t SETTINGS_IMAGE_CAPACITY = 6144;
 constexpr uint32_t SETTINGS_IMAGE_VERSION = 1;
 
 bool settingsStoreBegin();
+// One NVS scalar write; snapshots/export include the selected clock face.
+bool settingsSaveClockStyle(uint8_t style);
 bool settingsTransactionBegin();
 bool settingsTransactionActive();
 bool settingsTransactionCommit();

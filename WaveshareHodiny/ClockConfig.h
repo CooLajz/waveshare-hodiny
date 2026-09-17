@@ -263,6 +263,8 @@ bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
                              CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH,
                          uint32_t defaultAnalogDateColor = 0xB5B5B5);
 bool clockAppearanceSave(const ClockAppearanceConfig &appearance);
+// Persist only the clock face, preserving all other saved appearance values.
+bool clockAppearanceSaveStyle(uint8_t style);
 
 void clockConfigCopy(char *destination, size_t destinationSize,
                      const String &value);

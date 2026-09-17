@@ -1,5 +1,6 @@
 #include "ConfigPsramBuffer.h"
 #include "ScreenRotation.h"
+#include "ClockStyleAutosave.h"
 #include "DisplayNotification.h"
 #include "BuzzerService.h"
 #include "ForecastDial.h"
@@ -70,6 +71,7 @@ ClockAppearanceConfig persistedAppearance;
 ClockAppearanceConfig activeAppearance;
 ClockAppearanceConfig clockPageAppearance;
 ClockAppearanceConfig pendingAppearance;
+ClockStyleAutosave clockStyleAutosave;
 SemaphoreHandle_t runtimeConfigMutex = nullptr;
 TaskHandle_t homeAssistantTaskHandle = nullptr;
 String usbCommand;
@@ -224,6 +226,7 @@ void loadClockAppearanceForWeb(ClockAppearanceConfig &saved,
 }
 
 bool previewClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
+  clockStyleAutosave.cancel();
   activeAppearance = appearance;
   activeAppearance.style = constrain(
       activeAppearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
@@ -246,6 +249,7 @@ bool previewClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
 
 // Updating saved clock settings must not navigate away from the forecast page.
 void applySavedClockAppearance() {
+  clockStyleAutosave.cancel();
   const bool forecastVisible = activeAppearance.style == CLOCK_STYLE_FORECAST;
   clockPageAppearance = persistedAppearance;
   activeAppearance = persistedAppearance;
@@ -276,6 +280,7 @@ bool saveClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
 
 // Called only after the complete settings transaction has committed.
 void applyCommittedSettingsFromWeb() {
+  clockStyleAutosave.cancel();
   committedSettingsApplyPending = true;
   ClockConfig *storage = configSaveStorage.get();
   if (storage == nullptr) return;
@@ -582,6 +587,8 @@ void maintainDisplayGestures() {
       appearance.style = (appearance.style +
           (clockSwipeDirection < 0 ? 1 : styleCount - 1)) % styleCount;
       activeAppearance = appearance;
+      clockPageAppearance = appearance;
+      clockStyleAutosave.select(appearance.style, persistedAppearance.style, millis());
       clockDashboardSwipeAppearance(appearance, clockSwipeDirection);
       lastDisplayedSecond = -1;
       displayModeStartedAt = millis();
@@ -589,6 +596,17 @@ void maintainDisplayGestures() {
     }
   }
   if (displayDriverTakeSingleClick()) clockDashboardHandleShortClick();
+}
+
+void maintainClockStyleAutosave() {
+  if (!clockStyleAutosave.due(millis()) || clockDashboardTransitionActive() ||
+      screenshotTransferActive || committedSettingsApplyPending ||
+      firmwareUpdateDisplayActive) return;
+  const uint8_t style = clockStyleAutosave.style();
+  const bool saved = clockAppearanceSaveStyle(style);
+  clockStyleAutosave.completed(saved, millis());
+  if (saved) persistedAppearance.style = style;
+  // One small NVS scalar write: no UI rebuild, configuration apply or resync.
 }
 
 void maintainRadarDisplay() {
@@ -674,6 +692,7 @@ void handleSettingsSave(uint8_t clockStyle, uint8_t dayBrightness,
   config.weatherIconStyle = weatherIconStyle;
   config.automaticFirmwareUpdate = automaticFirmwareUpdate;
   if (saveRuntimeConfig(config, false)) {
+    clockStyleAutosave.cancel();
     ClockAppearanceConfig appearance = persistedAppearance;
     appearance.style = constrain(
         clockStyle, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
@@ -1914,6 +1933,7 @@ void loop() {
   applyPendingClockAppearance();
   applyPendingDigitalAppearance();
   maintainDisplayGestures();
+  maintainClockStyleAutosave();
   maintainRadarNightVisual();
   maintainRadarRangeChange();
   maintainRadarDisplay();

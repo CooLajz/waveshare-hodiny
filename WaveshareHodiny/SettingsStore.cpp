@@ -56,6 +56,7 @@ bool storageAccessible = false;
 bool transaction = false;
 bool transactionFailed = false;
 uint8_t selectedSlot = 255;
+uint32_t commitRevision = 0;
 constexpr uint8_t MAGIC[] = {'W', 'H', 'S', 1};
 constexpr size_t DISK_HEADER = 4 + 32;
 
@@ -219,10 +220,22 @@ bool settingsStoreBegin() {
   Preferences disk;
   if (!disk.begin("settings-v1", false, "clockcfg")) return false;
   storageAccessible = true;
-  selectedSlot = disk.getUChar("active", 255);
+  // The revision and slot share one atomic NVS scalar. Legacy stores only
+  // have an 8-bit active selector and start at revision zero.
+  const bool revised = disk.isKey("commit");
+  commitRevision = revised ? disk.getUInt("commit", 0) : 0;
+  selectedSlot = revised ? (commitRevision >= 2 ? commitRevision & 1 : 254)
+                         : disk.getUChar("active", 255);
   // With a marker, never fall back to stale legacy values or an uncommitted slot.
-  const bool ok = selectedSlot <= 1 ? loadSlot(disk, selectedSlot, *committed)
+  bool ok = selectedSlot <= 1 ? loadSlot(disk, selectedSlot, *committed)
                                     : selectedSlot == 255 && bootstrapLegacy();
+  if (ok && disk.isKey("style")) {
+    const uint64_t styleRecord = disk.getULong64("style", UINT64_MAX);
+    if ((styleRecord >> 8) == commitRevision) {
+      const uint8_t style = styleRecord & 255;
+      ok = style <= 2 && replaceValue(*committed, keyId("clock-look", "style"), &style, 1);
+    }
+  }
   disk.end();
   initialized = ok;
   return ok;
@@ -243,7 +256,8 @@ void settingsTransactionAbort() {
 }
 
 bool settingsTransactionCommit() {
-  if (!transaction || transactionFailed || !validImage(working->data, working->length)) {
+  if (!transaction || transactionFailed || commitRevision > UINT32_MAX - 2 ||
+      !validImage(working->data, working->length)) {
     settingsTransactionAbort(); return false;
   }
   const size_t size = DISK_HEADER + working->length;
@@ -256,6 +270,7 @@ bool settingsTransactionCommit() {
   ok = ok && disk.begin("settings-v1", false, "clockcfg");
   const uint8_t next = selectedSlot == 0 ? 1 : 0;
   const char *key = next == 0 ? "slot0" : "slot1";
+  const uint32_t nextRevision = ((commitRevision + 2) & ~uint32_t(1)) | next;
   if (ok) ok = disk.putBytes(key, buffer, size) == size;
   if (ok) {
     // Verify the inactive copy byte-for-byte before the atomic selector write.
@@ -268,14 +283,36 @@ bool settingsTransactionCommit() {
         memcmp(buffer + 4, digest, 32) == 0;
   }
   if (ok) {
-    disk.putUChar("active", next);
-    ok = disk.getUChar("active", 255) == next;
+    // Switching the snapshot also invalidates any prior small style override.
+    // On failure the old snapshot AND its override remain active together.
+    ok = disk.putUInt("commit", nextRevision) == sizeof(nextRevision) &&
+         disk.getUInt("commit", 0) == nextRevision;
   }
   disk.end();
   mbedtls_platform_zeroize(buffer, size);
   free(buffer);
-  if (ok) { *committed = *working; selectedSlot = next; initialized = true; }
+  if (ok) { *committed = *working; selectedSlot = next; commitRevision = nextRevision; initialized = true; }
   settingsTransactionAbort();
+  return ok;
+}
+
+bool settingsSaveClockStyle(uint8_t style) {
+  if (style > 2 || transaction || !settingsStoreBegin()) return false;
+  const int id = keyId("clock-look", "style");
+  size_t length = 0;
+  const uint8_t *old = findValue(*committed, id, length);
+  if (old && length == 1 && *old == style) return true;
+  // Stage first so no RAM allocation/capacity failure can occur after commit.
+  *working = *committed;
+  if (!replaceValue(*working, id, &style, 1)) return false;
+  const uint64_t record = (uint64_t(commitRevision) << 8) | style;
+  Preferences disk;
+  bool ok = disk.begin("settings-v1", false, "clockcfg");
+  if (ok) ok = disk.putULong64("style", record) == sizeof(record);
+  if (ok) ok = disk.getULong64("style", UINT64_MAX) == record;
+  disk.end();
+  if (ok) *committed = *working;
+  mbedtls_platform_zeroize(working, sizeof(*working));
   return ok;
 }
 
@@ -361,5 +398,6 @@ void settingsStoreTestReset() {
   committed = working = nullptr;
   initialized = storageAccessible = transaction = transactionFailed = false;
   selectedSlot = 255;
+  commitRevision = 0;
 }
 #endif
