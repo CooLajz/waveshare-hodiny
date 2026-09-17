@@ -2623,6 +2623,8 @@ void handleDiagnostics() {
   result += WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
   result += F(",\"ipAddress\":\"");
   result += WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : F("");
+  result += F("\",\"macAddress\":\"");
+  result += WiFi.macAddress();
   result += F("\",\"firmwareState\":\"");
   result += firmwareUpdateStateName(firmware.state);
   result += F("\",\"firmwareMessage\":\"");

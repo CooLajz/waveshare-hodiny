@@ -12,6 +12,7 @@
 
 #include "ClockFonts.h"
 #include "DisplayDriver.h"
+#include "Display_ST7701.h"
 #include "ImprovSerialService.h"
 #include "WifiProvisioning.h"
 
@@ -44,6 +45,7 @@ String accessPointSsid;
 String accessPointPassword;
 unsigned long restartAt = 0;
 bool restartScreenShown = false;
+lv_obj_t *reconnectLabel = nullptr;
 
 String jsonEscape(const String &value) {
   String escaped;
@@ -57,6 +59,7 @@ String jsonEscape(const String &value) {
 }
 
 void styleScreen() {
+  reconnectLabel = nullptr;
   lv_obj_t *screen = lv_scr_act();
   lv_obj_clean(screen);
   lv_obj_set_style_bg_color(screen, lv_color_hex(0x05080B), 0);
@@ -141,7 +144,30 @@ void showPortalScreen() {
   makeCenteredLabel("Kdyz se web neotevre:\n192.168.4.1",
                     &clock_czech_16, lv_color_hex(0xB5B5B5), 393,
                     280);
+  reconnectLabel = makeCenteredLabel("", &clock_czech_16,
+                                      lv_color_hex(0x4CCBEC), 435, 240);
   displayDriverRefresh();
+}
+
+void updateReconnectLabel() {
+  if (reconnectLabel == nullptr || restartAt != 0) return;
+  const int32_t seconds = wifiProvisioningNextRetrySeconds();
+  char text[48];
+  if (wifiProvisioningIsActive()) {
+    snprintf(text, sizeof(text), "Pripojuji novou Wi-Fi...");
+  } else if (wifiProvisioningReadyForNormalStart()) {
+    snprintf(text, sizeof(text), "Wi-Fi pripojena");
+  } else if (seconds < 0) {
+    snprintf(text, sizeof(text), "Cekam na nastaveni Wi-Fi");
+  } else if (seconds == 0) {
+    snprintf(text, sizeof(text), "Reconnect ceka na scan");
+  } else {
+    snprintf(text, sizeof(text), "Reconnect za %ld s",
+             static_cast<long>(seconds));
+  }
+  // Update only the changed label; do not rebuild the screen or the QR code.
+  if (strcmp(lv_label_get_text(reconnectLabel), text) != 0)
+    lv_label_set_text(reconnectLabel, text);
 }
 
 void sendPortalPage() {
@@ -254,28 +280,40 @@ void startPortalServer() {
 }
 
 void runPortal() {
-  wifiProvisioningPauseStartupRetries();
-  WiFi.mode(WIFI_AP_STA);
+  wifiProvisioningBeginPortal();
   makeAccessPointCredentials();
   const IPAddress portalAddress(192, 168, 4, 1);
   const IPAddress subnet(255, 255, 255, 0);
   WiFi.softAPConfig(portalAddress, portalAddress, subnet);
   WiFi.softAP(accessPointSsid.c_str(), accessPointPassword.c_str(), 1, false,
               2);
-  showPortalScreen();
   startPortalServer();
+  bool portalScreenShown = false;
 
   while (true) {
-    improvSerialServiceLoop();
-    wifiProvisioningLoop();
+    if (restartAt == 0) {
+      improvSerialServiceLoop();
+      wifiProvisioningLoop();
+    }
     dnsServer->processNextRequest();
     portalServer->handleClient();
-    displayDriverLoop();
 
     if (restartAt == 0 && wifiProvisioningReadyForNormalStart()) {
       restartAt = millis() + RESTART_DELAY_MS;
       showRestartScreen();
     }
+    if (!portalScreenShown && restartAt == 0 &&
+        !wifiProvisioningIsActive() &&
+        WiFi.scanComplete() != WIFI_SCAN_RUNNING) {
+      // Startup radio activity can disturb RGB/PSRAM scanout. Normal setup's
+      // delayed resync is unreachable in this portal loop, so recover once,
+      // after the initial scan, before presenting the QR code for the first time.
+      LCD_Resync();
+      showPortalScreen();
+      portalScreenShown = true;
+    }
+    updateReconnectLabel();
+    displayDriverLoop();
     if (restartAt != 0 && static_cast<long>(millis() - restartAt) >= 0) {
       ESP.restart();
     }

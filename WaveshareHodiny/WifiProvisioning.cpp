@@ -20,7 +20,7 @@ constexpr char WIFI_PASSWORD_KEY[] = "password";
 constexpr char WIFI_PENDING_SSID_KEY[] = "next-ssid";
 constexpr char WIFI_PENDING_PASSWORD_KEY[] = "next-password";
 constexpr char WIFI_PENDING_VALID_KEY[] = "next-valid";
-constexpr uint32_t WIFI_RETRY_MS = 15000;
+constexpr uint32_t WIFI_RETRY_MS = 60000;
 constexpr uint32_t PROVISIONING_TIMEOUT_MS = 30000;
 
 String storedSsid;
@@ -121,9 +121,11 @@ void connectStoredCredentials() {
 }  // namespace
 
 void wifiProvisioningBegin() {
+  // Arduino applies this flag only when the Wi-Fi driver is initialized.
+  // Keep SDK configuration in RAM; credentials live in our Preferences store.
+  WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
-  WiFi.persistent(false);
   normalStartReady = false;
   startupRetriesEnabled = true;
   startupCandidateActive = false;
@@ -177,6 +179,7 @@ void wifiProvisioningLoop() {
         startupCandidateActive = false;
         startupSsid = storedSsid;
         startupPassword = storedPassword;
+        if (startupRetriesEnabled) connectStoredCredentials();
         return;
       }
       storedSsid = startupSsid;
@@ -189,16 +192,18 @@ void wifiProvisioningLoop() {
   }
   normalStartReady = false;
   if (startupRetriesEnabled && !startupSsid.isEmpty() &&
+      WiFi.scanComplete() != WIFI_SCAN_RUNNING &&
       millis() - lastWifiAttempt >= WIFI_RETRY_MS) {
-    connectStoredCredentials();
+    // Reuse the configured station instead of rewriting its configuration.
+    // In particular, avoid flash/cache stalls while the RGB QR screen is up.
+    WiFi.reconnect();
+    lastWifiAttempt = millis();
   }
 }
 
-void wifiProvisioningPauseStartupRetries() {
-  startupRetriesEnabled = false;
-  normalStartReady = false;
-  WiFi.setAutoReconnect(false);
-  WiFi.disconnect();
+void wifiProvisioningBeginPortal() {
+  // Keep the station and its retries alive while serving the setup hotspot.
+  WiFi.mode(WIFI_AP_STA);
 }
 
 void wifiProvisioningStart(const String &ssid, const String &password) {
@@ -209,6 +214,7 @@ void wifiProvisioningStart(const String &ssid, const String &password) {
   }
   pendingSsid = ssid;
   pendingPassword = password;
+  normalStartReady = false;
   provisioningActive = true;
   provisioningStartedAt = millis();
   WiFi.disconnect();
@@ -225,7 +231,17 @@ bool wifiProvisioningSavePendingForRestart(const String &ssid,
 #if FIRMWARE_RELEASE
   if (ssid.isEmpty() || ssid.length() > 32 || password.length() > 64)
     return false;
-  return savePendingCredentials(ssid, password);
+  if (!savePendingCredentials(ssid, password)) return false;
+  // The portal's new credentials take precedence until the scheduled restart.
+  // Cancel an in-flight Improv attempt so it cannot overwrite this choice.
+  startupRetriesEnabled = false;
+  provisioningActive = false;
+  normalStartReady = false;
+  pendingSsid = "";
+  pendingPassword = "";
+  WiFi.setAutoReconnect(false);
+  WiFi.disconnect();
+  return true;
 #else
   (void)ssid;
   (void)password;
@@ -238,3 +254,11 @@ bool wifiProvisioningHasCredentials() { return !startupSsid.isEmpty(); }
 bool wifiProvisioningIsActive() { return provisioningActive; }
 
 bool wifiProvisioningReadyForNormalStart() { return normalStartReady; }
+
+int32_t wifiProvisioningNextRetrySeconds() {
+  if (!startupRetriesEnabled || startupSsid.isEmpty() || provisioningActive ||
+      WiFi.status() == WL_CONNECTED) return -1;
+  const unsigned long elapsed = millis() - lastWifiAttempt;
+  if (elapsed >= WIFI_RETRY_MS) return 0;
+  return static_cast<int32_t>((WIFI_RETRY_MS - elapsed + 999) / 1000);
+}

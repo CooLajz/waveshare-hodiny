@@ -5,7 +5,7 @@
 #include <stdexcept>
 namespace fakeNvs {
 inline std::map<std::string, std::vector<uint8_t>> values;
-enum Fault { None, SlotWrite, SlotRead, SelectorWrite, PowerAfterSlot, PowerAfterSelector, StyleWrite, PowerAfterStyle };
+enum Fault { None, SlotWrite, SlotRead, SelectorWrite, PowerAfterSlot, PowerAfterSelector, StyleWrite, PowerAfterStyle, WifiCredentialWrite };
 inline Fault fault = None;
 inline bool slotWritten = false;
 inline std::vector<std::pair<std::string,size_t>> writes;
@@ -28,6 +28,7 @@ class Preferences {
     return it->second.size();
   }
   size_t putBytes(const char *key, const void *data, size_t size) {
+    if(fakeNvs::fault==fakeNvs::WifiCredentialWrite&&prefix=="nvs/clock-wifi/"&&std::string(key)=="ssid")return 0;
     const bool slot=std::string(key).find("slot")==0;
     const bool selector=std::string(key)=="active"||std::string(key)=="commit";
     const bool style=std::string(key)=="style";
@@ -47,6 +48,7 @@ class Preferences {
   bool getBool(const char *key,bool fallback=false){return getUChar(key,fallback)!=0;}
   String getString(const char *key,const char *fallback=""){char v[4096];auto size=getBytes(key,v,sizeof(v));return size&&v[size-1]==0?String(v):String(fallback);}
   size_t putUChar(const char *key,uint8_t v){return putBytes(key,&v,1);}
+  size_t putBool(const char *key,bool v){return putUChar(key,v);}
   size_t putUInt(const char *key,uint32_t v){return putBytes(key,&v,4);}
   size_t putFloat(const char *key,float v){return putBytes(key,&v,4);}
   size_t putString(const char *key,const String &v){return putBytes(key,v.c_str(),v.length()+1)?v.length():0;}

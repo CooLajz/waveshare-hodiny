@@ -10,6 +10,7 @@ class String : public std::string {
  public:
   using std::string::string;
   String(const std::string &s) : std::string(s) {}
+  bool isEmpty() const { return empty(); }
 };
 template <typename T, typename L, typename H> T constrain(T v, L lo, H hi) {
   return v < lo ? T(lo) : v > hi ? T(hi) : v;
