@@ -2483,7 +2483,8 @@ void handleOpenMeteoLocation() {
                        : F("Geokódovací služba nyní není dostupná."));
     return;
   }
-  sendJson(200, payload);
+  // Keep the shared web API success contract around the upstream response.
+  sendJson(200, String(F("{\"ok\":true,\"data\":")) + payload + '}');
 }
 
 void handleTestConnection() {
