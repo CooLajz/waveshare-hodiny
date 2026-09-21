@@ -155,6 +155,25 @@ současně určují střed lokálních pohledů meteoradaru ČHMÚ. U každé ze
 pozic lze samostatně nastavit 0 až 2 desetinná místa; stejné nastavení platí
 i při výběru hodnoty TMEP.cz.
 
+### Časové pásmo podle polohy
+
+Při vyhledání města se z Open-Meteo převezme jeho časové pásmo a uloží se
+společně s polohou. Jazyk rozhraní na časové pásmo nemá vliv. Letní čas se
+přepíná automaticky podle pravidel dané oblasti; ruční přepínač není potřeba.
+Hodiny, čas snímků radaru a denní kontrola aktualizací používají stejné pásmo.
+NTP nadále synchronizuje skutečný čas v UTC.
+
+Při aktualizaci starší konfigurace nebo importu starší zálohy se chybějící
+pásmo dohledá podle uložených souřadnic, i když je zdrojem dat Home Assistant.
+Do úspěšného dohledání zůstává původní české pásmo a automatická kontrola
+aktualizací čeká. Nová konfigurace začíná s Brnem a pásmem `Europe/Prague`.
+
+Po synchronizaci běží čas i během výpadku Wi-Fi a uložená pravidla zajistí
+přechody bez internetu. Po restartu je pro získání přesného času potřeba NTP.
+Vestavěná data IANA 2026c pokrývají roky 2020–2100 včetně nepravidelných
+přechodů; pozdější legislativní změny vyžadují aktualizaci databáze ve firmwaru.
+Generátor a zdroj databáze jsou popsané v `tools/generate_timezones.py`.
+
 ### TMEP.cz jako doplněk Open-Meteo
 
 K režimu Open-Meteo lze přidat vlastní čidla z TMEP.cz. Vlož celou URL ze sekce
@@ -236,6 +255,21 @@ Web umožňuje nastavit:
 - automatické OTA aktualizace a režim webového serveru,
 - volitelné heslo webového nastavení,
 - export/import zálohy, restart, ovládání podsvícení a živou diagnostiku.
+
+### Vzhled ciferníků
+
+Digitální a Retro LCD ciferník podporují společnou volbu 24/12 hodin s AM/PM,
+nezávislou na jazyku; výchozí je 24 hodin. Volba úvodní nuly je také společná;
+LCD při jejím vypnutí zachovává podkres první číslice.
+
+Retro LCD nabízí přepínač **Pevné pozice dne** (výchozí vypnuto): sedm pozic
+v češtině a devět v angličtině, s pohaslými znaky kolem kratších názvů.
+Vypnutí vrací přesně centrovaný název bez okolních pozic.
+
+Formát data LCD lze vybrat samostatně: pořadí den–měsíc–rok, měsíc–den–rok
+nebo rok–měsíc–den, s tečkami, pomlčkami či lomítky podle varianty. Každý
+formát má variantu bez úvodních nul, která zachová prázdné pozice a podkres.
+Výchozí je DD.MM.YYYY.
 
 ### Hodinová předpověď počasí
 
@@ -900,49 +934,3 @@ knihovny, fonty a grafické assety s vlastními licencemi; jejich autoři,
 licence a zdrojové odkazy jsou uvedené v
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). MIT licence projektu jejich
 původní licenční podmínky nenahrazuje.
-
-Digitální a Retro LCD ciferník podporují společnou volbu 24/12 hodin s AM/PM, nezávislou na jazyku; výchozí je 24 hodin. Volba úvodní nuly je také společná; LCD při jejím vypnutí zachovává podkres první číslice.
-
-## Časové pásmo podle polohy
-
-Při vyhledání města se z Open-Meteo převezme jeho časové pásmo a uloží se
-společně s polohou. Jazyk rozhraní na časové pásmo nemá vliv. Letní čas se
-přepíná automaticky podle pravidel dané oblasti; ruční přepínač není potřeba.
-Hodiny, čas snímků radaru a denní kontrola aktualizací používají stejné pásmo.
-NTP nadále synchronizuje skutečný čas v UTC.
-
-Při aktualizaci starší konfigurace nebo importu starší zálohy se chybějící
-pásmo dohledá podle uložených souřadnic, i když je zdrojem dat Home Assistant.
-Do úspěšného dohledání zůstává původní české pásmo a automatická kontrola
-aktualizací čeká. Nová konfigurace začíná s Brnem a pásmem `Europe/Prague`.
-
-Po synchronizaci běží čas i během výpadku Wi-Fi a uložená pravidla zajistí
-přechody bez internetu. Po restartu je pro získání přesného času potřeba NTP.
-Vestavěná data IANA 2026c pokrývají roky 2020–2100 včetně nepravidelných
-přechodů; pozdější legislativní změny vyžadují aktualizaci databáze ve firmwaru.
-Generátor a zdroj databáze jsou popsané v `tools/generate_timezones.py`.
-
-LCD nabízí přepínač „Pevné pozice dne“ (výchozí vypnuto): 7 pozic v češtině a 9 v angličtině, s pohaslými znaky kolem kratších názvů. Vypnutí vrací přesně centrovaný název bez okolních pozic.
-
-Formát data LCD lze vybrat samostatně: pořadí den–měsíc–rok, měsíc–den–rok nebo rok–měsíc–den, s tečkami, pomlčkami či lomítky podle varianty. Každý formát má variantu bez úvodních nul, která zachová prázdné pozice a podkres. Výchozí je DD.MM.YYYY.
-
-
-### Rychlost webu a živý náhled ciferníku
-
-Vývojový i release skript generují gzip stránky a překladů pomocí
-`tools/generate_web_assets.py`. Výstup v `WaveshareHodiny/local/ConfigurationAssets.h`
-je ignorovaný a při sestavení se obnovuje ze zdrojů. ESP32 odesílá hotová data z flash,
-bez komprese za běhu. Přímá kompilace bez generovaného headeru používá původní stránku;
-při přímé kompilaci po změně webu je potřeba generátor spustit znovu.
-
-Digital okamžitě zobrazuje změny fontu, barvy času a data, formátu data,
-úvodní nuly, dvojtečky, barev bočních ikon a parametrů vteřinového efektu.
-Tyto náhledy nezapisují do flash a nevyvolávají resynchronizaci LCD.
-Trvalé nastavení se zapíše až tlačítkem **Uložit**. Síťová nastavení a zdroje dat
-se nadále použijí při uložení.
-
-Náhledy Digital, Analog a Retro LCD mají společnou frontu: rychlé změny se slučují
-po 120 ms a běží nejvýše jeden požadavek. Uložení počká na rozpracovaný náhled
-a po dobu zápisu zabrání editaci formuláře. Ověření identifikátoru uložené transakce
-zůstává zachované, ale bez pevné sekundové prodlevy. Stav firmware neblokuje
-zobrazení formuláře a přehled paměti používá zkrácenou diagnostiku.

@@ -139,7 +139,7 @@ footer { border-top: 1px solid var(--line); color: #768792; font-size: .83rem; }
 
 @media (max-width: 900px) {
   nav { gap: 12px; }
-  nav > a { display: none; }
+  nav > a:not(.nav-help) { display: none; }
   .hero, .installer-layout { grid-template-columns: 1fr; }
   .hero { width: min(100% - 40px, 1160px); padding-top: 56px; }
   .device-stage { min-height: 550px; max-width: 560px; width: 100%; margin: auto; }

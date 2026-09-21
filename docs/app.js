@@ -2,7 +2,7 @@ const translations = {
   "Waveshare Hodiny – úvod": "Waveshare Hodiny – home",
   "Hlavní navigace": "Main navigation",
   "Jazyk stránky": "Page language",
-  "Funkce": "Features", "Instalace": "Installation", "Nastavení": "Configuration",
+  "Funkce": "Features", "Instalace": "Installation", "Nastavení": "Configuration", "Nápověda": "Help",
   "Open-source firmware pro ESP32-S3": "Open-source firmware for ESP32-S3",
   "Chytré hodiny": "Smart clock", "podle vás": "your way",
   "Čas, počasí, vlastní senzory a srážkový radar ČHMÚ na jednom krásném kulatém displeji. Fungují samostatně s Open-Meteo a TMEP.cz nebo jako součást Home Assistantu.": "Time, weather, personal sensors and Czech precipitation radar on one beautiful round display. It works independently with Open-Meteo and TMEP.cz or as part of Home Assistant.",
@@ -74,7 +74,7 @@ const translations = {
   "Rychlé volby přímo na displeji": "Quick controls directly on the display", "Zvětšit": "Enlarge",
   "V pohybu": "In motion", "Animované ikony a přechod minuty": "Animated icons and minute transition",
   "Náhled obrázku v plné velikosti": "Full-size image preview", "Zavřít náhled": "Close preview",
-  "Zdrojový kód": "Source code", "Návod": "Guide", "Nahlásit problém": "Report an issue",
+  "Zdrojový kód": "Source code", "Technická dokumentace": "Technical documentation", "Nahlásit problém": "Report an issue",
 };
 
 const messages = {

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#05090d">
+    <meta name="description" content="Stručná uživatelská nápověda pro instalaci, nastavení, ovládání a aktualizace Waveshare Hodiny.">
+    <title>Waveshare Hodiny – Nápověda</title>
+    <link rel="stylesheet" href="styles.css?v=b205ed302343">
+    <link rel="stylesheet" href="help.css?v=5222b14c41d2">
+    <script type="module" src="help.js?v=e94676398dd5"></script>
+  </head>
+  <body class="help-body">
+    <header class="site-header">
+      <a class="brand" href="index.html" data-aria-cs="Waveshare Hodiny – domů" data-aria-en="Waveshare Hodiny – home" aria-label="Waveshare Hodiny – domů">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Waveshare Hodiny</span>
+      </a>
+      <nav data-aria-cs="Navigace nápovědy" data-aria-en="Help navigation" aria-label="Navigace nápovědy">
+        <a class="nav-help" href="index.html" data-cs="Domů" data-en="Home">Domů</a>
+        <a href="#instalace" data-href-cs="#instalace" data-href-en="#installation" data-cs="Instalace" data-en="Installation">Instalace</a>
+        <a href="#ovladani" data-href-cs="#ovladani" data-href-en="#controls" data-cs="Ovládání" data-en="Controls">Ovládání</a>
+        <a href="#problemy" data-href-cs="#problemy" data-href-en="#troubleshooting" data-cs="Potíže" data-en="Troubleshooting">Potíže</a>
+        <span class="language-switch" role="group" data-aria-cs="Jazyk stránky" data-aria-en="Page language" aria-label="Jazyk stránky">
+          <button type="button" data-language="cs" aria-label="Česky" title="Česky">🇨🇿</button>
+          <button type="button" data-language="en" aria-label="English" title="English">🇬🇧</button>
+        </span>
+      </nav>
+    </header>
+
+    <main>
+      <section class="support-hero section-shell">
+        <div>
+          <a class="support-back" href="index.html" data-cs="← Zpět na hlavní stránku" data-en="← Back to the main page">← Zpět na hlavní stránku</a>
+          <h1 data-cs="Nápověda bez složitostí" data-en="Help without the complexity">Nápověda bez složitostí</h1>
+          <p class="hero-lead" data-cs="Od prvního připojení přes každodenní ovládání až po aktualizace a nejčastější potíže. Jen to, co potřebujete k běžnému používání hodin." data-en="From the first connection through everyday controls to updates and common problems. Only what you need for normal use of the clock.">Od prvního připojení přes každodenní ovládání až po aktualizace a nejčastější potíže. Jen to, co potřebujete k běžnému používání hodin.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="index.html#instalace" data-cs="Nainstalovat firmware" data-en="Install firmware">Nainstalovat firmware</a>
+            <a class="button button-secondary" href="#problemy" data-href-cs="#problemy" data-href-en="#troubleshooting" data-cs="Vyřešit problém" data-en="Solve a problem">Vyřešit problém</a>
+          </div>
+        </div>
+        <ol class="support-route" data-aria-cs="Čtyři kroky ke zprovoznění" data-aria-en="Four steps to get started" aria-label="Čtyři kroky ke zprovoznění">
+          <li><span>1</span><div><strong data-cs="Nahrát firmware" data-en="Flash firmware">Nahrát firmware</strong><small data-cs="Chrome nebo Edge a datový USB kabel" data-en="Chrome or Edge and a data USB cable">Chrome nebo Edge a datový USB kabel</small></div></li>
+          <li><span>2</span><div><strong data-cs="Připojit Wi‑Fi" data-en="Connect Wi‑Fi">Připojit Wi‑Fi</strong><small data-cs="Při instalaci nebo přes QR kód" data-en="During installation or using the QR code">Při instalaci nebo přes QR kód</small></div></li>
+          <li><span>3</span><div><strong data-cs="Otevřít nastavení" data-en="Open settings">Otevřít nastavení</strong><small>waveshare-hodiny.local</small></div></li>
+          <li><span>4</span><div><strong data-cs="Upravit a uložit" data-en="Configure and save">Upravit a uložit</strong><small data-cs="Zdroj dat, vzhled, jas a aktualizace" data-en="Data source, appearance, brightness and updates">Zdroj dat, vzhled, jas a aktualizace</small></div></li>
+        </ol>
+      </section>
+
+      <div class="support-language" data-language-content="cs">
+        <section class="support-jump section-shell" aria-label="Obsah nápovědy">
+          <a href="#instalace"><span>01</span>Instalace</a><a href="#prvni-spusteni"><span>02</span>První spuštění</a><a href="#ovladani"><span>03</span>Ovládání</a><a href="#web"><span>04</span>Nastavení přes web</a><a href="#aktualizace"><span>05</span>Aktualizace</a><a href="#problemy"><span>06</span>Potíže</a>
+        </section>
+
+        <div class="support-layout section-shell">
+          <aside class="support-toc" aria-label="Na této stránce">
+            <strong>Na této stránce</strong>
+            <a href="#instalace">Instalace</a><a href="#prvni-spusteni">První spuštění</a><a href="#ovladani">Ovládání gesty</a><a href="#nastaveni-v-hodinach">Nastavení v hodinách</a><a href="#web">Nastavení přes web</a><a href="#aktualizace">OTA aktualizace</a><a href="#problemy">Nejčastější potíže</a>
+          </aside>
+          <article class="support-content">
+            <section id="instalace" class="help-section">
+              <p class="eyebrow">Začínáme</p><h2>Instalace firmwaru</h2>
+              <p>Firmware je určený pouze pro <strong>Waveshare ESP32-S3-Touch-LCD-2.1</strong>. Připravte si datový USB kabel a desktopový Chrome nebo Edge.</p>
+              <ol class="guide-steps">
+                <li><span>1</span><div><strong>Připojte hodiny k počítači.</strong><p>Můžete použít kterýkoliv ze dvou USB‑C konektorů. Pokud se zařízení neukáže, zkuste druhý konektor, jiný datový kabel a přímý port bez USB hubu.</p></div></li>
+                <li><span>2</span><div><strong>Otevřete instalační stránku.</strong><p>Na <a href="index.html#instalace">hlavní stránce v části Instalace</a> zvolte stabilní verzi a klikněte na <em>Připojit zařízení</em>.</p></div></li>
+                <li><span>3</span><div><strong>Vyberte sériový port a spusťte instalaci.</strong><p>První čistá instalace může smazat dřívější uživatelská data. Během zápisu kabel neodpojujte.</p></div></li>
+                <li><span>4</span><div><strong>Nastavte Wi‑Fi.</strong><p>Pokud tento krok přeskočíte, hodiny po startu zobrazí QR kód pro bezpečné prvotní připojení.</p></div></li>
+              </ol>
+              <div class="help-note"><strong>Chrome nebo Edge na počítači</strong><span>Web Serial není podporovaný v Safari ani v běžném mobilním prohlížeči.</span></div>
+            </section>
+
+            <section id="prvni-spusteni" class="help-section">
+              <p class="eyebrow">Po instalaci</p><h2>První spuštění</h2>
+              <p>Po připojení k síti se na displeji objeví IP adresa. V zařízení na stejné Wi‑Fi otevřete <code>http://waveshare-hodiny.local/</code>. Pokud se stránka neotevře, použijte zobrazenou IP adresu.</p>
+              <div class="help-columns"><div><h3>Nejrychlejší nastavení</h3><ul class="check-list"><li>Vyberte jazyk.</li><li>Vyhledejte město.</li><li>Zvolte Open‑Meteo, TMEP.cz nebo Home Assistant.</li><li>Nastavte vzhled, jas a stránky.</li><li>Klikněte na <strong>Uložit změny</strong>.</li></ul></div><div><h3>Bez Home Assistantu</h3><p>Hodiny fungují samostatně s Open‑Meteo. Stačí vybrat město. TMEP.cz lze přidat později pro hodnoty z vlastních čidel.</p></div></div>
+            </section>
+
+            <section id="ovladani" class="help-section">
+              <p class="eyebrow">Každodenní použití</p><h2>Ovládání gesty</h2>
+              <div class="gesture-list"><div><span>↔</span><div><strong>Vodorovný swipe</strong><p>Listuje mezi hodinami, předpovědí a meteoradarem. Mimo ČR se radar vynechá.</p></div></div><div><span>↕</span><div><strong>Svislý swipe na hodinách</strong><p>Přepíná Digitální, Analogový a Retro LCD ciferník. Změna je dočasná do restartu.</p></div></div><div><span>＋</span><div><strong>Svislý swipe na radaru</strong><p>Mění rozsah mapy. Také tato změna je dočasná.</p></div></div><div><span>●</span><div><strong>Krátké klepnutí</strong><p>Při vypnuté automatice den/noc přepne vzhled. Aktivní notifikaci klepnutí zavře.</p></div></div><div><span>◌</span><div><strong>Dlouhý stisk</strong><p>Otevře nastavení přímo v hodinách.</p></div></div></div>
+            </section>
+
+            <section id="nastaveni-v-hodinach" class="help-section">
+              <p class="eyebrow">Bez telefonu</p><h2>Nastavení přímo v hodinách</h2>
+              <p>Dlouhým stiskem otevřete tři jednoduché stránky. Šipkami mezi nimi přecházíte; swipe uvnitř nastavení se nepoužívá.</p>
+              <div class="setting-strip"><div><span>1</span><strong>Jas a den/noc</strong><small>Denní a noční jas, automatické přepínání</small></div><div><span>2</span><strong>Vteřiny a ikony</strong><small>Efekt vteřin a animované počasí</small></div><div><span>3</span><strong>Web a aktualizace</strong><small>Zapnutí webu, IP adresa a kontrola OTA</small></div></div>
+            </section>
+
+            <section id="web" class="help-section">
+              <p class="eyebrow">Podrobnější volby</p><h2>Nastavení přes web</h2>
+              <p>Webové rozhraní je určené pro zařízení ve stejné důvěryhodné síti. Nabízí více možností než nastavení na displeji, ale změny se použijí až po stisku <strong>Uložit změny</strong>.</p>
+              <div class="help-columns"><div><h3>Co nastavíte</h3><ul class="check-list"><li>Zdroj dat, město a časové pásmo</li><li>Ciferník, datum, barvy a metriky</li><li>Počasí, předpověď a meteoradar</li><li>Jas, noční režim a střídání stránek</li><li>Webové heslo a aktualizace</li></ul></div><div><h3>Záloha nastavení</h3><p>Před větší změnou si stáhněte šifrovanou zálohu. Heslo k ní si bezpečně uložte — bez něj zálohu nelze obnovit. Wi‑Fi údaje se zálohou nemění.</p></div></div>
+              <div class="help-note"><strong>Nezveřejňujte přístupové údaje</strong><span>Do screenshotů ani issue nevkládejte Home Assistant token, TMEP.cz URL, hesla nebo URL ovládacího API.</span></div>
+            </section>
+
+            <section id="aktualizace" class="help-section">
+              <p class="eyebrow">Nové verze</p><h2>OTA aktualizace</h2>
+              <p>Hodiny se mohou aktualizovat přímo přes Wi‑Fi. Ve webovém nastavení lze automatické aktualizace zapnout, nebo v systémové stránce hodin spustit ruční kontrolu.</p>
+              <ul class="check-list"><li>Běžná OTA aktualizace zachová Wi‑Fi i uloženou konfiguraci.</li><li>Během stahování hodiny nevypínejte a vyčkejte na restart.</li><li>Pokud kontrola nic nenajde, ověřte internet, správný čas a zapnutý režim aktualizací.</li><li>Instalace z prohlížeče je vhodná pro první instalaci nebo obnovu; úplné smazání dat používejte jen vědomě.</li></ul>
+            </section>
+
+            <section id="problemy" class="help-section">
+              <p class="eyebrow">Když něco nejde</p><h2>Nejčastější potíže</h2>
+              <div class="troubleshooting">
+                <details open><summary>Instalátor nevidí zařízení</summary><p>Použijte desktopový Chrome nebo Edge, datový kabel a vyzkoušejte oba USB‑C konektory. Odpojte USB hub a připojte hodiny přímo k počítači.</p></details>
+                <details><summary>Hodiny se nepřipojí k Wi‑Fi</summary><p>Podporovaná je 2,4GHz Wi‑Fi. Restartujte hodiny a použijte QR onboarding. Zkontrolujte heslo a dostupnost sítě v místě hodin.</p></details>
+                <details><summary><code>waveshare-hodiny.local</code> se neotevře</summary><p>Telefon nebo počítač musí být ve stejné síti. Použijte IP adresu z nastavení hodin; některé sítě blokují mDNS nebo komunikaci mezi klienty.</p></details>
+                <details><summary>Počasí nebo hodnoty ukazují <code>--</code></summary><p>Ověřte internet, vybrané město a zdroj dat. U Home Assistantu znovu otestujte URL, token a entity. U TMEP.cz ověřte exportní URL.</p></details>
+                <details><summary>Meteoradar není dostupný</summary><p>Radar ČHMÚ se zobrazuje pouze pro polohy v České republice. Zkontrolujte uložené město a připojení k internetu.</p></details>
+                <details><summary>Aktualizace se nenabízí</summary><p>Zkontrolujte Wi‑Fi, internet a synchronizovaný čas. Ruční kontrolu spusťte v systémové stránce hodin nebo ve webovém nastavení.</p></details>
+              </div>
+              <div class="support-contact"><div><h3>Potřebujete další pomoc?</h3><p>Podívejte se do technické dokumentace nebo založte issue. Připojte verzi firmware a popis postupu, ale nikdy citlivé údaje.</p></div><div><a class="button button-secondary" href="https://github.com/CooLajz/waveshare-hodiny/blob/main/README.md">Technická dokumentace</a><a class="button button-primary" href="https://github.com/CooLajz/waveshare-hodiny/issues">Nahlásit problém</a></div></div>
+            </section>
+          </article>
+        </div>
+      </div>
+
+      <div class="support-language" data-language-content="en" hidden>
+        <section class="support-jump section-shell" aria-label="Help topics"><a href="#installation"><span>01</span>Installation</a><a href="#first-start"><span>02</span>First start</a><a href="#controls"><span>03</span>Controls</a><a href="#web-settings"><span>04</span>Web settings</a><a href="#updates"><span>05</span>Updates</a><a href="#troubleshooting"><span>06</span>Troubleshooting</a></section>
+        <div class="support-layout section-shell">
+          <aside class="support-toc" aria-label="On this page"><strong>On this page</strong><a href="#installation">Installation</a><a href="#first-start">First start</a><a href="#controls">Gestures</a><a href="#device-settings">On-device settings</a><a href="#web-settings">Web settings</a><a href="#updates">OTA updates</a><a href="#troubleshooting">Common problems</a></aside>
+          <article class="support-content">
+            <section id="installation" class="help-section"><p class="eyebrow">Getting started</p><h2>Install the firmware</h2><p>The firmware is only for <strong>Waveshare ESP32-S3-Touch-LCD-2.1</strong>. Prepare a data USB cable and desktop Chrome or Edge.</p><ol class="guide-steps"><li><span>1</span><div><strong>Connect the clock.</strong><p>Either USB‑C port works. If it is not detected, try the other port, another data cable and a direct port without a hub.</p></div></li><li><span>2</span><div><strong>Open the installer.</strong><p>On the <a href="index.html#instalace">main page under Installation</a>, select a stable version and choose <em>Connect device</em>.</p></div></li><li><span>3</span><div><strong>Select the serial port and install.</strong><p>A first clean installation may erase existing user data. Do not unplug the cable while writing.</p></div></li><li><span>4</span><div><strong>Configure Wi‑Fi.</strong><p>If skipped, the clock displays a QR code for secure onboarding after boot.</p></div></li></ol><div class="help-note"><strong>Desktop Chrome or Edge</strong><span>Web Serial is not supported by Safari or regular mobile browsers.</span></div></section>
+            <section id="first-start" class="help-section"><p class="eyebrow">After installation</p><h2>First start</h2><p>Once connected, the display shows its IP address. On a device in the same Wi‑Fi, open <code>http://waveshare-hodiny.local/</code>. If it does not open, use the displayed IP address.</p><div class="help-columns"><div><h3>Quick setup</h3><ul class="check-list"><li>Select a language.</li><li>Search for your city.</li><li>Choose Open‑Meteo, TMEP.cz or Home Assistant.</li><li>Set appearance, brightness and pages.</li><li>Select <strong>Save changes</strong>.</li></ul></div><div><h3>Without Home Assistant</h3><p>The clock works independently with Open‑Meteo. Just select a city. Add TMEP.cz later for your own sensors.</p></div></div></section>
+            <section id="controls" class="help-section"><p class="eyebrow">Everyday use</p><h2>Gesture controls</h2><div class="gesture-list"><div><span>↔</span><div><strong>Horizontal swipe</strong><p>Moves between clock, forecast and radar. Radar is omitted outside Czechia.</p></div></div><div><span>↕</span><div><strong>Vertical swipe on clock</strong><p>Cycles Digital, Analog and Retro LCD. The change lasts until restart.</p></div></div><div><span>＋</span><div><strong>Vertical swipe on radar</strong><p>Changes the map range. This change is temporary too.</p></div></div><div><span>●</span><div><strong>Short tap</strong><p>Switches day/night when automation is off. A tap dismisses an active notification.</p></div></div><div><span>◌</span><div><strong>Long press</strong><p>Opens settings on the clock.</p></div></div></div></section>
+            <section id="device-settings" class="help-section"><p class="eyebrow">No phone needed</p><h2>Settings on the clock</h2><p>Long-press to open three simple pages. Use arrows to move between them; swipes are not used inside settings.</p><div class="setting-strip"><div><span>1</span><strong>Brightness and night</strong><small>Day/night brightness and automation</small></div><div><span>2</span><strong>Seconds and icons</strong><small>Seconds effect and animated weather</small></div><div><span>3</span><strong>Web and updates</strong><small>Web mode, IP address and OTA check</small></div></div></section>
+            <section id="web-settings" class="help-section"><p class="eyebrow">More options</p><h2>Settings in the web interface</h2><p>The web interface is for devices on the same trusted network. It has more options than on-device settings; changes apply after <strong>Save changes</strong>.</p><div class="help-columns"><div><h3>What you can configure</h3><ul class="check-list"><li>Data source, city and time zone</li><li>Clock face, date, colors and metrics</li><li>Weather, forecast and radar</li><li>Brightness, night mode and page rotation</li><li>Web password and updates</li></ul></div><div><h3>Configuration backup</h3><p>Download an encrypted backup before larger changes. Store its password safely — recovery is impossible without it. Restoring a backup does not change Wi‑Fi credentials.</p></div></div><div class="help-note"><strong>Never publish credentials</strong><span>Keep Home Assistant tokens, TMEP.cz URLs, passwords and control API URLs out of screenshots and issues.</span></div></section>
+            <section id="updates" class="help-section"><p class="eyebrow">New versions</p><h2>OTA updates</h2><p>The clock can update directly over Wi‑Fi. Enable automatic updates in the web interface, or start a manual check from the clock's system page.</p><ul class="check-list"><li>A normal OTA update preserves Wi‑Fi and saved configuration.</li><li>Do not power off during download; wait for restart.</li><li>If no update is found, check internet, correct time and update settings.</li><li>Browser installation is useful for first installation or recovery; erase user data only intentionally.</li></ul></section>
+            <section id="troubleshooting" class="help-section"><p class="eyebrow">When something fails</p><h2>Common problems</h2><div class="troubleshooting"><details open><summary>The installer cannot see the clock</summary><p>Use desktop Chrome or Edge and a data cable. Try both USB‑C ports and connect directly without a USB hub.</p></details><details><summary>The clock cannot connect to Wi‑Fi</summary><p>Use a 2.4GHz network. Restart and follow QR onboarding. Check the password and signal where the clock is placed.</p></details><details><summary><code>waveshare-hodiny.local</code> does not open</summary><p>Your device must be on the same network. Use the IP shown in settings; some networks block mDNS or client-to-client traffic.</p></details><details><summary>Weather or values show <code>--</code></summary><p>Check internet, city and data source. Retest Home Assistant URL/token/entities or verify the TMEP.cz export URL.</p></details><details><summary>Radar is unavailable</summary><p>CHMI radar is only available for locations in Czechia. Check the saved city and internet access.</p></details><details><summary>No update is offered</summary><p>Check Wi‑Fi, internet and synchronized time. Start a manual check from the clock or web settings.</p></details></div><div class="support-contact"><div><h3>Need more help?</h3><p>Read the technical documentation or open an issue. Include firmware version and reproduction steps, never credentials.</p></div><div><a class="button button-secondary" href="https://github.com/CooLajz/waveshare-hodiny/blob/main/README.en.md">Technical documentation</a><a class="button button-primary" href="https://github.com/CooLajz/waveshare-hodiny/issues">Report a problem</a></div></div></section>
+          </article>
+        </div>
+      </div>
+    </main>
+
+    <footer><div class="section-shell footer-inner"><span>Waveshare Hodiny · MIT</span><div><a href="index.html" data-cs="Hlavní stránka" data-en="Main page">Hlavní stránka</a><a href="https://github.com/CooLajz/waveshare-hodiny" data-cs="Zdrojový kód" data-en="Source code">Zdrojový kód</a><a href="https://github.com/CooLajz/waveshare-hodiny/issues" data-cs="Nahlásit problém" data-en="Report a problem">Nahlásit problém</a></div></div></footer>
+  </body>
+</html>

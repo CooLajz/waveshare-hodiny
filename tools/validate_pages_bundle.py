@@ -77,7 +77,7 @@ def main() -> None:
         raise SystemExit("Použití: validate_pages_bundle.py ADRESAR_WEBU")
 
     site = Path(sys.argv[1]).resolve()
-    for relative in ("index.html", "styles.css", "app.js"):
+    for relative in ("index.html", "styles.css", "app.js", "help.html", "help.css", "help.js"):
         path = site / relative
         if not path.is_file() or path.stat().st_size == 0:
             raise SystemExit(f"Povinný soubor webu chybí nebo je prázdný: {path}")
@@ -86,6 +86,11 @@ def main() -> None:
     expected_js_url = f"app.js?v={sha256(site / 'app.js')[:12]}"
     if expected_css_url not in index_html or expected_js_url not in index_html:
         raise SystemExit("HTML nepoužívá obsahové verze aktuálního CSS a JavaScriptu.")
+    help_html = (site / "help.html").read_text(encoding="utf-8")
+    expected_help_css_url = f"help.css?v={sha256(site / 'help.css')[:12]}"
+    expected_help_js_url = f"help.js?v={sha256(site / 'help.js')[:12]}"
+    if expected_css_url not in help_html or expected_help_css_url not in help_html or expected_help_js_url not in help_html:
+        raise SystemExit("Nápověda nepoužívá obsahové verze aktuálních stylů a JavaScriptu.")
     validate_weather_assets(site)
 
     firmware = site / "firmware"

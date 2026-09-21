@@ -155,6 +155,26 @@ also define the center of local CHMI radar views. Each of the four slots can
 independently display 0–2 decimal places; the same setting also applies when a
 TMEP.cz value is selected.
 
+### Location-based time zone
+
+Selecting a city retrieves its time zone from Open-Meteo and saves it with
+the location. The interface language does not affect the time zone. Daylight
+saving time changes automatically according to regional rules; no manual
+switch is needed. The clock, radar frame times and daily update checks use
+the same zone. NTP continues to synchronize the underlying UTC time.
+
+When upgrading an older configuration or importing an older backup, a missing
+zone is resolved from the saved coordinates, including with Home Assistant
+as the data source. Until resolution succeeds, the previous Czech zone remains
+active and automatic update checks wait. A fresh configuration starts with
+Brno and `Europe/Prague`.
+
+Once synchronized, the clock keeps running during Wi-Fi outages and saved
+rules allow offline transitions. After a restart, NTP is needed to obtain the
+correct time. Embedded IANA 2026c data covers 2020–2100, including irregular
+transitions; subsequent legislative changes require a firmware database
+update. See `tools/generate_timezones.py` for the source and generator.
+
 ### TMEP.cz as an Open-Meteo extension
 
 Your own TMEP.cz sensors can be added to Open-Meteo mode. Paste the complete URL
@@ -230,6 +250,23 @@ The web interface configures:
 - automatic OTA updates and web-server availability,
 - an optional web password,
 - backup import/export, restart, display controls and live diagnostics.
+
+### Clock-face appearance
+
+Digital and Retro LCD faces support a shared 24/12-hour format with AM/PM,
+independent of language; the default is 24-hour time. The leading hour zero
+setting is shared too; LCD retains the first digit's inactive segments when
+it is disabled.
+
+Retro LCD offers **Fixed weekday positions** (disabled by default): seven
+positions in Czech and nine in English, with inactive characters around shorter
+names. Disabling it restores the precisely centered name without surrounding
+positions.
+
+LCD date format is configurable independently: day–month–year, month–day–year,
+or year–month–day, with dots, dashes, or slashes depending on the layout. Each
+layout offers a variant without leading zeros that retains blank positions and
+inactive segments. The default is DD.MM.YYYY.
 
 ### Hourly weather forecast
 
@@ -709,50 +746,3 @@ that made this integration possible.
 
 The project is licensed under the [MIT License](LICENSE). Third-party components
 and assets are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-Digital and Retro LCD faces support a shared 24/12-hour format with AM/PM, independent of language; the default is 24-hour time. The leading hour zero setting is shared too; LCD retains the first digit’s inactive segments when it is disabled.
-
-## Location-based time zone
-
-Selecting a city retrieves its time zone from Open-Meteo and saves it with
-the location. The interface language does not affect the time zone. Daylight
-saving time changes automatically according to regional rules; no manual
-switch is needed. The clock, radar frame times and daily update checks use
-the same zone. NTP continues to synchronize the underlying UTC time.
-
-When upgrading an older configuration or importing an older backup, a missing
-zone is resolved from the saved coordinates, including with Home Assistant
-as the data source. Until resolution succeeds, the previous Czech zone remains
-active and automatic update checks wait. A fresh configuration starts with
-Brno and `Europe/Prague`.
-
-Once synchronized, the clock keeps running during Wi-Fi outages and saved
-rules allow offline transitions. After a restart, NTP is needed to obtain the
-correct time. Embedded IANA 2026c data covers 2020–2100, including irregular
-transitions; subsequent legislative changes require a firmware database
-update. See `tools/generate_timezones.py` for the source and generator.
-
-LCD offers “Fixed weekday positions” (disabled by default): 7 positions in Czech and 9 in English, with inactive characters around shorter names. Disabling it restores the precisely centered name without surrounding positions.
-
-LCD date format is configurable independently: day–month–year, month–day–year, or year–month–day, with dots, dashes, or slashes depending on the layout. Each layout offers a variant without leading zeros that retains blank positions and inactive segments. The default is DD.MM.YYYY.
-
-
-### Web performance and live clock preview
-
-Both development and release scripts generate gzip page and translation assets with
-`tools/generate_web_assets.py`. The ignored output at
-`WaveshareHodiny/local/ConfigurationAssets.h` is refreshed from source during builds.
-The ESP32 serves the prepared bytes from flash without runtime compression.
-Direct compilation without that header falls back to the original page; rerun the
-generator when directly compiling after web source changes.
-
-Digital immediately previews the font, time/date colors, date format, leading zero,
-colon, side icon colors, and seconds effect settings. These previews do not write
-flash or resynchronize the LCD. Press **Save** to persist them. Network settings and
-data sources still apply when saved.
-
-Digital, Analog, and Retro LCD previews share a queue: rapid changes are coalesced
-for 120 ms, with at most one request in flight. Saving waits for pending previews
-and prevents form edits during the write. The saved transaction identifier is still
-verified, without a fixed one-second delay. Firmware status no longer blocks the
-form, and the memory overview requests a compact diagnostic response.
