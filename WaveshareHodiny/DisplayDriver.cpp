@@ -23,6 +23,11 @@ bool singleClickPending = false;
 uint8_t partialRefreshWarmupFrames = 0;
 bool partialRefreshWarmupRequested = false;
 bool partialRefreshEnableRequested = false;
+bool storageTransferActive = false;
+bool storageRestorePartial = false;
+uint32_t storageResyncAt = 0;
+uint8_t storageRecoveryFrames = 0;
+
 
 #if !FIRMWARE_RELEASE
 uint32_t measuredFrames = 0, measuredPixels = 0, measuredSince = 0, measuredRenderMs = 0;
@@ -59,6 +64,10 @@ void flushDisplay(lv_disp_drv_t *driver, const lv_area_t *area, lv_color_t *pixe
   }
 
   displayNotificationFramePresented(framePresented);
+  if (framePresented && storageRecoveryFrames > 0) {
+    --storageRecoveryFrames;
+    if (storageRecoveryFrames) partialRefreshWarmupRequested = true;
+  }
 
   if (framePresented && partialRefreshWarmupFrames > 0) {
     // Direct mode předpokládá, že oba framebuffery obsahují stejný výchozí
@@ -180,6 +189,16 @@ void displayDriverInit() {
 }
 
 void displayDriverLoop() {
+  if (storageTransferActive) return;
+  if (storageResyncAt && static_cast<int32_t>(millis() - storageResyncAt) >= 0) {
+    if (storageRecoveryFrames == 0) {
+      LCD_Resync();
+      if (LCD_WaitFrames(2, 1000)) {
+        storageResyncAt = 0;
+        LCD_SuppressBacklight(false);
+      } else storageResyncAt = millis() + 100;
+    }
+  }
   lv_timer_handler();
   if (partialRefreshEnableRequested) {
     partialRefreshEnableRequested = false;
@@ -280,4 +299,37 @@ void displayDriverPrintRenderStats(Print &output) {
   measuredFrames = measuredPixels = measuredRenderMs = 0;
   measuredSince = now;
 #endif
+}
+
+bool displayDriverStorageTransferActive() { return storageTransferActive; }
+
+bool displayDriverBeginStorageTransfer() {
+  if (storageTransferActive) return true;
+  storageRestorePartial = displayDriver.direct_mode || partialRefreshWarmupFrames > 0;
+  storageResyncAt = 0;
+  storageTransferActive = true;
+  storageRecoveryFrames = 0;
+  // The RGB engine can still lose sync during flash writes. Hide the panel
+  // before sending Sleep In; holding a PSRAM framebuffer alone is not enough.
+  LCD_SuppressBacklight(true);
+  LCD_SetStorageBlanked(true);
+  displayDriverDiscardTouchUntilRelease();
+  return true;
+}
+
+bool displayDriverEndStorageTransfer() {
+  if (!storageTransferActive) return true;
+  LCD_SetStorageBlanked(false);
+  LCD_Resync();
+  if (!LCD_WaitFrames(2, 1000))
+    return false; // Stay dark; caller retries while HTTP remains available.
+  storageTransferActive = false;
+  displayDriverDiscardTouchUntilRelease();
+  // Rebuild both framebuffers with backlight still off, then resynchronize
+  // once more before revealing the recovered image in displayDriverLoop().
+  storageRecoveryFrames = 2;
+  displayDriverSetPartialRefresh(storageRestorePartial, true);
+  displayDriverRefresh();
+  storageResyncAt = millis() + 750;
+  return true;
 }

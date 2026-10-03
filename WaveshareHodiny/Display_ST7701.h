@@ -84,8 +84,13 @@ void LCD_Init();
 void LCD_Resync();
 bool LCD_SetPixelClock(uint32_t frequencyHz);
 uint32_t LCD_GetPixelClock();
+bool LCD_WaitFrames(uint32_t count, uint32_t timeoutMs);
 void LCD_Sleep();
 void LCD_Wake();
+void LCD_SetStorageBlanked(bool blanked);
+bool LCD_IsSleeping();
+void LCD_SuppressBacklight(bool suppressed);
+uint8_t LCD_GetBacklight();
 bool LCD_addWindow(uint16_t Xstart, uint16_t Ystart, uint16_t Xend,
                    uint16_t Yend, uint8_t* color);
 

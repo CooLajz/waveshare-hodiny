@@ -6,6 +6,7 @@
 #include "backup_test_support/Preferences.h"
 #include "../WaveshareHodiny/ConfigurationBackup.h"
 #include "../WaveshareHodiny/ClockConfig.h"
+#include "../WaveshareHodiny/ClockBackground.h"
 
 // Linked only by this host harness, never present in firmware.
 void settingsStoreTestReset();
@@ -15,6 +16,9 @@ bool clockTimezoneSupported(const char *name) {
 uint32_t checksum(const void *data,size_t length){uint32_t h=2166136261u;const auto*p=static_cast<const uint8_t*>(data);while(length--){h^=*p++;h*=16777619u;}return h;}
 
 void testMigration() {
+  const ClockBackgroundOptions backgroundDefaults;
+  assert(backgroundDefaults.present == 0);
+  assert(backgroundDefaults.enabled == 0);
   ClockConfig current; clockConfigApplyDefaults(current);
   strcpy(current.homeAssistantToken,"synthetic-test-token");
   const struct { uint32_t schema; size_t prefix; } cases[] = {
@@ -44,15 +48,24 @@ void testStorage(){
   Preferences legacy;legacy.begin("web-mode",false,"clockcfg");legacy.putUChar("mode",1);
   assert(settingsStoreBegin());SettingsPreferences mode;assert(mode.begin("web-mode"));assert(mode.getUChar("mode")==1);
   assert(mode.putUChar("mode",0)==1);
+  ClockBackgroundOptions background; background.present=1; background.enabled=0; background.opacity=80; background.clockOnly=1;
+  SettingsPreferences bg; assert(bg.begin("clock-bg"));
+  assert(bg.putBytes("options", &background, sizeof(background)) == sizeof(background));
   const auto baseline=fakeNvs::values;
   for(auto fault:{fakeNvs::SlotWrite,fakeNvs::SlotRead,fakeNvs::SelectorWrite,fakeNvs::PowerAfterSlot,fakeNvs::PowerAfterSelector}){
     settingsStoreTestReset();fakeNvs::values=baseline;fakeNvs::fault=fakeNvs::None;assert(settingsStoreBegin());
     assert(settingsTransactionBegin());SettingsPreferences p;p.begin("web-mode");p.putUChar("mode",2);
     SettingsPreferences receipt;receipt.begin("save-state");receipt.putString("receipt","0123456789abcdef0123456789abcdef");
+    ClockBackgroundOptions changed=background; changed.slot=1; changed.enabled=1; changed.opacity=25;
+    assert(bg.putBytes("options", &changed, sizeof(changed)) == sizeof(changed));
     fakeNvs::fault=fault;fakeNvs::slotWritten=false;
     try{assert(!settingsTransactionCommit());}catch(const std::runtime_error&){}
     fakeNvs::fault=fakeNvs::None;settingsStoreTestReset();assert(settingsStoreBegin());p.begin("web-mode");receipt.begin("save-state");
     assert(p.getUChar("mode")== (fault==fakeNvs::PowerAfterSelector?2:0));
+    ClockBackgroundOptions restored;
+    assert(bg.getBytes("options", &restored, sizeof(restored)) == sizeof(restored));
+    const auto &expected=fault==fakeNvs::PowerAfterSelector?changed:background;
+    assert(memcmp(&restored, &expected, sizeof(restored)) == 0);
     assert(receipt.getString("receipt").empty()==(fault!=fakeNvs::PowerAfterSelector));
     assert(fakeNvs::values.at("nvs/wifi/ssid")==baseline.at("nvs/wifi/ssid"));
   }
@@ -124,7 +137,7 @@ void testCompleteSnapshot() {
   source.metricAColorScale.count=2;
   source.metricAColorScale.points[0]={1.0001f,0xffffff};
   source.metricAColorScale.points[1]={1.0002f,0};
-  ClockAppearanceConfig appearance;appearance.style=CLOCK_STYLE_RETRO_LCD;
+  ClockAppearanceConfig appearance;assert(appearance.analogBackgroundColor==0x000A14);appearance.analogBackgroundColor=0x234567;appearance.style=CLOCK_STYLE_RETRO_LCD;
   appearance.retroFixedWeekday=true;
   appearance.retroDateFormat=10;
   appearance.use12HourFormat=true;appearance.retroProgressMin=0.0001234567f;
@@ -152,13 +165,13 @@ void testCompleteSnapshot() {
   assert(restoredAppearance.use12HourFormat&&restoredAppearance.style==CLOCK_STYLE_RETRO_LCD);
   assert(restoredAppearance.retroFixedWeekday);
   assert(restoredAppearance.retroDateFormat==10);
-  assert(restoredAppearance.retroProgressMin==appearance.retroProgressMin);
+  assert(restoredAppearance.retroProgressMin==appearance.retroProgressMin);assert(restoredAppearance.analogBackgroundColor==0x234567);
   prefs.begin("web-auth",true);uint8_t readCredential[56];assert(prefs.getBytes("credential",readCredential,56)==56);
   assert(!memcmp(credential,readCredential,56));assert(settingsTransactionCommit());
   settingsStoreTestReset();assert(settingsStoreBegin());assert(clockConfigLoad(restored));
   assert(!strcmp(restored.homeAssistantToken,source.homeAssistantToken));
   prefs.begin("web-mode",true);assert(prefs.getUChar("mode")==2);
-  assert(clockAppearanceLoad(restoredAppearance));assert(restoredAppearance.retroFixedWeekday);
+  assert(clockAppearanceLoad(restoredAppearance));assert(restoredAppearance.analogBackgroundColor==0x234567);assert(restoredAppearance.retroFixedWeekday);
   assert(restoredAppearance.retroDateFormat==10);
   // A normal color-only save must retain the weekday option and survive reboot.
   restoredAppearance.retroForegroundColor=0x123456;
@@ -311,4 +324,38 @@ void testStyleAutosave() {
   puts("PASS: single 8-byte NVS write, no-op, legacy migration, snapshot/override power loss, export and restore precedence");
   puts("PASS: style autosave debounce, cancellation, rollover, retry, reboot, preservation of other settings and failed writes");
 }
-int main(){testStyleAutosave();testConfigAllocationFailure();testMigration();testStorage();testCrypto();testCompleteSnapshot();testCorruptStoreRecovery();}
+
+void testImageStream() {
+  const char *password = "synthetic-backup-password";
+  const char *settings = "authenticated encrypted settings file";
+  for (size_t size : {size_t(0), size_t(460800)}) {
+    std::vector<uint8_t> plain(size), cipher(size), restored(size);
+    for (size_t i = 0; i < size; ++i) plain[i] = (i * 37) & 255;
+    BackupStream encrypt; char header[57] = {}; uint8_t tag[16];
+    assert(backupStreamStart(encrypt, false, password, settings, header));
+    for (size_t offset = 0; offset < size; offset += 4096) {
+      size_t count = std::min(size_t(4096), size - offset);
+      assert(backupStreamUpdate(encrypt, plain.data() + offset, count, cipher.data() + offset));
+    }
+    assert(backupStreamFinish(encrypt, tag));
+    for (int fault = 0; fault < 6; ++fault) {
+      BackupStream decrypt; uint8_t actual[16]; char copy[57]; strcpy(copy, header);
+      if (fault == 3) copy[0] = copy[0] == '0' ? '1' : '0';
+      assert(backupStreamStart(decrypt, true, fault == 1 ? "wrong-password" : password,
+          fault == 2 ? "other encrypted settings" : settings, copy));
+      auto input = cipher;
+      if (fault == 4 && size) input[size / 2] ^= 1;
+      size_t end = fault == 5 && size ? size - 16 : size;
+      for (size_t offset = 0; offset < end; offset += 4096) {
+        size_t count = std::min(size_t(4096), end - offset);
+        assert(backupStreamUpdate(decrypt, input.data() + offset, count, restored.data() + offset));
+      }
+      assert(backupStreamFinish(decrypt, actual));
+      bool valid = memcmp(tag, actual, 16) == 0;
+      assert(valid == (fault == 0 || (!size && fault >= 4)));
+      if (fault == 0) assert(restored == plain);
+    }
+  }
+  puts("PASS: bounded image GCM, empty/full image, wrong password, settings binding, header/cipher corruption and truncation");
+}
+int main(){testImageStream();testStyleAutosave();testConfigAllocationFailure();testMigration();testStorage();testCrypto();testCompleteSnapshot();testCorruptStoreRecovery();}

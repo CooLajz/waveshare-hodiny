@@ -271,6 +271,46 @@ nebo rok–měsíc–den, s tečkami, pomlčkami či lomítky podle varianty. Ka
 formát má variantu bez úvodních nul, která zachová prázdné pozice a podkres.
 Výchozí je DD.MM.YYYY.
 
+### Vlastní obrázek na pozadí (vývojová verze)
+
+V záložce **Displej → Obrázek na pozadí** lze nahrát JPG, PNG nebo WebP
+(do 20 MB), posunout jej a přiblížit v kruhovém náhledu. Prohlížeč připraví
+přesný výřez 480 × 480. Editor zobrazuje pouze obrázek v plné viditelnosti,
+bez ciferníku a stínů. Viditelnost a stíny se prohlížejí přímo na hodinách.
+**Nahrát pozadí do hodin** samostatně uloží obrázek a jeho nastavení přímo do hodin.
+Běžné **Uložit nastavení** ukládá také viditelnost a stíny pozadí, bez nahrávání nového výřezu.
+Posuvníky upravují viditelnost fotografie a sílu stínu textů, ikon a ručiček;
+Vzdálenost stínu nastavuje odsazení 0–5 px (výchozí 2 px).
+Mohutnost stínu rozšiřuje jeho obrys o 0–5 px do všech stran, nezávisle na síle a vzdálenosti.
+0 % stínu jej vypne. Po puštění posuvníku (nebo přepnutí pozadí) se náhled
+projeví přímo na hodinách bez zápisu a zhasnutí, s již nahraným obrázkem.
+Náhled platí do restartu; trvale jej potvrdí **Nahrát pozadí do hodin**. Nový výřez
+vyžaduje nahrání. Kruhová maska pozadí platí i při posouvání obrazovek.
+Obrázek je společný pro analogový a digitální ciferník.
+V PSRAM se drží pouze při použití pozadí; vypnutí, červený noční režim
+a zobrazení radaru jeho paměť uvolní. Cache stínů má limit 64 KiB,
+statický analogový ciferník 128 KiB. Nahrávání zapisuje po malých blocích
+do flash bez druhé kopie obrázku v PSRAM. Hlavní uložení potvrzuje nastavení
+ciferníku a pozadí společně; opakované uložení stejného pozadí nevyvolá zápis.
+
+Volba **Pouze hodiny**, dostupná pouze u analogu v nastavení pozadí, skryje ikony, datum, dělicí čáry a všechny hodnoty. Sběr dat pokračuje; skryté animace počasí jsou pozastavené. Vypnutí pozadí vrátí běžné zobrazení. Volba je součástí nastavení i zálohy.
+
+Barvu podkladu analogu lze změnit ve **Vzhledu hodin → Barva podkladu**. Použije se bez obrázku; výchozí `#000A14` zachovává původní namodralý vzhled. Červený noční režim si ponechává svůj podklad.
+
+V červeném nočním režimu se obrázek automaticky skryje a po jeho skončení
+se obnoví. Přepínač **Použít pozadí** umožňuje obrázek skrýt bez smazání.
+Obrázek přežije restart a spolu s nastavením pozadí je součástí šifrované
+zálohy, i když je pozadí vypnuté. Obnovuje se hotový výřez uložený v hodinách. Nahrávání zachová původní obrázek do ověření nového souboru. Po dobu přenosu
+a zápisu displej zhasne a usne. Po dokončení nebo zrušení přenosu se probudí,
+překreslí oba obrazové buffery a obnoví synchronizaci; teprve potom se rozsvítí.
+
+Ve **Vzhledu hodin** má digitální ciferník vlastní **Barvu oblouku a čar**
+s náhledem na displeji. Jeho oblouk a oddělovací čáry používají společnou sílu
+stínů pozadí; 0 % je vypne. Barva se ukládá s nastavením vzhledu.
+
+Přepínač vedle nadpisu pozadí změnu rovnou uloží. Při vypnutí skryje editor.
+Nahrávání probíhá v dialogu s procenty a upozorněním na dočasně černý displej.
+
 ### Hodinová předpověď počasí
 
 Předpověď je samostatná obrazovka, nikoli čtvrtý ciferník. Vodorovným swipem
@@ -413,7 +453,9 @@ Firmware šifruje uložené nastavení pomocí AES-256-GCM; heslo se v hodinách
 trvale neukládá. Neuložené změny a dočasné náhledy nejsou součástí exportu.
 
 Záloha obsahuje nastavení hodin a vzhledu, HA URL a token, TMEP přístupové
-údaje, ověřovací záznam hesla webu a secret ovládacího API. **Wi-Fi není
+údaje, ověřovací záznam hesla webu, secret ovládacího API a uložený obrázek
+s nastavením pozadí (i při vypnutém pozadí). Přenos obrázku má průběh v procentech;
+při jeho obnově se displej dočasně vypne a po dokončení znovu zapne. **Wi-Fi není
 součástí zálohy a při obnově se nemění.** Bez hesla zálohu nelze obnovit.
 Přenos hesla do hodin zůstává přes místní HTTP, stejně jako zadávání tokenu;
 šifrování chrání soubor, ne tento síťový přenos.

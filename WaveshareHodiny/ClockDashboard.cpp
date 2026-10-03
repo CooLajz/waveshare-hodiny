@@ -1,4 +1,5 @@
 #include "ClockDashboard.h"
+#include "ClockBackground.h"
 #include "OpenWeatherIcons.h"
 #include "WeatherIconMapping.h"
 #include "RetroLcd.h"
@@ -8,6 +9,7 @@
 #include <lvgl.h>
 
 #include <cmath>
+#include <cctype>
 #include <cstring>
 #include <esp_heap_caps.h>
 
@@ -50,7 +52,9 @@ constexpr int ANALOG_RING_RADIUS = 239;
 // udrží i starou a novou polohu všech ručiček pod 32 dirty oblastmi LVGL.
 constexpr lv_coord_t ANALOG_HAND_INVALIDATION_STRIP = 96;
 uint8_t activeClockStyle = CLOCK_STYLE_DIGITAL;
+uint32_t digitalDividerColor = 0x2F2F2F;
 uint32_t analogToneColor = 0x00D6FF;
+uint32_t analogBackgroundColor = 0x000A14;
 uint32_t analogHandToneColor = 0x00D6FF;
 uint32_t analogCardinalAccentColor = 0xFFAB00;
 bool analogCardinalAccentsEnabled = true;
@@ -170,12 +174,14 @@ lv_obj_t *analogMetricDivider = nullptr;
 struct AnalogDialRun {
   uint16_t length;
   lv_color_t color;
+  uint8_t opacity;
 };
 
 struct AnalogDialCache {
   uint32_t *rowOffsets = nullptr;
   AnalogDialRun *runs = nullptr;
   uint32_t runCount = 0;
+  uint32_t key = 0;
 };
 
 AnalogDialCache analogDialCache;
@@ -319,6 +325,266 @@ RadarRangeCallback radarRangeCallback = nullptr;
 
 bool redNightVisualEnabled() {
   return nightModeEnabled && nightVisualMode == CLOCK_NIGHT_VISUAL_RED;
+}
+
+bool analogClockOnly() {
+  const auto &options = clockBackgroundActiveOptions();
+  return analogLayoutEnabled() && !retroLcdEnabled() && options.enabled && options.clockOnly;
+}
+
+bool backgroundVisible() {
+  const auto &options = clockBackgroundActiveOptions();
+  return !redNightVisualEnabled() &&
+      (activeClockStyle == CLOCK_STYLE_ANALOG || activeClockStyle == CLOCK_STYLE_DIGITAL) &&
+      options.enabled && options.opacity && clockBackgroundPixels();
+}
+lv_opa_t backgroundShadowOpacity() {
+  return backgroundVisible() ? clockBackgroundActiveOptions().shadow * 255 / 100 : 0;
+}
+lv_coord_t backgroundShadowSize() { return clockBackgroundActiveOptions().shadowSize; }
+lv_coord_t backgroundShadowSpread() { return clockBackgroundActiveOptions().shadowSpread; }
+lv_img_dsc_t backgroundImage = {};
+void drawClockBackground(lv_event_t *event) {
+  if (!backgroundVisible()) return;
+  // A swipe can snapshot the page before the regular dashboard loop runs.
+  // Invalidate here as well so replacement never reuses the old pixel buffer.
+  if (backgroundImage.data != clockBackgroundPixels())
+    lv_img_cache_invalidate_src(&backgroundImage);
+  backgroundImage.header.cf = LV_IMG_CF_TRUE_COLOR;
+  backgroundImage.header.w = 480; backgroundImage.header.h = 480;
+  backgroundImage.data_size = CLOCK_BACKGROUND_BYTES; backgroundImage.data = clockBackgroundPixels();
+  lv_draw_img_dsc_t descriptor;
+  lv_draw_img_dsc_init(&descriptor);
+  descriptor.opa = clockBackgroundActiveOptions().opacity * 255 / 100;
+  lv_area_t area; lv_obj_get_coords(lv_event_get_target(event), &area);
+  // Clip in page coordinates so swipe snapshots and translated pages retain
+  // the circular silhouette instead of exposing the RGB565 image corners.
+  lv_draw_mask_radius_param_t circle;
+  lv_draw_mask_radius_init(&circle, &area, LV_RADIUS_CIRCLE, false);
+  const int16_t mask = lv_draw_mask_add(&circle, nullptr);
+  if (mask >= 0) {
+    lv_draw_img(lv_event_get_draw_ctx(event), &descriptor, &area, &backgroundImage);
+    lv_draw_mask_remove_id(mask);
+  }
+  lv_draw_mask_free_param(&circle);
+}
+// Build one expanded alpha mask, then composite once. Repeated translucent
+// glyph copies would unintentionally make the strength depend on the spread.
+constexpr int SHADOW_MASK_SIDE = 490;
+uint8_t *shadowMask = nullptr;
+uint8_t *shadowMaskScratch = nullptr;
+lv_obj_t *shadowMaskCanvas = nullptr;
+constexpr size_t SHADOW_CACHE_BUDGET = 64U * 1024U;
+struct ShadowCacheEntry {
+  lv_img_dsc_t image = {};
+  const lv_obj_t *owner = nullptr;
+  uint32_t key = 0, used = 0;
+};
+ShadowCacheEntry shadowCache[12];
+size_t shadowCacheBytes = 0;
+uint32_t shadowCacheTick = 0;
+void releaseShadowEntry(ShadowCacheEntry &entry) {
+  if (entry.image.data) {
+    lv_img_cache_invalidate_src(&entry.image);
+    shadowCacheBytes -= entry.image.data_size;
+    heap_caps_free(const_cast<uint8_t *>(entry.image.data));
+  }
+  entry = {};
+}
+void releaseShadowCache() {
+  for (auto &entry : shadowCache) releaseShadowEntry(entry);
+}
+uint32_t shadowHash(uint32_t hash, const void *bytes, size_t size) {
+  const auto *data = static_cast<const uint8_t *>(bytes);
+  while (size--) { hash ^= *data++; hash *= 16777619U; }
+  return hash;
+}
+void expandShadowMask(int width, int height, int spread) {
+  int16_t queue[SHADOW_MASK_SIDE];
+  auto pass = [&](const uint8_t *source, uint8_t *destination, int lines,
+                  int length, int stride, int lineStride) {
+    for (int line = 0; line < lines; ++line) {
+      int head = 0, tail = 0, next = 0;
+      const int base = line * lineStride;
+      for (int position = 0; position < length; ++position) {
+        const int last = min(length - 1, position + spread);
+        while (next <= last) {
+          while (tail > head && source[base + queue[tail - 1] * stride] <= source[base + next * stride]) --tail;
+          queue[tail++] = next++;
+        }
+        while (tail > head && queue[head] < position - spread) ++head;
+        destination[base + position * stride] = source[base + queue[head] * stride];
+      }
+    }
+  };
+  pass(shadowMask, shadowMaskScratch, height, width, 1, width);
+  pass(shadowMaskScratch, shadowMask, width, height, width, 1);
+}
+bool drawExpandedShadow(lv_draw_ctx_t *context, const lv_area_t &area,
+                        lv_draw_label_dsc_t *label, const char *text,
+                        lv_draw_img_dsc_t *image, const void *source,
+                        lv_opa_t opacity, const lv_obj_t *owner) {
+  const int spread = backgroundShadowSpread();
+  if (!spread) return false;
+  const int width = lv_area_get_width(&area) + 2 * spread;
+  const int height = lv_area_get_height(&area) + 2 * spread;
+  if (width > SHADOW_MASK_SIDE || height > SHADOW_MASK_SIDE || width <= 0 || height <= 0) return false;
+  const size_t capacity = static_cast<size_t>(width) * height;
+  if (capacity > SHADOW_CACHE_BUDGET) return false;
+  uint32_t key = shadowHash(2166136261U, &spread, sizeof(spread));
+  key = shadowHash(key, &width, sizeof(width));
+  key = shadowHash(key, &height, sizeof(height));
+  // GIF frames share a pixel pointer; include the decoder frame timestamp.
+  const bool cacheable = true;
+  if (label) {
+    auto normalized = *label; normalized.color = lv_color_white(); normalized.opa = LV_OPA_COVER;
+    key = shadowHash(key, &normalized, sizeof(normalized));
+    key = shadowHash(key, text, strlen(text));
+  } else {
+    key = shadowHash(key, &source, sizeof(source));
+    auto normalized = *image; normalized.recolor = lv_color_white();
+    normalized.recolor_opa = LV_OPA_COVER; normalized.opa = LV_OPA_COVER;
+    key = shadowHash(key, &normalized, sizeof(normalized));
+    if (lv_obj_has_class(owner, &lv_gif_class)) {
+      const auto *gif = reinterpret_cast<const lv_gif_t *>(owner);
+      key = shadowHash(key, &gif->last_call, sizeof(gif->last_call));
+    }
+  }
+  ShadowCacheEntry temporary;
+  ShadowCacheEntry *entry = &temporary;
+  if (cacheable) {
+    for (auto &item : shadowCache)
+      if (item.owner == owner) { entry = &item; break; }
+    if (entry == &temporary) {
+      entry = &shadowCache[0];
+      for (auto &item : shadowCache) if (!item.image.data || item.used < entry->used) entry = &item;
+    }
+    if (entry->owner != owner || entry->key != key) releaseShadowEntry(*entry);
+  }
+  if (!entry->image.data) {
+    while (shadowCacheBytes + capacity > SHADOW_CACHE_BUDGET) {
+      ShadowCacheEntry *oldest = nullptr;
+      for (auto &item : shadowCache) if (item.image.data && (!oldest || item.used < oldest->used)) oldest = &item;
+      if (!oldest) break;
+      releaseShadowEntry(*oldest);
+    }
+    shadowMask = static_cast<uint8_t *>(heap_caps_malloc(capacity, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    shadowMaskScratch = static_cast<uint8_t *>(heap_caps_malloc(capacity, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!shadowMask || !shadowMaskScratch) {
+      heap_caps_free(shadowMask); heap_caps_free(shadowMaskScratch);
+      shadowMask = shadowMaskScratch = nullptr; return false;
+    }
+    if (!shadowMaskCanvas) shadowMaskCanvas = lv_canvas_create(nullptr);
+    if (!shadowMaskCanvas) {
+      heap_caps_free(shadowMask); heap_caps_free(shadowMaskScratch);
+      shadowMask = shadowMaskScratch = nullptr; return false;
+    }
+    memset(shadowMask, 0, capacity);
+    lv_canvas_set_buffer(shadowMaskCanvas, shadowMask, width, height, LV_IMG_CF_ALPHA_8BIT);
+    if (label) {
+      auto maskDescriptor = *label;
+      maskDescriptor.color = lv_color_white(); maskDescriptor.opa = LV_OPA_COVER;
+      lv_canvas_draw_text(shadowMaskCanvas, spread, spread, lv_area_get_width(&area), &maskDescriptor, text);
+    } else {
+      auto maskDescriptor = *image;
+      maskDescriptor.recolor = lv_color_white(); maskDescriptor.recolor_opa = LV_OPA_COVER;
+      maskDescriptor.opa = LV_OPA_COVER;
+      lv_canvas_draw_img(shadowMaskCanvas, spread, spread, source, &maskDescriptor);
+    }
+    expandShadowMask(width, height, spread);
+    entry->image = *lv_canvas_get_img(shadowMaskCanvas);
+    entry->image.data_size = capacity;
+    entry->owner = owner; entry->key = key;
+    shadowCacheBytes += capacity;
+    lv_img_cache_invalidate_src(lv_canvas_get_img(shadowMaskCanvas));
+    lv_obj_del(shadowMaskCanvas); shadowMaskCanvas = nullptr;
+    heap_caps_free(shadowMaskScratch); shadowMask = shadowMaskScratch = nullptr;
+  }
+  entry->used = ++shadowCacheTick;
+  lv_draw_img_dsc_t descriptor; lv_draw_img_dsc_init(&descriptor);
+  descriptor.recolor = lv_color_black(); descriptor.recolor_opa = LV_OPA_COVER;
+  descriptor.opa = opacity;
+  const lv_area_t expanded = {static_cast<lv_coord_t>(area.x1 - spread), static_cast<lv_coord_t>(area.y1 - spread),
+                              static_cast<lv_coord_t>(area.x2 + spread), static_cast<lv_coord_t>(area.y2 + spread)};
+  lv_draw_img(context, &descriptor, &expanded, &entry->image);
+  if (!cacheable) releaseShadowEntry(temporary);
+  return true;
+}
+
+void drawForegroundShadow(lv_event_t *event) {
+  const lv_opa_t opacity = backgroundShadowOpacity();
+  if (!opacity) return;
+  lv_obj_t *object = lv_event_get_target(event);
+  lv_area_t area; lv_obj_get_coords(object, &area);
+  const lv_coord_t offset = backgroundShadowSize();
+  area.x1 += offset; area.x2 += offset; area.y1 += offset; area.y2 += offset;
+  if (lv_obj_check_type(object, &lv_label_class)) {
+    lv_draw_label_dsc_t descriptor;
+    lv_draw_label_dsc_init(&descriptor);
+    lv_obj_init_draw_label_dsc(object, LV_PART_MAIN, &descriptor);
+    descriptor.color = lv_color_black(); descriptor.opa = opacity;
+    // Ignore inline colors in the shadow while preserving the text layout.
+    descriptor.flag = static_cast<lv_text_flag_t>(descriptor.flag | LV_TEXT_FLAG_RECOLOR);
+    const char *text = lv_label_get_text(object);
+    // Recolor markup is uncommon here; use the original font/layout and strip
+    // color commands so every shadow glyph remains black.
+    char plain[192]; size_t n = 0;
+    for (size_t i = 0; text[i] && n + 1 < sizeof(plain); ++i) {
+      if (text[i] == '#' && lv_label_get_recolor(object)) {
+        bool command = true;
+        for (size_t j = 1; j <= 6; ++j) {
+          if (!text[i+j] || !isxdigit(static_cast<unsigned char>(text[i+j]))) { command = false; break; }
+        }
+        if (command && text[i+7] == ' ') { i += 7; continue; }
+        continue;
+      }
+      plain[n++] = text[i];
+    }
+    plain[n] = 0;
+    descriptor.flag = static_cast<lv_text_flag_t>(descriptor.flag & ~LV_TEXT_FLAG_RECOLOR);
+    if (!drawExpandedShadow(lv_event_get_draw_ctx(event), area, &descriptor, plain, nullptr, nullptr, opacity, object))
+      lv_draw_label(lv_event_get_draw_ctx(event), &descriptor, &area, plain, nullptr);
+  } else if (object == digitalAirArc) {
+    lv_draw_arc_dsc_t descriptor; lv_draw_arc_dsc_init(&descriptor);
+    descriptor.color = lv_color_black(); descriptor.opa = opacity;
+    descriptor.width = lv_obj_get_style_arc_width(object, LV_PART_MAIN) + 2 * backgroundShadowSpread();
+    descriptor.rounded = false;
+    const lv_coord_t left = lv_obj_get_style_pad_left(object, LV_PART_MAIN);
+    const lv_coord_t top = lv_obj_get_style_pad_top(object, LV_PART_MAIN);
+    const lv_coord_t radius = LV_MIN(lv_area_get_width(&area) - left - lv_obj_get_style_pad_right(object, LV_PART_MAIN),
+                                    lv_area_get_height(&area) - top - lv_obj_get_style_pad_bottom(object, LV_PART_MAIN)) / 2;
+    const lv_point_t center = {static_cast<lv_coord_t>(area.x1 + radius + left),
+                               static_cast<lv_coord_t>(area.y1 + radius + top)};
+    lv_draw_arc(lv_event_get_draw_ctx(event), &descriptor, &center, radius + backgroundShadowSpread(), 180, 360);
+  } else if (object == digitalAirStem || object == digitalAirLeftLeg ||
+             object == digitalAirRightLeg || object == digitalMetricDivider ||
+             object == digitalBottomDivider || object == analogMetricDivider) {
+    lv_draw_rect_dsc_t descriptor; lv_draw_rect_dsc_init(&descriptor);
+    descriptor.bg_color = lv_color_black(); descriptor.bg_opa = opacity;
+    const lv_coord_t spread = backgroundShadowSpread();
+    area.x1 -= spread; area.y1 -= spread; area.x2 += spread; area.y2 += spread;
+    descriptor.radius = lv_obj_get_style_radius(object, LV_PART_MAIN) + spread;
+    lv_draw_rect(lv_event_get_draw_ctx(event), &descriptor, &area);
+  } else if (lv_obj_has_class(object, &lv_img_class)) {
+    const void *source = lv_img_get_src(object);
+    if (!source) return;
+    lv_draw_img_dsc_t descriptor; lv_draw_img_dsc_init(&descriptor);
+    descriptor.recolor = lv_color_black(); descriptor.recolor_opa = LV_OPA_COVER;
+    descriptor.opa = opacity; descriptor.zoom = lv_img_get_zoom(object);
+    if (!drawExpandedShadow(lv_event_get_draw_ctx(event), area, nullptr, nullptr, &descriptor, source, opacity, object))
+      lv_draw_img(lv_event_get_draw_ctx(event), &descriptor, &area, source);
+  }
+}
+void addForegroundShadow(lv_obj_t *object) {
+  lv_obj_add_event_cb(object, drawForegroundShadow, LV_EVENT_DRAW_MAIN_BEGIN, nullptr);
+  // Keep the shifted glyph inside the invalidated area when a value changes.
+  lv_obj_add_event_cb(object, [](lv_event_t *event) {
+    auto *size = static_cast<lv_coord_t *>(lv_event_get_param(event));
+    const lv_coord_t needed = backgroundShadowOpacity()
+        ? backgroundShadowSize() + backgroundShadowSpread() + 1 : 0;
+    if (*size < needed) *size = needed;
+  }, LV_EVENT_REFR_EXT_DRAW_SIZE, nullptr);
+  lv_obj_refresh_ext_draw_size(object);
 }
 
 const lv_font_t *configuredTimeFont() {
@@ -624,6 +890,7 @@ void ensureWeatherAnimationDecoders() {
     lv_obj_t *parent = lv_obj_get_parent(decoder);
     lv_obj_del(decoder);
     decoder = lv_gif_create(parent);
+    addForegroundShadow(decoder);
     alignCenter(decoder, analogLayoutEnabled() ? 0 : x,
                 analogLayoutEnabled() ? -70 : 107);
     lv_obj_add_flag(decoder, LV_OBJ_FLAG_HIDDEN);
@@ -684,9 +951,25 @@ struct AnalogDrawTarget {
   lv_obj_t *canvas;
 };
 
+void drawAnalogLineShadow(const AnalogDrawTarget &target,
+                          const lv_point_t &from, const lv_point_t &to,
+                          lv_coord_t width, lv_opa_t opacity = LV_OPA_COVER) {
+  if (!backgroundShadowOpacity()) return;
+  lv_draw_line_dsc_t shadow;
+  lv_draw_line_dsc_init(&shadow);
+  shadow.color = lv_color_black();
+  shadow.width = width + 2 * backgroundShadowSpread();
+  shadow.opa = backgroundShadowOpacity() * opacity / 255;
+  shadow.round_start = shadow.round_end = true;
+  const lv_point_t a = {static_cast<lv_coord_t>(from.x + backgroundShadowSize()), static_cast<lv_coord_t>(from.y + backgroundShadowSize())};
+  const lv_point_t b = {static_cast<lv_coord_t>(to.x + backgroundShadowSize()), static_cast<lv_coord_t>(to.y + backgroundShadowSize())};
+  if (target.canvas) { const lv_point_t points[] = {a, b}; lv_canvas_draw_line(target.canvas, points, 2, &shadow); }
+  else lv_draw_line(target.context, &shadow, &a, &b);
+}
+
 void drawAnalogLine(const AnalogDrawTarget &target, const lv_point_t &from,
                     const lv_point_t &to, lv_color_t color, lv_coord_t width,
-                    lv_opa_t opacity = LV_OPA_COVER) {
+                    lv_opa_t opacity = LV_OPA_COVER, bool castShadow = true) {
   lv_draw_line_dsc_t descriptor;
   lv_draw_line_dsc_init(&descriptor);
   descriptor.color = color;
@@ -694,6 +977,7 @@ void drawAnalogLine(const AnalogDrawTarget &target, const lv_point_t &from,
   descriptor.opa = opacity;
   descriptor.round_start = true;
   descriptor.round_end = true;
+  if (castShadow) drawAnalogLineShadow(target, from, to, width, opacity);
   if (target.canvas != nullptr) {
     const lv_point_t points[] = {from, to};
     lv_canvas_draw_line(target.canvas, points, 2, &descriptor);
@@ -747,7 +1031,8 @@ void drawAnalogArc(const AnalogDrawTarget &target, const lv_point_t &center,
 void drawAnalogArcSegment(const AnalogDrawTarget &target,
                           const lv_point_t &center, uint16_t radius,
                           float startAngleDegrees, float endAngleDegrees,
-                          lv_color_t color, lv_coord_t width) {
+                          lv_color_t color, lv_coord_t width,
+                          lv_opa_t opacity = LV_OPA_COVER) {
   const auto lvglAngle = [](float analogAngle) -> uint16_t {
     int angle = static_cast<int>(std::round(analogAngle - 90.0f)) % 360;
     if (angle < 0) angle += 360;
@@ -757,7 +1042,7 @@ void drawAnalogArcSegment(const AnalogDrawTarget &target,
   lv_draw_arc_dsc_init(&descriptor);
   descriptor.color = color;
   descriptor.width = width;
-  descriptor.opa = LV_OPA_COVER;
+  descriptor.opa = opacity;
   descriptor.rounded = true;
   const uint16_t startAngle = lvglAngle(startAngleDegrees);
   const uint16_t endAngle = lvglAngle(endAngleDegrees);
@@ -774,10 +1059,10 @@ void drawAnalogRadialLine(const AnalogDrawTarget &target,
                           const lv_point_t &center, float angleDegrees,
                           float innerRadius, float outerRadius,
                           lv_color_t color, lv_coord_t width,
-                          lv_opa_t opacity = LV_OPA_COVER) {
+                          lv_opa_t opacity = LV_OPA_COVER, bool castShadow = true) {
   const lv_point_t from = analogPoint(center, angleDegrees, innerRadius);
   const lv_point_t to = analogPoint(center, angleDegrees, outerRadius);
-  drawAnalogLine(target, from, to, color, width, opacity);
+  drawAnalogLine(target, from, to, color, width, opacity, castShadow);
 }
 
 void drawAnalogHand(const AnalogDrawTarget &target, const lv_point_t &center,
@@ -814,16 +1099,26 @@ void drawAnalogHand(const AnalogDrawTarget &target, const lv_point_t &center,
     const lv_point_t rightTo =
         analogPoint(to, angleDegrees + 90.0f, sideOffset);
 
-    drawAnalogLine(target, leftFrom, leftTo, outlineColor, 4);
-    drawAnalogLine(target, rightFrom, rightTo, outlineColor, 4);
+    // Draw the complete shadow first, then the complete hand. A shadow must
+    // never land on an edge/core that has already been painted.
+    drawAnalogLineShadow(target, leftFrom, leftTo, 4);
+    drawAnalogLineShadow(target, rightFrom, rightTo, 4);
+    drawAnalogLineShadow(target, leftFrom, rightFrom, 4);
+    if (target.context && backgroundShadowOpacity()) {
+      const lv_point_t shadowTip = {static_cast<lv_coord_t>(to.x + backgroundShadowSize()), static_cast<lv_coord_t>(to.y + backgroundShadowSize())};
+      drawAnalogArcSegment(target, shadowTip, sideOffset, angleDegrees - 90.0f,
+                           angleDegrees + 90.0f, lv_color_black(), 4 + 2 * backgroundShadowSpread(), backgroundShadowOpacity());
+    }
+    drawAnalogLine(target, leftFrom, leftTo, outlineColor, 4, LV_OPA_COVER, false);
+    drawAnalogLine(target, rightFrom, rightTo, outlineColor, 4, LV_OPA_COVER, false);
     drawAnalogArcSegment(target, to, sideOffset, angleDegrees - 90.0f,
                          angleDegrees + 90.0f, outlineColor, 4);
-    drawAnalogLine(target, leftFrom, rightFrom, outlineColor, 4);
+    drawAnalogLine(target, leftFrom, rightFrom, outlineColor, 4, LV_OPA_COVER, false);
     return;
   }
   drawAnalogLine(target, from, to, outline, outlineWidth);
-  drawAnalogLine(target, from, to, edge, edgeWidth);
-  drawAnalogLine(target, from, to, core, coreWidth);
+  drawAnalogLine(target, from, to, edge, edgeWidth, LV_OPA_COVER, false);
+  drawAnalogLine(target, from, to, core, coreWidth, LV_OPA_COVER, false);
 }
 
 void renderAnalogDial(const AnalogDrawTarget &target,
@@ -836,12 +1131,14 @@ void renderAnalogDial(const AnalogDrawTarget &target,
       redNight ? lv_color_make(255, 112, 112) : COLOR_TEXT;
   const lv_color_t markerEdge = redNight ? COLOR_ERROR : analogTone(0.75f);
 
-  drawAnalogCircle(target, center, 239,
-                   redNight ? lv_color_make(10, 0, 0)
-                            : lv_color_make(0, 7, 16));
-  drawAnalogCircle(target, center, 216,
-                   redNight ? lv_color_make(15, 0, 0)
-                            : lv_color_make(0, 10, 20));
+  if (!backgroundVisible()) {
+    drawAnalogCircle(target, center, 239,
+                     redNight ? lv_color_make(10, 0, 0)
+                              : configuredColor(analogBackgroundColor == 0x000A14 ? 0x000710 : analogBackgroundColor));
+    drawAnalogCircle(target, center, 216,
+                     redNight ? lv_color_make(15, 0, 0)
+                              : configuredColor(analogBackgroundColor));
+  }
   drawAnalogArc(target, center, 239,
                 redNight ? lv_color_make(58, 14, 14)
                          : lv_color_make(17, 35, 52),
@@ -860,9 +1157,9 @@ void renderAnalogDial(const AnalogDrawTarget &target,
     drawAnalogRadialLine(target, center, angle, 206.0f, 232.0f,
                          lv_color_make(2, 15, 27), 15);
     drawAnalogRadialLine(target, center, angle, 206.0f, 232.0f,
-                         markerEdge, 11);
+                         markerEdge, 11, LV_OPA_COVER, false);
     drawAnalogRadialLine(target, center, angle, 207.0f, 231.0f,
-                         markerCore, 7);
+                         markerCore, 7, LV_OPA_COVER, false);
   }
 
   if (analogCardinalAccentsEnabled) {
@@ -878,6 +1175,7 @@ void renderAnalogDial(const AnalogDrawTarget &target,
     }
   }
 
+  if (analogClockOnly()) return;
   drawAnalogLine(target,
                  {static_cast<lv_coord_t>(center.x - 38),
                   static_cast<lv_coord_t>(center.y - 151)},
@@ -921,14 +1219,15 @@ void drawCachedAnalogDial(lv_draw_ctx_t *drawContext,
          runIndex < analogDialCache.rowOffsets[sourceY + 1]; ++runIndex) {
       const AnalogDialRun &run = analogDialCache.runs[runIndex];
       const uint16_t runEnd = runStart + run.length - 1;
-      if (runEnd >= wantedStart && runStart <= wantedEnd) {
+      if (run.opacity && runEnd >= wantedStart && runStart <= wantedEnd) {
         const uint16_t copyStart = max(runStart, wantedStart);
         const uint16_t copyEnd = min(runEnd, wantedEnd);
         lv_color_t *row = destination +
             (y - drawContext->buf_area->y1) * stride -
             drawContext->buf_area->x1;
         for (uint16_t x = copyStart; x <= copyEnd; ++x)
-          row[coordinates.x1 + x] = run.color;
+          row[coordinates.x1 + x] = run.opacity == LV_OPA_COVER ? run.color :
+              lv_color_mix(run.color, row[coordinates.x1 + x], run.opacity);
       }
       runStart = runEnd + 1;
       if (runStart > wantedEnd) break;
@@ -1011,70 +1310,67 @@ void clearAnalogDialCache() {
 }
 
 bool rebuildAnalogDialCache() {
-  constexpr size_t PIXEL_COUNT = 480U * 480U;
-  auto *pixels = static_cast<lv_color_t *>(heap_caps_malloc(
-      PIXEL_COUNT * sizeof(lv_color_t),
-      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (pixels == nullptr) {
-    clearAnalogDialCache();
-    return false;
-  }
-
-  lv_obj_t *canvas = lv_canvas_create(lv_layer_sys());
-  lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
-  lv_canvas_set_buffer(canvas, pixels, 480, 480, LV_IMG_CF_TRUE_COLOR);
-  lv_canvas_fill_bg(canvas, COLOR_BACKGROUND, LV_OPA_COVER);
-  renderAnalogDial({nullptr, canvas}, {ANALOG_CENTER_X, ANALOG_CENTER_Y});
-
-  uint32_t runCount = 0;
-  for (uint16_t y = 0; y < 480; ++y) {
-    const lv_color_t *row = pixels + static_cast<size_t>(y) * 480U;
-    ++runCount;
-    for (uint16_t x = 1; x < 480; ++x) {
-      if (row[x].full != row[x - 1].full) ++runCount;
+  if (!analogLayoutEnabled() || clockDashboardRadarVisible()) { clearAnalogDialCache(); return true; }
+  const uint32_t state[] = {analogToneColor, analogCardinalAccentColor,
+      (!backgroundVisible() && !redNightVisualEnabled()) ? analogBackgroundColor : 0U,
+      uint32_t(analogCardinalAccentsEnabled), uint32_t(redNightVisualEnabled()),
+      uint32_t(backgroundVisible()), uint32_t(analogClockOnly()), uint32_t(backgroundShadowOpacity()),
+      uint32_t(backgroundShadowSize()), uint32_t(backgroundShadowSpread())};
+  const uint32_t key = shadowHash(2166136261U, state, sizeof(state));
+  if (analogDialCache.runs && analogDialCache.key == key) return true;
+  clearAnalogDialCache();
+  // Rasterize in short RGBA strips: never allocate a full-screen scratch image.
+  constexpr size_t STRIP_HEIGHT = 16, PIXEL_BYTES = LV_IMG_PX_SIZE_ALPHA_BYTE;
+  constexpr size_t CACHE_LIMIT = 128U * 1024U;
+  auto *pixels = static_cast<uint8_t *>(heap_caps_malloc(480 * STRIP_HEIGHT * PIXEL_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!pixels) return false;
+  lv_obj_t *canvas = lv_canvas_create(nullptr);
+  if (!canvas) { heap_caps_free(pixels); return false; }
+  lv_canvas_set_buffer(canvas, pixels, 480, STRIP_HEIGHT, LV_IMG_CF_TRUE_COLOR_ALPHA);
+  const bool transparent = backgroundVisible();
+  auto raster = [&](int y) {
+    memset(pixels, 0, 480 * STRIP_HEIGHT * PIXEL_BYTES);
+    if (!transparent) lv_canvas_fill_bg(canvas, COLOR_BACKGROUND, LV_OPA_COVER);
+    renderAnalogDial({nullptr, canvas}, {ANALOG_CENTER_X, static_cast<lv_coord_t>(ANALOG_CENTER_Y-y)});
+  };
+  auto same = [&](size_t a, size_t b) {
+    return !memcmp(pixels + a * PIXEL_BYTES, pixels + b * PIXEL_BYTES, PIXEL_BYTES);
+  };
+  uint32_t count = 0;
+  for (int y = 0; y < 480; y += STRIP_HEIGHT) {
+    raster(y);
+    for (size_t row=0; row<STRIP_HEIGHT; ++row) {
+      ++count;
+      for (size_t x=1; x<480; ++x) if (!same(row*480+x,row*480+x-1)) ++count;
     }
   }
-
-  auto *newOffsets = static_cast<uint32_t *>(heap_caps_malloc(
-      481U * sizeof(uint32_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  auto *newRuns = static_cast<AnalogDialRun *>(heap_caps_malloc(
-      static_cast<size_t>(runCount) * sizeof(AnalogDialRun),
-      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (newOffsets == nullptr || newRuns == nullptr) {
-    if (newOffsets != nullptr) heap_caps_free(newOffsets);
-    if (newRuns != nullptr) heap_caps_free(newRuns);
-    lv_obj_del(canvas);
-    heap_caps_free(pixels);
-    clearAnalogDialCache();
-    return false;
+  const size_t offsetsBytes = 481 * sizeof(uint32_t);
+  uint32_t *offsets = nullptr; AnalogDialRun *runs = nullptr;
+  if (offsetsBytes + count * sizeof(AnalogDialRun) <= CACHE_LIMIT) {
+    offsets = static_cast<uint32_t *>(heap_caps_malloc(offsetsBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    runs = static_cast<AnalogDialRun *>(heap_caps_malloc(count * sizeof(AnalogDialRun), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   }
-
-  uint32_t runIndex = 0;
-  for (uint16_t y = 0; y < 480; ++y) {
-    newOffsets[y] = runIndex;
-    const lv_color_t *row = pixels + static_cast<size_t>(y) * 480U;
-    uint16_t runStart = 0;
-    for (uint16_t x = 1; x <= 480; ++x) {
-      if (x == 480 || row[x].full != row[runStart].full) {
-        newRuns[runIndex++] = {
-            static_cast<uint16_t>(x - runStart), row[runStart]};
-        runStart = x;
+  if (!offsets || !runs) {
+    heap_caps_free(offsets); heap_caps_free(runs); lv_obj_del(canvas); heap_caps_free(pixels); return false;
+  }
+  uint32_t index = 0;
+  for (int y=0; y<480; y+=STRIP_HEIGHT) {
+    raster(y);
+    for (size_t row=0; row<STRIP_HEIGHT; ++row) {
+      offsets[y+row] = index;
+      uint16_t start=0;
+      for (uint16_t x=1; x<=480; ++x) if (x==480 || !same(row*480+x,row*480+start)) {
+        const uint8_t *pixel = pixels + (row*480+start)*PIXEL_BYTES;
+        lv_color_t color; memcpy(&color, pixel, sizeof(color));
+        runs[index++] = {static_cast<uint16_t>(x-start), color, pixel[sizeof(lv_color_t)]};
+        start=x;
       }
     }
   }
-  newOffsets[480] = runIndex;
-
-  lv_obj_del(canvas);
-  heap_caps_free(pixels);
-  clearAnalogDialCache();
-  analogDialCache.rowOffsets = newOffsets;
-  analogDialCache.runs = newRuns;
-  analogDialCache.runCount = runIndex;
-  Serial.printf("[analog] Cache ciferniku: %lu behu, %lu B PSRAM\n",
-                static_cast<unsigned long>(runIndex),
-                static_cast<unsigned long>(
-                    481U * sizeof(uint32_t) +
-                    static_cast<size_t>(runIndex) * sizeof(AnalogDialRun)));
+  offsets[480] = index;
+  lv_obj_del(canvas); heap_caps_free(pixels);
+  analogDialCache.rowOffsets=offsets; analogDialCache.runs=runs;
+  analogDialCache.runCount=index; analogDialCache.key=key;
   return true;
 }
 
@@ -1153,7 +1449,8 @@ void invalidateAnalogHandArea(float angle, float rearLength,
   };
   const lv_point_t from = analogPoint(center, angle + 180.0f, rearLength);
   const lv_point_t to = analogPoint(center, angle, frontLength);
-  const lv_coord_t margin = width / 2 + 3;
+  const lv_coord_t margin = width / 2 + 3 +
+      (backgroundShadowOpacity() ? backgroundShadowSize() + backgroundShadowSpread() : 0);
   const float deltaX = static_cast<float>(to.x - from.x);
   const float deltaY = static_cast<float>(to.y - from.y);
   const bool splitAlongX = std::fabs(deltaX) >= std::fabs(deltaY);
@@ -1334,6 +1631,7 @@ void createAnalogLayout(lv_obj_t *content) {
   lv_obj_set_style_bg_color(analogMetricDivider, analogTone(), 0);
   lv_obj_set_style_bg_opa(analogMetricDivider, LV_OPA_80, 0);
   lv_obj_clear_flag(analogMetricDivider, LV_OBJ_FLAG_SCROLLABLE);
+  addForegroundShadow(analogMetricDivider);
   alignCenter(analogMetricDivider, 0, 120);
 
   lv_img_set_zoom(weatherImage, 256);
@@ -2192,6 +2490,11 @@ void renderTimeColon(unsigned long now, bool force = false) {
 }
 
 void applyDashboardColors() {
+  const lv_color_t dividerColor = redNightVisualEnabled() ? COLOR_ERROR : lv_color_hex(digitalDividerColor);
+  if (digitalAirArc) lv_obj_set_style_arc_color(digitalAirArc, dividerColor, LV_PART_MAIN);
+  for (lv_obj_t *divider : {digitalAirStem, digitalAirLeftLeg, digitalAirRightLeg,
+                            digitalMetricDivider, digitalBottomDivider})
+    if (divider) lv_obj_set_style_bg_color(divider, dividerColor, LV_PART_MAIN);
   displayNotificationSetRedNight(redNightVisualEnabled());
   const bool animationIsMonochrome =
       strncmp(weatherAnimationKey, "monochrome-", 11) == 0;
@@ -2893,6 +3196,8 @@ uint8_t clockDashboardWeatherIconStyle(uint8_t configuredStyle) {
              : configuredStyle;
 }
 
+void updateClockOnlyPresentation();
+
 void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
                         uint8_t nightBrightness, bool automaticDayNight,
                         BrightnessPreviewCallback brightnessPreview,
@@ -2902,6 +3207,7 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
                         SettingsActionCallback firmwareInstall,
                         RadarVisibilityCallback radarVisibility,
                         RadarRangeCallback radarRange) {
+  clockBackgroundBegin();
   savedDayBrightness = constrain(dayBrightness, 1, 100);
   savedNightBrightness = constrain(nightBrightness, 1, 100);
   automaticDayNightEnabled = automaticDayNight;
@@ -2925,6 +3231,8 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
   lv_obj_clear_flag(clockPage, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_bg_color(clockPage, COLOR_BACKGROUND, 0);
   lv_obj_set_style_bg_opa(clockPage, LV_OPA_COVER, 0);
+  lv_obj_add_event_cb(clockPage, drawClockBackground, LV_EVENT_DRAW_MAIN, nullptr);
+  lv_obj_add_event_cb(clockPage, openSettingsEvent, LV_EVENT_LONG_PRESSED, nullptr);
   makeSecondRing(clockPage);
 
   dashboardContent = lv_obj_create(clockPage);
@@ -3050,6 +3358,14 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
   alignConnectionStatusIcons();
 
   createAnalogLayout(content);
+  for (lv_obj_t *divider : {digitalAirArc, digitalAirStem, digitalAirLeftLeg,
+                            digitalAirRightLeg, digitalMetricDivider, digitalBottomDivider})
+    addForegroundShadow(divider);
+  for (uint32_t i = 0; i < lv_obj_get_child_cnt(content); ++i) {
+    lv_obj_t *child = lv_obj_get_child(content, i);
+    if (lv_obj_check_type(child, &lv_label_class) || lv_obj_has_class(child, &lv_img_class))
+      addForegroundShadow(child);
+  }
   if (activeClockStyle == CLOCK_STYLE_RETRO_LCD) {
     retroLcdEnable(content, true);
     retroLcdRaise();
@@ -3064,6 +3380,7 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
                       nullptr);
   createRadarPage(screen);
   createSettingsPage(screen);
+  updateClockOnlyPresentation();
 
   firmwareUpdateOverlay = lv_obj_create(screen);
   lv_obj_set_size(firmwareUpdateOverlay, 480, 480);
@@ -3417,6 +3734,7 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
   const uint8_t style = constrain(
       appearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
       static_cast<uint8_t>(CLOCK_STYLE_FORECAST));
+  const uint32_t backgroundColor = appearance.analogBackgroundColor & 0xFFFFFF;
   const uint32_t tone = appearance.analogToneColor & 0xFFFFFF;
   const uint32_t handTone = appearance.analogHandToneColor & 0xFFFFFF;
   const uint32_t accentColor =
@@ -3431,8 +3749,8 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
       appearance.analogDateColor & 0xFFFFFF;
   const uint32_t weatherColor =
       appearance.monochromeWeatherIconColor & 0xFFFFFF;
-  if (activeClockStyle == style && analogToneColor == tone &&
-      analogHandToneColor == handTone &&
+  if (activeClockStyle == style && digitalDividerColor == (appearance.digitalDividerColor & 0xFFFFFF) && analogToneColor == tone &&
+      analogHandToneColor == handTone && analogBackgroundColor == backgroundColor &&
       analogCardinalAccentColor == accentColor &&
       analogCardinalAccentsEnabled == accentsEnabled &&
       analogOutlineHandsEnabled == outlineHandsEnabled &&
@@ -3448,6 +3766,7 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
   const bool valueLayerChanged =
       analogValuesAboveHandsEnabled != valuesAboveHandsEnabled;
   const bool dialAppearanceChanged = analogToneColor != tone ||
+      (analogBackgroundColor != backgroundColor && !backgroundVisible() && !redNightVisualEnabled()) ||
                                      analogCardinalAccentColor != accentColor ||
                                      analogCardinalAccentsEnabled !=
                                          accentsEnabled;
@@ -3457,6 +3776,8 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
     if (style == CLOCK_STYLE_FORECAST) lv_obj_add_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_clear_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
   }
+  digitalDividerColor = appearance.digitalDividerColor & 0xFFFFFF;
+  analogBackgroundColor = backgroundColor;
   analogToneColor = tone;
   analogHandToneColor = handTone;
   analogCardinalAccentColor = accentColor;
@@ -3742,8 +4063,76 @@ void clockDashboardSetWeatherAnimation(const uint8_t *gifData, size_t size,
   clockDashboardUpdate(currentValues);
 }
 
+void updateClockOnlyPresentation() {
+  if (!dashboardContent || !analogDialLayer || !analogHandsLayer) return;
+  const bool only = analogClockOnly();
+  const bool detached = lv_obj_get_parent(analogDialLayer) == clockPage;
+  if (only != detached) {
+    lv_obj_set_parent(analogDialLayer, only ? clockPage : dashboardContent);
+    lv_obj_set_parent(analogHandsLayer, only ? clockPage : dashboardContent);
+    if (!only) {
+      lv_obj_move_background(analogDialLayer);
+      updateAnalogValueLayerOrder();
+      if (retroLcdEnabled()) retroLcdRaise();
+      // Settings cover the page with an overlay; the restored content must
+      // already be visible underneath when that overlay is later closed.
+      if (!radarVisible && activeClockStyle != CLOCK_STYLE_FORECAST)
+        lv_obj_clear_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
+      if (analogLayoutEnabled() && !retroLcdEnabled()) {
+        lv_obj_clear_flag(analogDialLayer, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(analogHandsLayer, LV_OBJ_FLAG_HIDDEN);
+      }
+      if (animatedWeatherIconsEnabled) {
+        if (leftWeatherDecoderKey[0]) lv_timer_resume(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
+        if (rightWeatherDecoderKey[0]) lv_timer_resume(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
+      }
+      clockDashboardUpdate(currentValues);
+    }
+    releaseShadowCache();
+    lv_obj_invalidate(clockPage);
+  }
+  if (only) {
+    // Hide the whole information layer: incoming values do not invalidate pixels.
+    lv_obj_add_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
+    for (lv_obj_t *layer : {analogDialLayer, analogHandsLayer}) {
+      if (radarVisible || settingsVisible) lv_obj_add_flag(layer, LV_OBJ_FLAG_HIDDEN);
+      else lv_obj_clear_flag(layer, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_timer_pause(reinterpret_cast<lv_gif_t *>(weatherAnimation)->timer);
+    lv_timer_pause(reinterpret_cast<lv_gif_t *>(roomWeatherAnimation)->timer);
+  }
+}
+
 void clockDashboardLoop() {
   if (firmwareUpdateActive) return;
+  clockBackgroundLoop();
+  updateClockOnlyPresentation();
+  const bool backgroundWanted = !redNightVisualEnabled() &&
+      (activeClockStyle == CLOCK_STYLE_ANALOG || activeClockStyle == CLOCK_STYLE_DIGITAL) &&
+      !clockDashboardRadarVisible();
+  const auto &bgOptions = clockBackgroundActiveOptions();
+  if (clockBackgroundPixels() && (!backgroundWanted || !bgOptions.enabled || !bgOptions.opacity))
+    lv_img_cache_invalidate_src(&backgroundImage);
+  clockBackgroundSetResident(backgroundWanted);
+  if (!backgroundShadowOpacity() || !backgroundShadowSpread()) releaseShadowCache();
+  if ((!analogLayoutEnabled() || clockDashboardRadarVisible()) && analogDialCache.runs) clearAnalogDialCache();
+  static uint32_t previousBackgroundRevision = 0;
+  static bool previousBackgroundVisible = false;
+  static bool previousRadarVisible = false;
+  if (previousBackgroundRevision != clockBackgroundRevision() ||
+      previousBackgroundVisible != backgroundVisible() ||
+      previousRadarVisible != clockDashboardRadarVisible()) {
+    lv_img_cache_invalidate_src(&backgroundImage);
+    previousBackgroundRevision = clockBackgroundRevision();
+    previousBackgroundVisible = backgroundVisible();
+    previousRadarVisible = clockDashboardRadarVisible();
+    if (dashboardContent) {
+      for (uint32_t i = 0; i < lv_obj_get_child_cnt(dashboardContent); ++i)
+        lv_obj_refresh_ext_draw_size(lv_obj_get_child(dashboardContent, i));
+    }
+    if (analogLayoutEnabled()) rebuildAnalogDialCache();
+    if (clockPage) lv_obj_invalidate(clockPage);
+  }
   forecastDialUpdate(redNightVisualEnabled());
   preparePageSlide();
   if (retroLcdEnabled()) {
@@ -4204,3 +4593,8 @@ void clockDashboardSetSunnyTest(bool enabled) {
   clockDashboardUpdate(currentValues);
 }
 bool clockDashboardSunnyTest() { return sunnyAnimationTest; }
+
+size_t clockDashboardShadowCacheBytes() { return shadowCacheBytes; }
+size_t clockDashboardDialCacheBytes() {
+  return analogDialCache.runs ? 481U*sizeof(uint32_t) + analogDialCache.runCount*sizeof(AnalogDialRun) : 0;
+}

@@ -96,6 +96,7 @@ enum ClockStyle : uint8_t {
 };
 
 struct ClockAppearanceConfig {
+  uint32_t digitalDividerColor = 0x2F2F2F;
   bool use12HourFormat = false;
   uint8_t retroMetricADigits = 3;
   uint8_t retroMetricBDigits = 4;
@@ -114,6 +115,7 @@ struct ClockAppearanceConfig {
   bool animatedScreenTransitions = true;
   uint8_t style = CLOCK_STYLE_DIGITAL;
   uint32_t analogToneColor = 0x00D6FF;
+  uint32_t analogBackgroundColor = 0x000A14;
   uint32_t analogHandToneColor = 0x00D6FF;
   uint32_t analogCardinalAccentColor = 0xFFAB00;
   bool analogCardinalAccentsEnabled = true;

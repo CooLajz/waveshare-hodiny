@@ -43,6 +43,9 @@ const Key keys[] = {
     {"save-state", "receipt", Text, 33},
     {"clock-look", "retroFixedDay", Byte, 1},
     {"clock-look", "retroDateFmt", Byte, 1},
+    {"clock-look", "digitalDivider", UInt, 4},
+    {"clock-bg", "options", Blob, 16},
+    {"clock-look", "analog-bg", UInt, 4},
 };
 constexpr size_t KEY_COUNT = sizeof(keys) / sizeof(keys[0]);
 struct Image {

@@ -5,6 +5,14 @@
 struct BackupJob {
   std::atomic<bool> done{false};
   bool importing = false;
+  bool streaming = false;
+  bool streamComplete = false;
+  size_t imageBytes = 0;
+  size_t transferred = 0;
+  uint32_t imageChecksum = 0;
+  char imageHeader[57] = {};
+  BackupStream stream;
+  uint8_t blocks[8192] = {};
   bool cryptoOk = false;
   bool finished = false;
   bool success = false;
@@ -29,6 +37,8 @@ void backupWorker(void *argument) {
                       job->plain, sizeof(job->plain), job->plainLength)
       : backupEncrypt(job->plain, job->plainLength, job->password, job->metadata,
                       job->file, sizeof(job->file));
+  if (job->cryptoOk && job->streaming)
+    job->cryptoOk = backupStreamStart(job->stream, job->importing, job->password, job->file, job->imageHeader);
   mbedtls_platform_zeroize(job->password, sizeof(job->password));
   if (!job->importing) mbedtls_platform_zeroize(job->plain, sizeof(job->plain));
   job->done.store(true, std::memory_order_release);
@@ -37,6 +47,7 @@ void backupWorker(void *argument) {
 
 void clearBackupJob() {
   if (!backupJob || !backupJob->done.load(std::memory_order_acquire)) return;
+  if (backupJob->streaming && backupJob->importing) clockBackgroundRestoreEnd();
   backupJob->~BackupJob();
   mbedtls_platform_zeroize(backupJob, sizeof(BackupJob));
   free(backupJob);
@@ -47,7 +58,11 @@ bool prepareBackupSnapshot(BackupJob &job) {
   if (!settingsTransactionBegin()) return false;
   ClockConfig &config = configBuffer;
   ClockAppearanceConfig appearance;
-  bool ok = clockConfigLoad(config) && clockConfigValidate(config) &&
+  SettingsPreferences background;
+  const auto &options = clockBackgroundOptions();
+  job.imageBytes = options.present ? CLOCK_BACKGROUND_BYTES : 0;
+  bool ok = background.begin("clock-bg") &&
+      background.putBytes("options", &options, sizeof(options)) == sizeof(options) && clockConfigLoad(config) && clockConfigValidate(config) &&
       clockAppearanceLoad(appearance, config.leftWeatherIconColor, config.dateFormat, config.dateColor) &&
       clockAppearanceSave(appearance) && clockConfigSave(config) && persistWebMode(selectedWebMode) &&
       settingsExport(job.plain, sizeof(job.plain), job.plainLength);
@@ -98,6 +113,16 @@ bool validateAndRestoreBackup(BackupJob &job) {
   if (!valid) {
     settingsTransactionAbort(); job.error = F("Záloha obsahuje neplatné nastavení. Nic nebylo změněno."); return false;
   }
+  SettingsPreferences background;
+  ClockBackgroundOptions restoredBackground;
+  background.begin("clock-bg", true);
+  const size_t backgroundSize = background.getBytesLength("options");
+  const bool hasBackground = backgroundSize == sizeof(restoredBackground) &&
+      background.getBytes("options", &restoredBackground, sizeof(restoredBackground)) == sizeof(restoredBackground);
+  if ((!hasBackground && backgroundSize) || (job.streaming && !hasBackground) ||
+      !clockBackgroundStageRestore(restoredBackground, job.streaming ? job.imageBytes : 0)) {
+    settingsTransactionAbort(); job.error = F("Obrázek v záloze není platný. Nic nebylo změněno."); return false;
+  }
   // Store the migrated record, all defaults and receipt in the SAME commit.
   const bool staged = clockConfigSave(config) && clockAppearanceSave(appearance) &&
       receipt.begin("save-state") && receipt.putString("receipt", job.id) == strlen(job.id);
@@ -117,6 +142,7 @@ bool validateAndRestoreBackup(BackupJob &job) {
 
 void finishBackupJob() {
   if (!backupJob || backupJob->finished || !backupJob->done.load(std::memory_order_acquire)) return;
+  if (backupJob->streaming && backupJob->cryptoOk && !backupJob->streamComplete) return;
   backupJob->success = backupJob->cryptoOk;
   if (!backupJob->cryptoOk) {
     backupJob->error = backupJob->importing
@@ -126,6 +152,7 @@ void finishBackupJob() {
   }
   mbedtls_platform_zeroize(backupJob->plain, sizeof(backupJob->plain));
   if (backupJob->importing) mbedtls_platform_zeroize(backupJob->file, sizeof(backupJob->file));
+  if (backupJob->streaming && backupJob->importing && !backupJob->success) clockBackgroundRestoreEnd();
   backupJob->finished = true;
   backupJob->touchedAt = millis();
 }
@@ -136,6 +163,12 @@ bool backupBusy() {
 
 void handleBackupStart(bool importing) {
   if (!requireConfigurationAccess()) return;
+  if (!importing && server.arg("format") != "2") {
+    sendError(400, F("Pro úplnou zálohu obnov stránku nastavení.")); return;
+  }
+  if (firmwareUpdateServiceSnapshot().busy) {
+    sendError(409, F("Právě probíhá aktualizace firmware. Počkej na dokončení.")); return;
+  }
   const String id = server.arg("saveConfirmationId");
   if (!validSaveConfirmationId(id) || id.length() != 32) {
     sendError(400, F("Identifikátor uložení není platný.")); return;
@@ -153,6 +186,7 @@ void handleBackupStart(bool importing) {
   if (!memory) { sendError(503, F("Pro zálohu není dostatek paměti.")); return; }
   backupJob = new (memory) BackupJob;
   backupJob->importing = importing;
+  backupJob->streaming = server.arg("format") == "2";
   backupJob->touchedAt = millis();
   clockConfigCopy(backupJob->id, sizeof(backupJob->id), id);
   clockConfigCopy(backupJob->password, sizeof(backupJob->password), password);
@@ -162,6 +196,14 @@ void handleBackupStart(bool importing) {
     String file = server.arg("backup");
     ready = file.length() > 0 && file.length() < sizeof(backupJob->file);
     if (ready) { memcpy(backupJob->file, file.c_str(), file.length() + 1); backupJob->fileLength = file.length(); }
+    if (ready && backupJob->streaming) {
+      const String header = server.arg("imageHeader"), bytes = server.arg("imageBytes");
+      ready = header.length() == 56 && (bytes == "0" || bytes == String(CLOCK_BACKGROUND_BYTES));
+      if (ready) {
+        clockConfigCopy(backupJob->imageHeader, sizeof(backupJob->imageHeader), header);
+        backupJob->imageBytes = bytes == "0" ? 0 : CLOCK_BACKGROUND_BYTES;
+      }
+    }
   } else ready = prepareBackupSnapshot(*backupJob);
   if (!ready || xTaskCreatePinnedToCoreWithCaps(backupWorker, "backup-crypto", 8192, backupJob, 1,
                                                nullptr, 0, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) != pdPASS) {
@@ -186,10 +228,88 @@ void handleBackupStatus() {
   }
   if (!current) { sendError(404, F("Operace nebyla nalezena. Výsledek obnovy zatím není potvrzen.")); return; }
   backupJob->touchedAt = millis();
+  if (backupJob->streaming && backupJob->done.load(std::memory_order_acquire) &&
+      backupJob->cryptoOk && !backupJob->streamComplete) {
+    if (!requireConfigurationAccess()) return;
+    if (backupJob->importing) { sendJson(200, F("{\"ok\":true,\"state\":\"upload\"}")); return; }
+    String result = F("{\"ok\":true,\"state\":\"ready\",\"file\":\"");
+    result += jsonEscape(backupJob->file); result += F("\",\"imageHeader\":\""); result += backupJob->imageHeader;
+    result += F("\",\"imageBytes\":"); result += backupJob->imageBytes; result += '}';
+    sendJson(200, result); return;
+  }
   if (!backupJob->finished) { sendJson(200, F("{\"ok\":true,\"state\":\"processing\"}")); return; }
   if (!backupJob->success) { sendError(400, backupJob->error); return; }
   // Export result includes only encrypted bytes, but still requires normal access.
   if (!requireConfigurationAccess()) return;
   String result = F("{\"ok\":true,\"state\":\"ready\",\"file\":\"");
   result += jsonEscape(backupJob->file); result += F("\"}"); sendJson(200, result);
+}
+
+void handleBackupPart() {
+  if (!requireConfigurationAccess()) return;
+  auto *job = backupJob;
+  if (!job || server.arg("id") != job->id || !job->streaming || job->streamComplete ||
+      !job->done.load(std::memory_order_acquire) || !job->cryptoOk ||
+      server.arg("offset") != String(job->transferred)) {
+    sendError(409, F("Přenos zálohy není připravený nebo blok nenavazuje.")); return;
+  }
+  job->touchedAt = millis();
+  const size_t count = std::min(size_t(4096), job->imageBytes - job->transferred);
+  const bool last = job->transferred + count == job->imageBytes;
+  uint8_t *input = job->blocks, *output = job->blocks + 4096;
+  bool ok = true;
+  uint8_t expectedTag[16] = {}, tag[16] = {};
+  if (job->importing) {
+    const String data = server.arg("data");
+    ok = data.length() == (count + (last ? 16 : 0)) * 2;
+    for (size_t i = 0; ok && i < data.length(); i += 2) {
+      auto digit = [](char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1; };
+      const int a = digit(data[i]), b = digit(data[i + 1]);
+      if (a < 0 || b < 0) { ok = false; break; }
+      if (i / 2 < count) input[i / 2] = (a << 4) | b;
+      else expectedTag[i / 2 - count] = (a << 4) | b;
+    }
+  } else if (count) ok = clockBackgroundBackupRead(job->transferred, input, count);
+  if (ok && !job->importing && count) job->imageChecksum = esp_rom_crc32_le(job->imageChecksum, input, count);
+  if (ok && last && !job->importing && job->imageBytes) ok = job->imageChecksum == clockBackgroundOptions().checksum;
+  if (ok && count) ok = backupStreamUpdate(job->stream, input, count, output);
+  if (ok && job->importing && count) ok = clockBackgroundRestoreWrite(job->transferred, output, count);
+  if (ok && last) {
+    ok = backupStreamFinish(job->stream, tag);
+    if (job->importing) {
+      uint8_t difference = 0;
+      for (size_t i = 0; i < 16; ++i) difference |= tag[i] ^ expectedTag[i];
+      ok = ok && difference == 0;
+    }
+  }
+  if (!ok) {
+    job->cryptoOk = false; job->streamComplete = true; finishBackupJob();
+    sendError(400, F("Přenos nebo ověření zálohy selhalo. Nic nebylo změněno.")); return;
+  }
+  job->transferred += count;
+  String result = F("{\"ok\":true,\"data\":\"");
+  if (!job->importing) {
+    static const char hex[] = "0123456789abcdef";
+    result.reserve((count + 16) * 2 + 64);
+    for (size_t i = 0; i < count + (last ? 16 : 0); ++i) {
+      uint8_t byte = i < count ? output[i] : tag[i - count];
+      result += hex[byte >> 4]; result += hex[byte & 15];
+    }
+  }
+  mbedtls_platform_zeroize(job->blocks, sizeof(job->blocks));
+  result += F("\"}");
+  if (last) { job->streamComplete = true; finishBackupJob(); }
+  if (job->finished && !job->success) { sendError(400, job->error); return; }
+  sendJson(200, result);
+}
+void handleBackupCancel() {
+  if (!requireConfigurationAccess()) return;
+  if (backupRestartAt) { sendError(409, F("Obnova je již uložená.")); return; }
+  if (backupJob && server.arg("id") == backupJob->id) {
+    if (!backupJob->done.load(std::memory_order_acquire)) {
+      sendError(409, F("Zálohování nebo obnova právě probíhá.")); return;
+    }
+    clearBackupJob();
+  }
+  sendJson(200, F("{\"ok\":true}"));
 }

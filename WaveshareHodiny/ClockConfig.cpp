@@ -305,11 +305,13 @@ bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
   appearance.retroDateFormat = preferences.getUChar("retroDateFmt", 0);
   if (appearance.retroDateFormat > 13) appearance.retroDateFormat = 0;
   appearance.retroGhostOpacity = constrain(preferences.getUChar("retroGhost", 5), 0, 50);
+  appearance.digitalDividerColor = preferences.getUInt("digitalDivider", 0x2F2F2F) & 0xFFFFFF;
   appearance.retroBackgroundColor = preferences.getUInt("retroBg", 0xB7C1A5) & 0xFFFFFF;
   appearance.retroForegroundColor = preferences.getUInt("retroFg", 0x20261C) & 0xFFFFFF;
   appearance.retroMetricADigits = constrain(preferences.getUChar("retroDigitsA", 3), 1, 4);
   appearance.retroMetricBDigits = constrain(preferences.getUChar("retroDigitsB", 4), 1, 4);
   appearance.animatedScreenTransitions = preferences.getBool("screenSlide", true);
+  appearance.analogBackgroundColor = preferences.getUInt("analog-bg", 0x000A14) & 0xFFFFFF;
   appearance.analogToneColor =
       preferences.getUInt(APPEARANCE_TONE_KEY, 0x00D6FF) & 0xFFFFFF;
   appearance.analogHandToneColor =
@@ -377,12 +379,14 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
   const bool retroWeekdaySaved = preferences.putBool("retroFixedDay", appearance.retroFixedWeekday) == sizeof(bool);
   const bool retroWeatherSaved = preferences.putBool("retroWxRaster", appearance.retroWeatherRaster) == sizeof(bool);
   const bool retroGhostSaved = preferences.putUChar("retroGhost", constrain(appearance.retroGhostOpacity, 0, 50)) == sizeof(uint8_t);
+  const bool digitalDividerSaved = preferences.putUInt("digitalDivider", appearance.digitalDividerColor & 0xFFFFFF) == sizeof(uint32_t);
   const bool retroColorsSaved = preferences.putUInt("retroBg", appearance.retroBackgroundColor & 0xFFFFFF) == sizeof(uint32_t) &&
       preferences.putUInt("retroFg", appearance.retroForegroundColor & 0xFFFFFF) == sizeof(uint32_t);
   const bool digitsSavedA = preferences.putUChar("retroDigitsA", constrain(appearance.retroMetricADigits, 1, 4)) == sizeof(uint8_t);
   const bool digitsSavedB = preferences.putUChar("retroDigitsB", constrain(appearance.retroMetricBDigits, 1, 4)) == sizeof(uint8_t);
   const bool transitionSaved = preferences.putBool(
       "screenSlide", appearance.animatedScreenTransitions) == sizeof(bool);
+  const bool backgroundSaved = preferences.putUInt("analog-bg", appearance.analogBackgroundColor & 0xFFFFFF) == sizeof(uint32_t);
   const bool toneSaved =
       preferences.putUInt(APPEARANCE_TONE_KEY,
                           appearance.analogToneColor & 0xFFFFFF) ==
@@ -427,7 +431,7 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
                           appearance.monochromeWeatherIconColor & 0xFFFFFF) ==
       sizeof(uint32_t);
   preferences.end();
-  const bool ok = retroDateSaved && retroWeekdaySaved && timeFormatSaved && retroWeatherSaved && retroProgressSaved && retroSourcesSaved && retroGhostSaved && styleSaved && toneSaved && handToneSaved && accentColorSaved &&
+  const bool ok = backgroundSaved && digitalDividerSaved && retroDateSaved && retroWeekdaySaved && timeFormatSaved && retroWeatherSaved && retroProgressSaved && retroSourcesSaved && retroGhostSaved && styleSaved && toneSaved && handToneSaved && accentColorSaved &&
          accentsSaved && outlineHandsSaved && monoValuesSaved &&
          valuesAboveSaved && dateFormatSaved && dateColorSaved &&
          weatherColorSaved && transitionSaved && digitsSavedA && digitsSavedB && retroColorsSaved;

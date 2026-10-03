@@ -40,6 +40,11 @@ saveMode="lost";await page.locator('#headerSaveButton').click();await page.waitF
 // A mismatched receipt must never report success or discard the edited value.
 saveMode="wrong";await page.locator('#timeFont').selectOption('doto');await page.locator('#headerSaveButton').click();await page.waitForFunction(()=>!settingsSaving);assert(await page.locator('#saveFeedback').evaluate(el=>el.classList.contains('error')));assert.equal(await page.locator('#timeFont').inputValue(),'doto');
 saveMode="ok";await page.locator('#headerSaveButton').click();await page.waitForFunction(()=>!settingsSaving);
+await page.locator('input[name="clockStyle"][value="analog"]').check();
+assert(await page.locator('#analogBackgroundColor').isVisible());assert.equal(await page.locator('#analogBackgroundColor').inputValue(),'#000a14');
+await page.locator('#analogBackgroundColor').fill('#000000');await page.locator('#analogBackgroundColor').dispatchEvent('change');await page.evaluate(()=>flushPreviews());
+assert.equal(requests.filter(r=>r.url==='/api/clock-appearance/preview').at(-1).data.analogBackgroundColor,'#000000');
+await page.evaluate(()=>saveConfiguration());assert.equal(config.analogBackgroundColor,'#000000');assert.equal(await page.locator('#analogBackgroundColor').inputValue(),'#000000');
 // Style changes share the same queue and cannot reset newer local selections.
 await page.locator('input[name="clockStyle"][value="analog"]').check();await page.waitForTimeout(150);await page.locator('input[name="clockStyle"][value="digital"]').check();await page.waitForTimeout(600);assert.equal(await page.locator('input[name="clockStyle"]:checked').inputValue(),'digital');assert.equal(maxActive,1);
 await page.locator('#headerSaveButton').click();await page.waitForFunction(()=>!settingsSaving);

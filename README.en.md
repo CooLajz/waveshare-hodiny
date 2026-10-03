@@ -268,6 +268,49 @@ or year–month–day, with dots, dashes, or slashes depending on the layout. Ea
 layout offers a variant without leading zeros that retains blank positions and
 inactive segments. The default is DD.MM.YYYY.
 
+### Custom background image (development build)
+
+Open **Display → Background image** to choose a JPG, PNG or WebP (up to
+20 MB), drag it and zoom inside the circular preview. The browser prepares
+an exact 480 × 480 crop. The editor shows only the image at full visibility,
+without a clock face or shadows. Check visibility and shadows directly on the clock. **Upload background to clock**
+stores the image and its settings separately from the main settings form.
+Adjust image visibility and text, icon and hand shadow strength; 0% disables
+shadows. Analog and digital faces share the same image.
+The image resides in PSRAM only while needed; disabling it, entering red
+night mode or showing radar releases its memory. Shadow caching is capped
+at 64 KiB and the static analog dial at 128 KiB. Uploads stream small blocks
+to flash without a second PSRAM image. Main settings save commits clock and
+background settings together; saving unchanged background settings skips writes.
+
+The **Clock only** option in analog background settings hides icons, date, dividers and all readings. Data collection continues while hidden weather animations are paused. Disabling the background restores the normal view. The option is included in settings and backups.
+
+Change the analog face background under **Clock appearance → Background color**. It applies without an image; the default `#000A14` preserves the original bluish look. Red night mode retains its own background.
+
+Red night mode hides the image automatically and restores it afterwards.
+**Enable background** hides it without deleting it. The image survives restart,
+and encrypted backups include both the image and background settings, even when
+the background is disabled. Restore uses the finished crop stored on the clock.
+Uploads keep the previous image until the new file has been verified. During
+the transfer and flash write, the backlight turns off and the panel sleeps.
+Completion or cancellation wakes the panel, redraws both framebuffers and
+resynchronizes it before restoring the backlight.
+
+Shadow distance controls the offset from 0–5 px (default 2 px).
+Shadow spread expands the outline by 0–5 px in every direction, independently of strength and distance.
+Released background sliders and the enable switch preview the uploaded image on
+the clock without flash writes or blanking. The preview lasts until restart;
+**Upload background to clock** persists it. The main **Save settings** button also
+persists background visibility and shadows without uploading a new crop. A new crop requires uploading. A circular mask
+also clips the background during page transitions.
+
+The digital face has its own **Arc and divider color** under clock appearance,
+with an on-device preview. The arc and dividers use the shared background shadow
+strength; 0% disables their shadows. The color is saved with appearance settings.
+
+The switch beside the background heading saves its state immediately and hides
+the editor when disabled. Uploads show a progress dialog explaining the temporary black display.
+
 ### Hourly weather forecast
 
 The forecast is a separate page, not a fourth clock face. Swipe horizontally
@@ -380,10 +423,13 @@ Open-Meteo and TMEP.cz runtime state. Radar details include the selected city, G
 range, prepared-frame count and time span, last successful refresh, next check,
 HTTP status and the file currently being processed. Encrypted `.whbackup` files contain the stored clock settings, appearance,
 Home Assistant URL/token, TMEP credentials, web password verification record
-and control API secret. Filenames include the source firmware version and export
+and control API secret, plus the stored background crop and its settings, even
+when disabled. Image transfers show percentage progress; during image restore
+the display temporarily turns off and returns after completion. Filenames include the source firmware version and export
 date/time. **Wi-Fi is excluded and remains unchanged on restore.**
 Export requires a confirmed password of 8–128 characters, at most 256 UTF-8
-bytes. AES-256-GCM encryption/decryption runs in firmware on a worker task.
+bytes. AES-256-GCM encryption/decryption runs in firmware; password derivation
+uses a worker task and image data is processed in small blocks.
 The password is not persisted; without it the backup cannot be restored.
 Unsaved form changes and temporary previews are not exported. The password
 still travels over local HTTP; encryption protects the file, not that transport.
@@ -721,7 +767,8 @@ protocol. Use the repository script with the currently verified serial port:
 
 - Public releases contain no Wi-Fi credentials.
 - Home Assistant tokens are stored locally and are not returned by the API.
-- Backups omit tokens, passwords and the control API secret.
+- Encrypted backups include application credentials and the background image;
+  Wi-Fi credentials are excluded.
 - OTA uses HTTPS and verifies the application image before activation.
 - The configuration web server is intended for a trusted local network.
 - Do not publish control URLs, credentials, `.env` files or generated secret

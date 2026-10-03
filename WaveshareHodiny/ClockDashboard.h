@@ -92,3 +92,6 @@ void clockDashboardSetRadarSnapshot(const uint16_t *pixels,
 
 void clockDashboardSetSunnyTest(bool enabled);
 bool clockDashboardSunnyTest();
+
+size_t clockDashboardShadowCacheBytes();
+size_t clockDashboardDialCacheBytes();

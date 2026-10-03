@@ -1,4 +1,7 @@
 #include "ConfigurationWeb.h"
+#include "ClockBackground.h"
+#include "ClockDashboard.h"
+#include "DisplayDriver.h"
 #include "ConfigPsramBuffer.h"
 #include "DisplayNotification.h"
 #include "BuzzerService.h"
@@ -19,6 +22,7 @@
 #include <time.h>
 #include <esp_heap_caps.h>
 #include <esp_system.h>
+#include <esp_rom_crc.h>
 #include <mbedtls/md.h>
 #include <mbedtls/pkcs5.h>
 
@@ -154,7 +158,9 @@ class BoundedWebServer : public WebServer {
       while (equalsAt < fieldEnd && postBody_[equalsAt] != '=') ++equalsAt;
       if (equalsAt == fieldEnd || equalsAt - fieldStart > MAX_POST_KEY_BYTES ||
           fieldEnd - equalsAt - 1 > (equalsAt - fieldStart == 6 &&
-              memcmp(postBody_ + fieldStart, "backup", 6) == 0 ? 24000 : MAX_POST_VALUE_BYTES)) {
+              memcmp(postBody_ + fieldStart, "backup", 6) == 0 ? 24000 :
+              ((uri() == "/api/background/chunk" || uri() == "/api/backup/part") && equalsAt - fieldStart == 4 &&
+               memcmp(postBody_ + fieldStart, "data", 4) == 0 ? 16384 : MAX_POST_VALUE_BYTES))) {
         return false;
       }
       fieldStart = fieldEnd + 1;
@@ -862,6 +868,8 @@ bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
   if (currentAppearanceStateCallback != nullptr) {
     ClockAppearanceConfig saved, active;
     currentAppearanceStateCallback(saved, active);
+    appearance.digitalDividerColor = active.digitalDividerColor;
+    appearance.analogBackgroundColor = active.analogBackgroundColor;
     appearance.animatedScreenTransitions = active.animatedScreenTransitions;
     appearance.retroBackgroundColor = active.retroBackgroundColor;
     appearance.retroForegroundColor = active.retroForegroundColor;
@@ -949,6 +957,8 @@ bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
     if (value.length() != 1 || value[0] < '1' || value[0] > '4') return false;
     *digitFields[i] = value[0] - '0';
   }
+  if (server.hasArg("digitalDividerColor") &&
+      !parseHtmlColor(server.arg("digitalDividerColor"), appearance.digitalDividerColor)) return false;
   const String style = server.arg("clockStyle");
   if (style == "digital")
     appearance.style = CLOCK_STYLE_DIGITAL;
@@ -963,6 +973,8 @@ bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
   if (!parseHtmlColor(server.arg("analogToneColor"),
                       appearance.analogToneColor))
     return false;
+  if (server.hasArg("analogBackgroundColor") &&
+      !parseHtmlColor(server.arg("analogBackgroundColor"), appearance.analogBackgroundColor)) return false;
   if (server.hasArg("analogHandToneColor")) {
     if (!parseHtmlColor(server.arg("analogHandToneColor"),
                         appearance.analogHandToneColor))
@@ -1290,7 +1302,17 @@ bool requestOriginAllowed() {
 bool backupBusy();
 
 bool requireConfigurationAccess() {
-  if (server.method() == HTTP_POST && backupBusy()) {
+  if (server.method() == HTTP_POST && displayDriverStorageTransferActive() &&
+      !server.uri().startsWith("/api/background/") &&
+      server.uri() != "/api/backup/part" && server.uri() != "/api/backup/cancel") {
+    sendError(409, F("Právě se ukládá obrázek. Počkej na dokončení.")); return false;
+  }
+  if (server.method() == HTTP_POST && server.uri().startsWith("/api/background/") &&
+      firmwareUpdateServiceSnapshot().busy) {
+    sendError(409, F("Právě probíhá aktualizace firmware. Počkej na dokončení.")); return false;
+  }
+  if (server.method() == HTTP_POST && backupBusy() &&
+      server.uri() != "/api/backup/part" && server.uri() != "/api/backup/cancel") {
     sendError(409, F("Zálohování nebo obnova právě probíhá.")); return false;
   }
   if (!webActive) {
@@ -1516,12 +1538,20 @@ void handleGetConfig() {
                                                          : F("digital");
   result += F("\",\"analogToneColor\":\"");
   result += htmlColor(savedAppearance.analogToneColor);
+  result += F("\",\"digitalDividerColor\":\"");
+  result += htmlColor(savedAppearance.digitalDividerColor);
+  result += F("\",\"activeDigitalDividerColor\":\"");
+  result += htmlColor(activeAppearance.digitalDividerColor);
   result += F("\",\"activeAnalogToneColor\":\"");
   result += htmlColor(activeAppearance.analogToneColor);
   result += F("\",\"analogHandToneColor\":\"");
   result += htmlColor(savedAppearance.analogHandToneColor);
   result += F("\",\"activeAnalogHandToneColor\":\"");
   result += htmlColor(activeAppearance.analogHandToneColor);
+  result += F("\",\"analogBackgroundColor\":\"");
+  result += htmlColor(savedAppearance.analogBackgroundColor);
+  result += F("\",\"activeAnalogBackgroundColor\":\"");
+  result += htmlColor(activeAppearance.analogBackgroundColor);
   result += F("\",\"analogCardinalAccentColor\":\"");
   result += htmlColor(savedAppearance.analogCardinalAccentColor);
   result += F("\",\"activeAnalogCardinalAccentColor\":\"");
@@ -1816,6 +1846,28 @@ void handleDigitalAppearancePreview() {
   digitalPreviewActive = true;
   extendWebAvailability();
   sendJson(200, F("{\"ok\":true}"));
+}
+
+bool readBackgroundRequest(ClockBackgroundOptions &next, bool mainForm = false) {
+  next = clockBackgroundOptions();
+  const char *names[] = {"enabled", "opacity", "shadow", "shadowSize", "shadowSpread"};
+  const char *formNames[] = {"backgroundEnabled", "backgroundOpacity", "backgroundShadow", "backgroundShadowSize", "backgroundShadowSpread"};
+  uint8_t *values[] = {&next.enabled, &next.opacity, &next.shadow, &next.shadowSize, &next.shadowSpread};
+  const unsigned limits[] = {1, 100, 100, 5, 5};
+  for (size_t i=0; i<5; ++i) {
+    const String value = server.arg(mainForm ? formNames[i] : names[i]);
+    if (value.isEmpty() || value.length()>3) return false;
+    for (char c : value) if (c<'0' || c>'9') return false;
+    if (static_cast<unsigned>(value.toInt())>limits[i]) return false;
+    *values[i]=value.toInt();
+  }
+  const char *clockOnlyName = mainForm ? "backgroundClockOnly" : "clockOnly";
+  if (server.hasArg(clockOnlyName)) {
+    const String value = server.arg(clockOnlyName);
+    if (value != "0" && value != "1") return false;
+    next.clockOnly = value == "1";
+  }
+  return true;
 }
 
 void handleSaveConfig() {
@@ -2122,17 +2174,32 @@ void handleSaveConfig() {
     return;
   }
 
+  ClockBackgroundOptions background;
+  const bool backgroundSubmitted = server.hasArg("backgroundEnabled");
+  if (backgroundSubmitted && !readBackgroundRequest(background, true)) {
+    sendError(400, F("Neplatné nastavení pozadí.")); return;
+  }
   if (!clockConfigValidate(config) || !settingsTransactionBegin()) {
     sendError(500, F("Nastavení není platné nebo je úložiště zaneprázdněné.")); return;
   }
   SettingsPreferences receipt;
-  const bool saved = clockConfigSave(config) && clockAppearanceSave(appearance) &&
+  const bool backgroundChanged = backgroundSubmitted &&
+      memcmp(&background, &clockBackgroundOptions(), sizeof(background));
+  if (backgroundChanged && !displayDriverBeginStorageTransfer()) {
+    settingsTransactionAbort();
+    sendError(503, F("Úložiště je zaneprázdněné.")); return;
+  }
+  const bool saved = (!backgroundSubmitted || clockBackgroundStageOptions(background)) &&
+      clockConfigSave(config) && clockAppearanceSave(appearance) &&
       persistWebMode(requestedWebMode) && receipt.begin("save-state") &&
       receipt.putString("receipt", saveConfirmationId) == saveConfirmationId.length();
   if (!saved) settingsTransactionAbort();
   if (!saved || !settingsTransactionCommit()) {
+    if (backgroundChanged) clockBackgroundRestoreEnd();
     sendError(500, F("Nastavení se nepodařilo uložit. Původní nastavení zůstalo zachované.")); return;
   }
+  if (backgroundSubmitted) clockBackgroundAdoptOptions(background);
+  if (backgroundChanged) clockBackgroundRestoreEnd();
   digitalPreviewActive = false;
   lastSaveConfirmationId = saveConfirmationId;
   extendWebAvailability();
@@ -2399,12 +2466,20 @@ void handleClockAppearancePreview() {
   { char value[32]; snprintf(value, sizeof(value), "%.9g", static_cast<double>(active.retroProgressMax)); result += value; }
   result += F(",\"analogToneColor\":\"");
   result += htmlColor(saved.analogToneColor);
+  result += F("\",\"digitalDividerColor\":\"");
+  result += htmlColor(saved.digitalDividerColor);
+  result += F("\",\"activeDigitalDividerColor\":\"");
+  result += htmlColor(active.digitalDividerColor);
   result += F("\",\"activeAnalogToneColor\":\"");
   result += htmlColor(active.analogToneColor);
   result += F("\",\"analogHandToneColor\":\"");
   result += htmlColor(saved.analogHandToneColor);
   result += F("\",\"activeAnalogHandToneColor\":\"");
   result += htmlColor(active.analogHandToneColor);
+  result += F("\",\"analogBackgroundColor\":\"");
+  result += htmlColor(saved.analogBackgroundColor);
+  result += F("\",\"activeAnalogBackgroundColor\":\"");
+  result += htmlColor(active.analogBackgroundColor);
   result += F("\",\"analogCardinalAccentColor\":\"");
   result += htmlColor(saved.analogCardinalAccentColor);
   result += F("\",\"activeAnalogCardinalAccentColor\":\"");
@@ -2612,6 +2687,16 @@ void handleDiagnostics() {
   result += ESP.getCpuFreqMHz();
   result += F(",\"displayPixelClockHz\":");
   result += LCD_GetPixelClock();
+  result += F(",\"backgroundPixelBytes\":");
+  result += clockBackgroundPixels() ? CLOCK_BACKGROUND_BYTES : 0;
+  result += F(",\"shadowCacheBytes\":"); result += clockDashboardShadowCacheBytes();
+  result += F(",\"analogDialCacheBytes\":"); result += clockDashboardDialCacheBytes();
+  result += F(",\"displayStorageTransferActive\":");
+  result += displayDriverStorageTransferActive() ? F("true") : F("false");
+  result += F(",\"displaySleeping\":");
+  result += LCD_IsSleeping() ? F("true") : F("false");
+  result += F(",\"displayBacklightPercent\":");
+  result += LCD_GetBacklight();
   result += F(",\"resetReason\":");
   result += static_cast<int>(esp_reset_reason());
   result += F(",\"flashSize\":");
@@ -3015,6 +3100,81 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
   registerBoundedPost("/api/backup/export", []() { handleBackupStart(false); });
   registerBoundedPost("/api/backup/import", []() { handleBackupStart(true); });
   server.on("/api/backup/status", HTTP_GET, handleBackupStatus);
+  registerBoundedPost("/api/backup/part", handleBackupPart);
+  registerBoundedPost("/api/backup/cancel", handleBackupCancel);
+  server.on("/api/background", HTTP_GET, []() {
+    if (!requireConfigurationAccess()) return;
+    const auto &value = clockBackgroundOptions();
+    const auto &active = clockBackgroundActiveOptions();
+    sendJson(200, String(F("{\"ok\":true,\"present\":")) +
+        (value.present ? "true" : "false") + ",\"enabled\":" +
+        (value.enabled ? "true" : "false") + ",\"opacity\":" + value.opacity +
+        ",\"shadow\":" + value.shadow + ",\"activeEnabled\":" +
+        (active.enabled ? "true" : "false") + ",\"activeOpacity\":" + active.opacity +
+        ",\"activeShadow\":" + active.shadow + ",\"shadowSize\":" + value.shadowSize +
+        ",\"activeShadowSize\":" + active.shadowSize + ",\"shadowSpread\":" + value.shadowSpread +
+        ",\"activeShadowSpread\":" + active.shadowSpread +
+        ",\"clockOnly\":" + (value.clockOnly ? "true" : "false") +
+        ",\"activeClockOnly\":" + (active.clockOnly ? "true" : "false") + "}");
+  });
+  server.on("/api/background/image", HTTP_GET, []() {
+    if (!requireConfigurationAccess()) return;
+    File file = clockBackgroundOpenImage();
+    if (!file) { sendError(404, F("Pozadí není dostupné.")); return; }
+    addSecurityHeaders();
+    server.streamFile(file, "application/octet-stream");
+  });
+  registerBoundedPost("/api/background/start", []() {
+    if (!requireConfigurationAccess()) return;
+    String token;
+    if (!clockBackgroundStart(token)) { sendError(503, F("Úložiště není dostupné nebo již probíhá nahrávání. Zkus to za minutu.")); return; }
+    sendJson(200, String(F("{\"ok\":true,\"token\":\"")) + token + "\"}");
+  });
+  registerBoundedPost("/api/background/chunk", []() {
+    if (!requireConfigurationAccess()) return;
+    const String offset = server.arg("offset");
+    bool valid = !offset.isEmpty() && offset.length() <= 6;
+    for (char c : offset) valid = valid && c >= '0' && c <= '9';
+    if (!valid || !clockBackgroundChunk(server.arg("token"), offset.toInt(), server.arg("data"))) {
+      sendError(400, F("Neplatná nebo neúplná část obrázku.")); return;
+    }
+    sendJson(200, F("{\"ok\":true}"));
+  });
+  registerBoundedPost("/api/background/cancel", []() {
+    if (!requireConfigurationAccess()) return;
+    if (!clockBackgroundCancel(server.arg("token"))) {
+      sendError(400, F("Neplatné nahrávání obrázku.")); return;
+    }
+    sendJson(200, F("{\"ok\":true}"));
+  });
+  registerBoundedPost("/api/background/commit", []() {
+    if (!requireConfigurationAccess()) return;
+    ClockBackgroundOptions requested;
+    const bool submitted = server.hasArg("enabled");
+    if (submitted && !readBackgroundRequest(requested)) { sendError(400, F("Neplatné nastavení pozadí.")); return; }
+    if (!clockBackgroundCommit(server.arg("token"), submitted ? &requested : nullptr)) { sendError(400, F("Obrázek nebyl uložen. Původní pozadí zůstalo zachováno.")); return; }
+    sendJson(200, F("{\"ok\":true}"));
+  });
+  registerBoundedPost("/api/background/preview", []() {
+    if (!requireConfigurationAccess()) return;
+    ClockBackgroundOptions next;
+    if (!readBackgroundRequest(next)) { sendError(400, F("Neplatné nastavení pozadí.")); return; }
+    if (!clockBackgroundPreview(next.enabled, next.opacity, next.shadow, next.shadowSize,
+        next.shadowSpread, next.clockOnly)) { sendError(409, F("Náhled pozadí není během ukládání dostupný.")); return; }
+    sendJson(200, F("{\"ok\":true}"));
+  });
+  registerBoundedPost("/api/background/options", []() {
+    if (!requireConfigurationAccess()) return;
+    ClockBackgroundOptions next;
+    if (!readBackgroundRequest(next) || (server.arg("remove") != "0" && server.arg("remove") != "1")) {
+      sendError(400, F("Neplatné nastavení pozadí.")); return;
+    }
+    if (!clockBackgroundSaveOptions(next.enabled, next.opacity, next.shadow, next.shadowSize,
+        next.shadowSpread, server.arg("remove") == "1", next.clockOnly)) {
+      sendError(500, F("Nastavení pozadí se nepodařilo uložit.")); return;
+    }
+    sendJson(200, F("{\"ok\":true}"));
+  });
   server.on("/api/config", HTTP_GET, []() {
     if (requireConfigurationAccess()) handleGetConfig();
   });
@@ -3092,8 +3252,8 @@ void configurationWebLoop() {
   server.handleClient();
   finishBackupJob();
   if (backupRestartAt && static_cast<long>(millis() - backupRestartAt) >= 0) ESP.restart();
-  if (backupJob && backupJob->finished && !backupRestartAt &&
-      millis() - backupJob->touchedAt > 300000) clearBackupJob();
+  if (backupJob && backupJob->done.load(std::memory_order_acquire) && !backupRestartAt &&
+      millis() - backupJob->touchedAt > (backupJob->finished ? 300000U : 60000U)) clearBackupJob();
   if (selectedWebMode == CONFIGURATION_WEB_TIMED &&
       webActive && static_cast<long>(millis() - webAvailableUntil) >= 0) {
     lockConfiguration();

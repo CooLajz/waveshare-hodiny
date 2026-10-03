@@ -18,6 +18,7 @@
 #include <time.h>
 
 #include "ClockDashboard.h"
+#include "ClockBackground.h"
 #include "RetroLcd.h"
 #include "ClockConfig.h"
 #include "ChmiRadarService.h"
@@ -231,6 +232,7 @@ bool previewClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
   activeAppearance.style = constrain(
       activeAppearance.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
       static_cast<uint8_t>(CLOCK_STYLE_FORECAST));
+  activeAppearance.analogBackgroundColor &= 0xFFFFFF;
   activeAppearance.analogToneColor &= 0xFFFFFF;
   activeAppearance.analogHandToneColor &= 0xFFFFFF;
   activeAppearance.analogCardinalAccentColor &= 0xFFFFFF;
@@ -263,6 +265,7 @@ bool saveClockAppearanceFromWeb(const ClockAppearanceConfig &appearance) {
   normalized.style = constrain(
       normalized.style, static_cast<uint8_t>(CLOCK_STYLE_DIGITAL),
       static_cast<uint8_t>(CLOCK_STYLE_FORECAST));
+  normalized.analogBackgroundColor &= 0xFFFFFF;
   normalized.analogToneColor &= 0xFFFFFF;
   normalized.analogHandToneColor &= 0xFFFFFF;
   normalized.analogCardinalAccentColor &= 0xFFFFFF;
@@ -1891,6 +1894,14 @@ void setup() {
 }
 
 void loop() {
+  // Large image transfers keep HTTP/Wi-Fi alive but leave LVGL, gestures and
+  // clock/radar transitions untouched until the last flash operation settles.
+  clockBackgroundLoop();
+  if (displayDriverStorageTransferActive()) {
+    configurationWebLoop();
+    delay(2);
+    return;
+  }
 #if FIRMWARE_RELEASE
   improvSerialServiceLoop();
 #else
@@ -1928,6 +1939,10 @@ void loop() {
                                    strcmp(animationConfig.rightSide.icon,
                                           "weather") == 0));
   configurationWebLoop();
+  if (displayDriverStorageTransferActive()) {
+    delay(2);
+    return;
+  }
   displayNotificationLoop();
   applyPendingRuntimeConfiguration();
   applyPendingClockAppearance();

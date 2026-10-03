@@ -10,6 +10,10 @@ StaticSemaphore_t frameFinishedSemaphoreStorage;
 SemaphoreHandle_t frameFinishedSemaphore = nullptr;
 portMUX_TYPE frameFinishedMux = portMUX_INITIALIZER_UNLOCKED;
 volatile uint32_t finishedFrameCount = 0;
+bool panelSleeping = false;
+bool requestedSleep = false;
+bool storageBlanked = false;
+bool backlightSuppressed = false;
 
 bool IRAM_ATTR onBounceFrameFinished(
     esp_lcd_panel_handle_t, const esp_lcd_rgb_panel_event_data_t*, void*) {
@@ -430,16 +434,33 @@ bool LCD_SetPixelClock(uint32_t frequencyHz) {
 
 uint32_t LCD_GetPixelClock() { return currentPixelClockFrequencyHz; }
 
-void LCD_Sleep() {
+bool LCD_WaitFrames(uint32_t count, uint32_t timeoutMs) {
+  if (!frameFinishedSemaphore || !panel_handle) return false;
+  const uint32_t before = finishedFrameCount;
+  const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeoutMs);
+  while (static_cast<uint32_t>(finishedFrameCount - before) < count) {
+    const TickType_t now = xTaskGetTickCount();
+    if (static_cast<int32_t>(deadline - now) <= 0 ||
+        xSemaphoreTake(frameFinishedSemaphore, deadline - now) != pdTRUE)
+      return false;
+  }
+  return true;
+}
+
+
+static void sleepPanel() {
+  if (panelSleeping) return;
   ST7701_CS_EN();
   ST7701_WriteCommand(0x28);  // Display Off
   vTaskDelay(pdMS_TO_TICKS(20));
   ST7701_WriteCommand(0x10);  // Sleep In
   ST7701_CS_Dis();
   vTaskDelay(pdMS_TO_TICKS(120));
+  panelSleeping = true;
 }
 
-void LCD_Wake() {
+static void wakePanel() {
+  if (!panelSleeping) return;
   ST7701_CS_EN();
   ST7701_WriteCommand(0x11);  // Sleep Out
   vTaskDelay(pdMS_TO_TICKS(120));
@@ -447,7 +468,21 @@ void LCD_Wake() {
   ST7701_CS_Dis();
   vTaskDelay(pdMS_TO_TICKS(20));
   LCD_Resync();
+  panelSleeping = false;
 }
+
+void LCD_Sleep() { requestedSleep = true; sleepPanel(); }
+void LCD_Wake() {
+  requestedSleep = false;
+  if (!storageBlanked) wakePanel();
+}
+void LCD_SetStorageBlanked(bool blanked) {
+  if (storageBlanked == blanked) return;
+  storageBlanked = blanked;
+  if (blanked) sleepPanel();
+  else if (!requestedSleep) wakePanel();
+}
+bool LCD_IsSleeping() { return panelSleeping; }
 
 bool LCD_addWindow(uint16_t Xstart, uint16_t Ystart, uint16_t Xend,
                    uint16_t Yend, uint8_t* color) {
@@ -501,9 +536,16 @@ void Set_Backlight(uint8_t Light)                        //
   if(Light > Backlight_MAX || Light < 0)
     printf("Set Backlight parameters in the range of 0 to 100 \r\n");
   else{
-    uint32_t Backlight = Light*10;
+    LCD_Backlight = Light;
+    uint32_t Backlight = backlightSuppressed ? 0 : Light*10;
     if(Backlight == 1000)
       Backlight = 1024;
     ledcWrite(LCD_Backlight_PIN, Backlight);
   }
 }
+
+void LCD_SuppressBacklight(bool suppressed) {
+  backlightSuppressed = suppressed;
+  Set_Backlight(LCD_Backlight);
+}
+uint8_t LCD_GetBacklight() { return backlightSuppressed ? 0 : LCD_Backlight; }

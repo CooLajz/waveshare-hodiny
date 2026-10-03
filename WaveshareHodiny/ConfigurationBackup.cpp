@@ -4,6 +4,7 @@
 #include <esp_system.h>
 #include <mbedtls/base64.h>
 #include <mbedtls/gcm.h>
+#include <mbedtls/sha256.h>
 #include <mbedtls/pkcs5.h>
 #include <mbedtls/platform_util.h>
 
@@ -158,4 +159,41 @@ bool backupDecrypt(const char *file, size_t length, const char *password,
   mbedtls_gcm_free(&context); mbedtls_platform_zeroize(key, sizeof(key));
   mbedtls_platform_zeroize(encrypted, SETTINGS_IMAGE_CAPACITY + TAG_SIZE); free(encrypted);
   return ok;
+}
+
+bool backupStreamStart(BackupStream &stream, bool importing, const char *password,
+                       const char *settings, char header[57]) {
+  uint8_t salt[16], key[32] = {};
+  auto *nonce = stream.nonce;
+  if (!backupPasswordValid(password)) return false;
+  if (importing) {
+    if (strlen(header) != 56) return false;
+    char saltHex[33]; memcpy(saltHex, header, 32); saltHex[32] = 0;
+    if (!unhex(saltHex, salt, 16) || !unhex(header + 32, nonce, 12)) return false;
+  } else {
+    esp_fill_random(salt, 16); esp_fill_random(nonce, 12);
+    hex(salt, 16, header); hex(nonce, 12, header + 32);
+  }
+  // ESP-IDF's accelerated GCM pads each update_ad call separately. Use one
+  // fixed-size AAD call, binding both components through SHA-256 instead.
+  mbedtls_sha256_context hash; mbedtls_sha256_init(&hash);
+  bool hashed = mbedtls_sha256_starts(&hash, 0) == 0 &&
+      mbedtls_sha256_update(&hash, reinterpret_cast<const uint8_t *>(header), 56) == 0 &&
+      mbedtls_sha256_update(&hash, reinterpret_cast<const uint8_t *>(settings), strlen(settings)) == 0 &&
+      mbedtls_sha256_finish(&hash, stream.aad) == 0;
+  mbedtls_sha256_free(&hash);
+  const bool ok = hashed && derive(password, salt, BACKUP_KDF_ITERATIONS, key) &&
+      mbedtls_gcm_setkey(&stream.context, MBEDTLS_CIPHER_ID_AES, key, 256) == 0 &&
+      mbedtls_gcm_starts(&stream.context, importing ? MBEDTLS_GCM_DECRYPT : MBEDTLS_GCM_ENCRYPT, nonce, 12) == 0 &&
+      mbedtls_gcm_update_ad(&stream.context, stream.aad, sizeof(stream.aad)) == 0;
+  mbedtls_platform_zeroize(key, sizeof(key));
+  return ok;
+}
+bool backupStreamUpdate(BackupStream &stream, const uint8_t *input, size_t length, uint8_t *output) {
+  size_t written = 0;
+  return length % 16 == 0 && mbedtls_gcm_update(&stream.context, input, length, output, length, &written) == 0 && written == length;
+}
+bool backupStreamFinish(BackupStream &stream, uint8_t tag[16]) {
+  uint8_t tail[16]; size_t written = 0;
+  return mbedtls_gcm_finish(&stream.context, tail, sizeof(tail), &written, tag, 16) == 0 && written == 0;
 }

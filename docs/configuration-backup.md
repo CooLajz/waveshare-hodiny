@@ -5,7 +5,41 @@ excludes Wi-Fi, firmware binaries, OTA state, web sessions, cached weather and
 the Firmware Hub publishing API key. Normal `/api/config` responses never gain
 HA tokens, TMEP keys or password verification records.
 
-## File format 1 (`.whbackup`)
+## Bundle format 2 (`.whbackup`)
+
+New exports use a JSON `waveshare-hodiny-bundle` envelope with `version: 2`,
+`settings` (the encrypted format-1 file below), and `image`: a 56-character
+lowercase hex `header` (fresh 16-byte salt + 12-byte nonce), `bytes` (0 or
+460800), and base64 `parts`. The image is the stored 480×480 RGB565 crop,
+including when disabled; the original source photograph is not retained.
+The saved 16-byte `clock-bg/options` record belongs to the encrypted settings.
+
+The image uses a separate AES-256-GCM stream with PBKDF2-SHA256/10,000 and the
+same password. Its 32-byte AAD is SHA-256 of the exact 56-byte image header followed by the
+exact encrypted settings file. A single AAD call avoids ESP-IDF accelerated GCM
+padding differences between incremental calls. This binds the image to its settings; mixing files,
+reordering/truncating blocks or altering bytes fails authentication. Blocks
+contain 4096 ciphertext bytes, except the last (possibly shorter), which also
+contains the 16-byte tag. An absent image has one tag-only block. Firmware
+keeps two 4096-byte working blocks, never another full image in PSRAM.
+
+The browser transfers authenticated-session blocks through `/api/backup/part`
+with operation ID and strictly sequential byte offsets; a failed or interrupted
+transfer must restart. Mutating settings are locked while the snapshot is in
+flight. Inactive jobs time out after 60 seconds; completed jobs after 5 minutes.
+`/api/backup/cancel` releases staging and display suspension. Passwords are
+cleared after key derivation; GCM state is freed when the job is discarded.
+
+Restore writes only the inactive image slot, with the display temporarily off.
+After the final authentication tag, configuration/options validation and file
+CRC readback, the image selector and all settings commit in the same SettingsStore
+transaction. A failure or power loss before selection leaves the previous image
+and settings selected. Unselected bytes need not be deleted. Restoring a backup
+without an image clears image presence; importing an old settings-only backup
+uses default background options. Wi-Fi remains excluded and untouched.
+The browser shows progress and explains temporary display blanking.
+
+## Encrypted settings format 1 (also accepted as a standalone `.whbackup`)
 
 Export filenames include the source firmware version and export date/time,
 for example `waveshare-hodiny-1.8.1-2026-09-08T19-45-00.whbackup`. The version
@@ -33,8 +67,9 @@ work factor is accepted. The export work factor is deliberately calibrated for
 under five seconds on ESP32-S3, per the product's local-backup threat model.
 Use a strong password and keep the file out of untrusted hands.
 
-Crypto runs on a dedicated PSRAM-backed task; only the main task reads/writes
-settings or calls WebServer. Worker passwords, plaintext and temporary keys
+Password derivation and settings crypto run on a dedicated PSRAM-backed task.
+Image crypto advances one bounded block per request on the main task, which
+also owns storage and WebServer. Worker passwords, plaintext and temporary keys
 are cleared after use. Transport remains local HTTP by explicit product choice;
 this protects the downloaded file, not the password's network transport.
 
@@ -44,13 +79,13 @@ Settings image version 1 is a sequence of `(keyId:u8, byteLength:u16le, bytes)`.
 The append-only key registry is in `SettingsStore.cpp`. Unknown keys, duplicate
 keys, oversized values, invalid typed values and truncated images are rejected.
 Only these namespaces are representable: `clock-config`, `clock-look`,
-`web-mode`, `web-auth`, `control-api`, `save-state`. Strings include one terminal
+`web-mode`, `web-auth`, `control-api`, `save-state`, `clock-bg`. Strings include one terminal
 NUL. Byte values, u32 colors and IEEE-754 binary32 values use the ESP32-S3
 little-endian representation. Wi-Fi cannot be encoded by this registry.
 
 `clock-config/config` retains the established checked binary record. Its source
 schema must match the authenticated header. `clockConfigDecodeRecord()` is a
-pure decoder/migrator for schemas 20, 24, 25, 26, 27, 28 and current 29. It never
+pure decoder/migrator for schemas 20, 24, 25, 26, 27, 28, 29 and current 30. It never
 writes or falls back to a default configuration on malformed input. Main config,
 appearance ranges, web mode, web password record and control secret are checked
 before commit. Export materializes saved appearance defaults; import replaces
@@ -178,3 +213,25 @@ simulated write/readback/power-loss failures and explicit recovery from a corrup
 selected blob without enabling ordinary saves or changing data on abort. Power was not physically cut while
 writing the device. Web-disabled restoration is covered at the storage/protocol
 and browser-fixture level; no physical web-disabled test was performed.
+
+## Background backup verification (2026-10-03)
+
+Development device tests verified export while the stored background is disabled,
+independent Node AES-GCM decryption with byte-identical 460800-byte image output,
+wrong-password rejection, cancellation after the first block, and corrupted final
+image-tag rejection without changing the selected image or options. A full restore
+and reboot recovered the image, disabled state and 80% visibility. A format-1
+settings-only backup restored with no background; tag-only format-2 export was
+independently authenticated and restored on-device. The original photograph and
+options were restored after testing. No physical power-cut test was performed.
+
+The host sanitizer suite also exercises empty/full image streams, binding to the
+settings file, header/ciphertext corruption and truncation. Simulated NVS write,
+readback and power failures now include the background slot/options in the same
+atomic transaction. Browser tests cover full/empty bundles, progress, malformed
+parts, repeated dialog opening and cancelled network transfers.
+
+The final development build also passed actual Chrome dialog export/download,
+independent decryption, and dialog import with a verified post-reboot receipt.
+Final device checks confirmed the original image enabled at 80%, with storage
+transfer inactive and the display awake.

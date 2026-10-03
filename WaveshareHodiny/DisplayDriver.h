@@ -15,3 +15,8 @@ bool displayDriverBeginFramebufferCapture(Print &output);
 bool displayDriverStreamFramebufferChunk(Print &output);
 
 void displayDriverPrintRenderStats(Print &output);
+
+// Main-loop only. Keep the last frame while transferring/writing large assets.
+bool displayDriverBeginStorageTransfer();
+bool displayDriverEndStorageTransfer();
+bool displayDriverStorageTransferActive();
