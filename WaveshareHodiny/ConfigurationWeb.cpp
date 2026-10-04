@@ -1665,6 +1665,12 @@ void handleGetConfig() {
   result += '"';
   result += F(",\"automaticFirmwareUpdate\":");
   result += config.automaticFirmwareUpdate ? F("true") : F("false");
+  char updateTime[6];
+  snprintf(updateTime, sizeof(updateTime), "%02u:%02u",
+           config.firmwareUpdateMinuteOfDay / 60, config.firmwareUpdateMinuteOfDay % 60);
+  result += F(",\"firmwareUpdateTime\":\"");
+  result += updateTime;
+  result += '"';
   result += F(",\"webMode\":\"");
   if (selectedWebMode == CONFIGURATION_WEB_ALWAYS)
     result += F("always");
@@ -2165,6 +2171,18 @@ void handleSaveConfig() {
   }
   config.automaticFirmwareUpdate =
       server.arg("automaticFirmwareUpdate") == "1";
+  if (server.hasArg("firmwareUpdateTime")) {
+    const String value = server.arg("firmwareUpdateTime");
+    if (value.length() != 5 || value[2] != ':' ||
+        value[0] < '0' || value[0] > '2' || value[1] < '0' || value[1] > '9' ||
+        value[3] < '0' || value[3] > '5' || value[4] < '0' || value[4] > '9' ||
+        value.substring(0, 2).toInt() > 23) {
+      sendError(400, F("Čas aktualizace musí být ve formátu HH:MM (00:00–23:59)."));
+      return;
+    }
+    config.firmwareUpdateMinuteOfDay = value.substring(0, 2).toInt() * 60 +
+                                      value.substring(3).toInt();
+  }
   if (!readDigitalAppearanceFromRequest(config)) return;
   config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
 

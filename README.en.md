@@ -499,8 +499,10 @@ entities and appearance, adds the radar options with the full-country view and
 six frames, and leaves automatic rotation disabled. Intermediate development
 schemas are not maintained as separate migration steps.
 
-Automatic updates are disabled after a clean installation. When enabled, the
-firmware checks at most once per local calendar day after 04:10. Manual and
+Automatic updates are enabled after a clean installation; upgrades preserve
+the existing user preference. When enabled, the web settings allow choosing
+the update time (04:10 by default). The firmware checks at most once per local
+calendar day at or after the selected device-local time. Manual and
 automatic updates use the same implementation and validation.
 
 ## Home Assistant control API

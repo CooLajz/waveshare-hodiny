@@ -564,8 +564,10 @@ vývojové meziverze nejsou samostatně podporované migračními kroky. Přecho
 1.5.5 na 1.6.0 byl ověřen skutečnou A/B OTA aktualizací včetně zachování
 uložené konfigurace.
 
-Automatické OTA aktualizace jsou po čisté instalaci vypnuté. Po zapnutí ve
-webu firmware nejvýše jednou denně po 4:10 lokálního času zkontroluje novou
+Automatické OTA aktualizace jsou po čisté instalaci zapnuté; upgrade zachová
+dosavadní volbu uživatele. Ve webovém nastavení lze po zapnutí zvolit čas
+aktualizace (výchozí 04:10). Firmware nejvýše jednou denně od zvoleného
+lokálního času zařízení zkontroluje novou
 SemVer a případně ji nainstaluje. Stejnou cestu používá ruční aktualizace.
 
 ## Ovládací API pro Home Assistant

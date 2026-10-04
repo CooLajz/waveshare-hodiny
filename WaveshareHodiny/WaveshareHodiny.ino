@@ -1027,8 +1027,7 @@ void maintainAutomaticFirmwareUpdate() {
   time(&now);
   struct tm localTime;
   clockLocaltime(&now, &localTime);
-  if (localTime.tm_hour < 4 ||
-      (localTime.tm_hour == 4 && localTime.tm_min < 10)) {
+  if (localTime.tm_hour * 60 + localTime.tm_min < config.firmwareUpdateMinuteOfDay) {
     return;
   }
   const int dateKey = (localTime.tm_year + 1900) * 1000 + localTime.tm_yday;

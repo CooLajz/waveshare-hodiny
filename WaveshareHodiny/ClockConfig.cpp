@@ -60,6 +60,15 @@ struct ConfigRecordV26 {
 
 constexpr size_t SCHEMA_27_CONFIG_SIZE = offsetof(ClockConfig, leftValue);
 
+constexpr size_t SCHEMA_30_CONFIG_SIZE = offsetof(ClockConfig, firmwareUpdateMinuteOfDay);
+struct ConfigRecordV30 {
+  uint32_t magic;
+  uint32_t schemaVersion;
+  uint8_t config[SCHEMA_30_CONFIG_SIZE];
+  uint32_t checksum;
+};
+static_assert(sizeof(ConfigRecordV30) == 2896, "Preserve schema 30 NVS layout.");
+
 constexpr size_t SCHEMA_29_CONFIG_SIZE = offsetof(ClockConfig, forecastDisplaySeconds);
 struct ConfigRecordV29 {
   uint32_t magic;
@@ -485,7 +494,7 @@ bool clockConfigBegin() {
 
 bool clockConfigSchemaSupported(uint32_t schema) {
   return schema == CLOCK_CONFIG_SCHEMA_VERSION || schema == 20 ||
-         schema == 24 || schema == 25 || schema == 26 || schema == 27 || schema == 28 || schema == 29;
+         schema == 24 || schema == 25 || schema == 26 || schema == 27 || schema == 28 || schema == 29 || schema == 30;
 }
 
 bool clockConfigValidate(const ClockConfig &c) {
@@ -516,7 +525,8 @@ bool clockConfigValidate(const ClockConfig &c) {
   }
 #undef VALID_BOOL
 #undef VALID_TEXT
-  if (c.schemaVersion != CLOCK_CONFIG_SCHEMA_VERSION || c.dataSource > 1 ||
+  if (c.firmwareUpdateMinuteOfDay >= 1440 ||
+      c.schemaVersion != CLOCK_CONFIG_SCHEMA_VERSION || c.dataSource > 1 ||
       c.weatherIconStyle > 2 || c.nightVisualMode > 1 || c.timeFont > 3 ||
       c.dateFormat > 5 || c.timeColonEffect > 2 || c.secondEffect > 2 ||
       c.language > 2 || c.openMeteoCountry > 2 || c.dayBrightness < 1 || c.dayBrightness > 100 ||
@@ -579,7 +589,7 @@ bool clockConfigDecodeRecord(const void *data, size_t storedSize, ClockConfig &c
   ConfigRecord &record = *storage;
   record = ConfigRecord{};
   const bool supportedSize = storedSize == sizeof(record) ||
-      storedSize == sizeof(ConfigRecordV29) || storedSize == sizeof(ConfigRecordV28) || storedSize == sizeof(ConfigRecordV27) ||
+      storedSize == sizeof(ConfigRecordV30) || storedSize == sizeof(ConfigRecordV29) || storedSize == sizeof(ConfigRecordV28) || storedSize == sizeof(ConfigRecordV27) ||
       storedSize == sizeof(ConfigRecordV26) || storedSize == sizeof(ConfigRecordV155);
   const bool readComplete = data && supportedSize;
   if (!readComplete) return false;
@@ -592,6 +602,19 @@ bool clockConfigDecodeRecord(const void *data, size_t storedSize, ClockConfig &c
       record.checksum == configChecksum(record.config);
   if (currentRecord) {
     config = record.config;
+    if (!clockConfigValidate(config)) return false;
+    normalizeConfig(config);
+    return true;
+  }
+
+  const ConfigRecordV30 &legacyV30 = *reinterpret_cast<const ConfigRecordV30 *>(&record);
+  uint32_t embeddedSchemaV30 = 0;
+  if (storedSize == sizeof(legacyV30)) memcpy(&embeddedSchemaV30, legacyV30.config, 4);
+  if (storedSize == sizeof(legacyV30) && legacyV30.magic == CONFIG_MAGIC &&
+      legacyV30.schemaVersion == 30 && embeddedSchemaV30 == 30 &&
+      legacyV30.checksum == bytesChecksum(legacyV30.config, sizeof(legacyV30.config))) {
+    memcpy(&config, legacyV30.config, sizeof(legacyV30.config));
+    config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
     if (!clockConfigValidate(config)) return false;
     normalizeConfig(config);
     return true;

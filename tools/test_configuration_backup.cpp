@@ -31,7 +31,7 @@ void testMigration() {
     uint32_t hash=checksum(record.data()+8,test.prefix);memcpy(record.data()+8+test.prefix,&hash,4);
     const auto before=fakeNvs::values;
     ClockConfig decoded;assert(clockConfigDecodeRecord(record.data(),record.size(),decoded));
-    assert(decoded.schemaVersion==30);assert(!decoded.forecastTemperatureEntityId[0]);assert(decoded.forecastDisplaySeconds==20);assert(!strcmp(decoded.homeAssistantToken,"synthetic-test-token"));
+    assert(decoded.schemaVersion==CLOCK_CONFIG_SCHEMA_VERSION);assert(!decoded.forecastTemperatureEntityId[0]);assert(decoded.forecastDisplaySeconds==20);assert(!strcmp(decoded.homeAssistantToken,"synthetic-test-token"));
     if(test.schema==25)assert(decoded.language==CLOCK_LANGUAGE_ENGLISH);
     assert(fakeNvs::values==before); // Decoder must be pure, including migrations.
     record[12]^=1;assert(!clockConfigDecodeRecord(record.data(),record.size(),decoded));

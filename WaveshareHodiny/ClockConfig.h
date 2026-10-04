@@ -30,7 +30,8 @@ constexpr size_t CLOCK_METRIC_COLOR_POINT_COUNT = 10;
 // unchanged so existing temperature-only configuration can be migrated safely.
 // Schema 30 appends the forecast page duration; zero durations skip automatic pages.
 // Schema 29 appends the IANA time zone associated with the saved location.
-constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 30;
+// Schema 31 appends the configurable daily firmware update time.
+constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 31;
 
 enum ClockLanguage : uint8_t {
   CLOCK_LANGUAGE_UNSET = 0,
@@ -196,7 +197,7 @@ struct ClockConfig {
   uint8_t nightBrightness = 10;
   bool automaticDayNight = false;
   int8_t sunsetOffsetMinutes = 0;
-  bool automaticFirmwareUpdate = false;
+  bool automaticFirmwareUpdate = true;
   bool secondRingEnabled = true;
   uint8_t secondEffect = CLOCK_SECOND_EFFECT_DOTS;
   int8_t sunriseOffsetMinutes = 0;
@@ -237,6 +238,8 @@ struct ClockConfig {
   uint16_t forecastDisplaySeconds = 20;
   uint16_t forecastReserved = 0; // Reserved alignment.
   char forecastTemperatureEntityId[CLOCK_ENTITY_ID_LENGTH] = "";
+  uint16_t firmwareUpdateMinuteOfDay = 250; // Local time, default 04:10.
+  uint16_t firmwareUpdateReserved = 0;
 };
 
 static_assert(offsetof(ClockConfig, language) == 2106 &&
@@ -248,8 +251,9 @@ static_assert(offsetof(ClockConfig, language) == 2106 &&
                   offsetof(ClockConfig, timeZone) == 2688 &&
                   offsetof(ClockConfig, forecastDisplaySeconds) == 2752 &&
                   offsetof(ClockConfig, forecastTemperatureEntityId) == 2756 &&
-                  sizeof(ClockConfig) == 2884,
-              "Schema 30 must preserve the complete released schema 29 prefix.");
+                  offsetof(ClockConfig, firmwareUpdateMinuteOfDay) == 2884 &&
+                  sizeof(ClockConfig) == 2888,
+              "Schema 31 must preserve the complete schema 30 prefix.");
 
 bool clockConfigBegin();
 bool clockConfigLoad(ClockConfig &config);
