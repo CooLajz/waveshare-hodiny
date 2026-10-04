@@ -46,6 +46,9 @@ struct ChmiRadarDiagnostics {
   char message[64] = "";
 };
 
+// UI task releases inactive caches before acknowledging a failed radar allocation.
+bool chmiRadarServiceMemoryReclaimRequested();
+void chmiRadarServiceMemoryReclaimCompleted();
 void chmiRadarServiceBegin();
 void chmiRadarServiceHoldPlayback(bool hold);
 void chmiRadarServicePrepareForFirmwareUpdate();

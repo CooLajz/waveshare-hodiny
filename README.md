@@ -293,8 +293,9 @@ projeví přímo na hodinách bez zápisu a zhasnutí, s již nahraným obrázke
 Náhled platí do restartu; trvale jej potvrdí **Nahrát pozadí do hodin**. Nový výřez
 vyžaduje nahrání. Kruhová maska pozadí platí i při posouvání obrazovek.
 Obrázek je společný pro analogový a digitální ciferník.
-V PSRAM se drží pouze při použití pozadí; vypnutí, červený noční režim
-a zobrazení radaru jeho paměť uvolní. Cache stínů má limit 64 KiB,
+Načtený obrázek a připravené cache zůstávají při běžném přepínání v PSRAM,
+aby návrat na ciferník nevyžadoval nové čtení z flash. Vypnutí pozadí jeho
+obrázek uvolní; při nedostatku paměti pro radar se uvolní neaktivní cache. Cache stínů má limit 64 KiB,
 statický analogový ciferník 128 KiB. Nahrávání zapisuje po malých blocích
 do flash bez druhé kopie obrázku v PSRAM. Hlavní uložení potvrzuje nastavení
 ciferníku a pozadí společně; opakované uložení stejného pozadí nevyvolá zápis.

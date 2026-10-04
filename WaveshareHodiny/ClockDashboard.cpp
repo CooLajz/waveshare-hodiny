@@ -347,7 +347,7 @@ lv_coord_t backgroundShadowSize() { return clockBackgroundActiveOptions().shadow
 lv_coord_t backgroundShadowSpread() { return clockBackgroundActiveOptions().shadowSpread; }
 lv_img_dsc_t backgroundImage = {};
 void drawClockBackground(lv_event_t *event) {
-  if (!backgroundVisible()) return;
+  if (clockDashboardRadarVisible() || !backgroundVisible()) return;
   // A swipe can snapshot the page before the regular dashboard loop runs.
   // Invalidate here as well so replacement never reuses the old pixel buffer.
   if (backgroundImage.data != clockBackgroundPixels())
@@ -1321,7 +1321,7 @@ void clearAnalogDialCache() {
 }
 
 bool rebuildAnalogDialCache() {
-  if (!analogLayoutEnabled() || clockDashboardRadarVisible()) { clearAnalogDialCache(); return true; }
+  if (!analogLayoutEnabled() || clockDashboardRadarVisible()) return true;
   const uint32_t state[] = {uint32_t(analogTintedDialEnabled), analogToneColor, analogCardinalAccentColor,
       (!backgroundVisible() && !redNightVisualEnabled()) ? analogBackgroundColor : 0U,
       uint32_t(analogCardinalAccentsEnabled), uint32_t(redNightVisualEnabled()),
@@ -4078,6 +4078,28 @@ void clockDashboardSetWeatherAnimation(const uint8_t *gifData, size_t size,
   clockDashboardUpdate(currentValues);
 }
 
+void maintainClockCaches() {
+  const bool backgroundWanted = !redNightVisualEnabled() &&
+      (activeClockStyle == CLOCK_STYLE_ANALOG || activeClockStyle == CLOCK_STYLE_DIGITAL) &&
+      !clockDashboardRadarVisible();
+  const auto &bgOptions = clockBackgroundActiveOptions();
+  const bool backgroundEnabled = bgOptions.present && bgOptions.enabled && bgOptions.opacity;
+  if (clockBackgroundPixels() && !backgroundEnabled)
+    lv_img_cache_invalidate_src(&backgroundImage);
+  // Keep the shared image resident across page changes. Explicit disabling still frees it.
+  clockBackgroundSetResident(backgroundWanted || clockBackgroundPixels() != nullptr);
+  if (!backgroundEnabled || !bgOptions.shadow || !bgOptions.shadowSpread) releaseShadowCache();
+  if (chmiRadarServiceMemoryReclaimRequested()) {
+    if (!backgroundWanted) {
+      lv_img_cache_invalidate_src(&backgroundImage);
+      clockBackgroundSetResident(false);
+      releaseShadowCache();
+    }
+    if (!analogLayoutEnabled() || clockDashboardRadarVisible()) clearAnalogDialCache();
+    chmiRadarServiceMemoryReclaimCompleted();
+  }
+}
+
 void updateClockOnlyPresentation() {
   if (!dashboardContent || !analogDialLayer || !analogHandsLayer) return;
   const bool only = analogClockOnly();
@@ -4103,7 +4125,6 @@ void updateClockOnlyPresentation() {
       }
       clockDashboardUpdate(currentValues);
     }
-    releaseShadowCache();
     lv_obj_invalidate(clockPage);
   }
   if (only) {
@@ -4122,15 +4143,7 @@ void clockDashboardLoop() {
   if (firmwareUpdateActive) return;
   clockBackgroundLoop();
   updateClockOnlyPresentation();
-  const bool backgroundWanted = !redNightVisualEnabled() &&
-      (activeClockStyle == CLOCK_STYLE_ANALOG || activeClockStyle == CLOCK_STYLE_DIGITAL) &&
-      !clockDashboardRadarVisible();
-  const auto &bgOptions = clockBackgroundActiveOptions();
-  if (clockBackgroundPixels() && (!backgroundWanted || !bgOptions.enabled || !bgOptions.opacity))
-    lv_img_cache_invalidate_src(&backgroundImage);
-  clockBackgroundSetResident(backgroundWanted);
-  if (!backgroundShadowOpacity() || !backgroundShadowSpread()) releaseShadowCache();
-  if ((!analogLayoutEnabled() || clockDashboardRadarVisible()) && analogDialCache.runs) clearAnalogDialCache();
+  maintainClockCaches();
   static uint32_t previousBackgroundRevision = 0;
   static bool previousBackgroundVisible = false;
   static bool previousRadarVisible = false;

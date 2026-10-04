@@ -8,6 +8,7 @@
 #include <esp_heap_caps.h>
 #include <freertos/idf_additions.h>
 
+#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <cstring>
@@ -49,6 +50,22 @@ constexpr float WHOLE_COUNTRY_LONGITUDE = 15.475f;
 constexpr uint16_t WHOLE_COUNTRY_RADIUS_KM = 260;
 
 TaskHandle_t taskHandle = nullptr;
+std::atomic<bool> memoryReclaimRequested{false};
+
+void *allocateRadarMemory(size_t bytes, uint32_t caps) {
+  void *result = heap_caps_malloc(bytes, caps);
+  if (result || !(caps & MALLOC_CAP_SPIRAM) ||
+      xTaskGetCurrentTaskHandle() != taskHandle) return result;
+  // Only the UI task may invalidate LVGL sources and release its caches.
+  memoryReclaimRequested.store(true, std::memory_order_release);
+  const TickType_t started = xTaskGetTickCount();
+  while (memoryReclaimRequested.load(std::memory_order_acquire) &&
+         xTaskGetTickCount() - started < pdMS_TO_TICKS(500)) {
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
+  return heap_caps_malloc(bytes, caps);
+}
+
 portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
 bool active = false;
 bool visible = false;
@@ -134,7 +151,7 @@ void applyNightRadarPalette(uint16_t *buffer);
 
 bool ensurePngDecoder() {
   if (pngDecoder != nullptr) return true;
-  void *storage = heap_caps_malloc(sizeof(PNG),
+  void *storage = allocateRadarMemory(sizeof(PNG),
                                    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (storage == nullptr) return false;
   pngDecoder = new (storage) PNG();
@@ -206,14 +223,14 @@ void setStatus(bool isLoading, const char *message) {
 bool ensureBuffers() {
   for (uint16_t *&buffer : displayBuffers) {
     if (buffer == nullptr) {
-      buffer = static_cast<uint16_t *>(heap_caps_malloc(
+      buffer = static_cast<uint16_t *>(allocateRadarMemory(
           RADAR_PIXEL_COUNT * sizeof(uint16_t),
           MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     }
     if (buffer == nullptr) return false;
   }
   if (pngBuffer == nullptr) {
-    pngBuffer = static_cast<uint8_t *>(heap_caps_malloc(
+    pngBuffer = static_cast<uint8_t *>(allocateRadarMemory(
         PNG_CAPACITY, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   }
   return pngBuffer != nullptr;
@@ -222,7 +239,7 @@ bool ensureBuffers() {
 bool ensurePreparedFrame(size_t index) {
   if (index >= MAX_ANIMATION_FRAME_COUNT) return false;
   if (preparedFrames[index] == nullptr) {
-    preparedFrames[index] = static_cast<uint8_t *>(heap_caps_malloc(
+    preparedFrames[index] = static_cast<uint8_t *>(allocateRadarMemory(
         RADAR_PIXEL_COUNT, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   }
   return preparedFrames[index] != nullptr;
@@ -232,7 +249,7 @@ bool cacheDownloadedPng(size_t index, size_t size, const char *fileName) {
   if (index >= MAX_ANIMATION_FRAME_COUNT || size == 0 || size > PNG_CAPACITY)
     return false;
   if (cachedPngCapacities[index] < size) {
-    uint8_t *replacement = static_cast<uint8_t *>(heap_caps_malloc(
+    uint8_t *replacement = static_cast<uint8_t *>(allocateRadarMemory(
         size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (replacement == nullptr) return false;
     if (cachedPngFrames[index] != nullptr) heap_caps_free(cachedPngFrames[index]);
@@ -814,7 +831,7 @@ bool decodeRadar(const uint8_t *pngData, size_t pngSize, float latitude,
   }
   if (lineCapacity < static_cast<size_t>(imageWidth)) {
     if (lineBuffer != nullptr) heap_caps_free(lineBuffer);
-    lineBuffer = static_cast<uint16_t *>(heap_caps_malloc(
+    lineBuffer = static_cast<uint16_t *>(allocateRadarMemory(
         imageWidth * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     lineCapacity = lineBuffer == nullptr ? 0 : imageWidth;
   }
@@ -984,7 +1001,7 @@ void applyNightRadarPalette(uint16_t *buffer) {
 bool ensurePendingFrame(size_t slot) {
   if (slot >= MAX_PENDING_REFRESH_FRAMES) return false;
   if (pendingPreparedFrames[slot] == nullptr) {
-    pendingPreparedFrames[slot] = static_cast<uint8_t *>(heap_caps_malloc(
+    pendingPreparedFrames[slot] = static_cast<uint8_t *>(allocateRadarMemory(
         RADAR_PIXEL_COUNT, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   }
   return pendingPreparedFrames[slot] != nullptr;
@@ -994,7 +1011,7 @@ bool cachePendingPng(size_t slot, size_t size) {
   if (slot >= MAX_PENDING_REFRESH_FRAMES || size == 0 || size > PNG_CAPACITY)
     return false;
   if (pendingPngCapacities[slot] < size) {
-    uint8_t *replacement = static_cast<uint8_t *>(heap_caps_malloc(
+    uint8_t *replacement = static_cast<uint8_t *>(allocateRadarMemory(
         size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (replacement == nullptr) return false;
     if (pendingPngFrames[slot] != nullptr)
@@ -1628,6 +1645,14 @@ void radarTask(void *) {
 }
 }  // namespace
 
+bool chmiRadarServiceMemoryReclaimRequested() {
+  return memoryReclaimRequested.load(std::memory_order_acquire);
+}
+
+void chmiRadarServiceMemoryReclaimCompleted() {
+  memoryReclaimRequested.store(false, std::memory_order_release);
+}
+
 void chmiRadarServiceBegin() {
   if (taskHandle != nullptr) return;
   xTaskCreatePinnedToCoreWithCaps(
@@ -1649,6 +1674,7 @@ void chmiRadarServicePrepareForFirmwareUpdate() {
     vTaskDeleteWithCaps(taskHandle);
     taskHandle = nullptr;
   }
+  memoryReclaimRequested.store(false, std::memory_order_release);
   if (pngDecoder != nullptr) pngDecoder->close();
   for (uint16_t *&buffer : displayBuffers) {
     if (buffer != nullptr) heap_caps_free(buffer);

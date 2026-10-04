@@ -283,8 +283,9 @@ without a clock face or shadows. Check visibility and shadows directly on the cl
 stores the image and its settings separately from the main settings form.
 Adjust image visibility and text, icon and hand shadow strength; 0% disables
 shadows. Analog and digital faces share the same image.
-The image resides in PSRAM only while needed; disabling it, entering red
-night mode or showing radar releases its memory. Shadow caching is capped
+The loaded image and prepared caches stay in PSRAM during normal page switching
+to avoid reading flash again on return. Disabling the background frees its
+image; radar allocation failures trigger reclamation of inactive caches. Shadow caching is capped
 at 64 KiB and the static analog dial at 128 KiB. Uploads stream small blocks
 to flash without a second PSRAM image. Main settings save commits clock and
 background settings together; saving unchanged background settings skips writes.
