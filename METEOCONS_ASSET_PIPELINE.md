@@ -52,19 +52,19 @@ Používané projektové nástroje:
 
 ## 1. Ověření a stažení zdroje
 
-Nejprve na webu nebo z HTML konkrétní ikony ověř aktuální CDN verzi. Následně
-ověř, že stejná verze existuje v oficiálním npm balíčku:
+Nejprve na webu nebo z HTML konkrétní ikony ověřte aktuální CDN verzi. Následně
+ověřte, že stejná verze existuje v oficiálním npm balíčku:
 
 ```sh
 npm view @meteocons/svg versions --json
 npm view @meteocons/svg@<VERZE> dist.tarball version --json
 ```
 
-Stáhni tarball z hodnoty `dist.tarball`. Po rozbalení musí styly
+Stáhněte tarball z hodnoty `dist.tarball`. Po rozbalení musí styly
 `monochrome`, `flat` a `line` obsahovat stejnou množinu SVG. Skript tuto
 podmínku kontroluje automaticky.
 
-Pro vestavěný Monochrome fallback použij přesně tyto versionované zdroje:
+Pro vestavěný Monochrome fallback použijte přesně tyto versionované zdroje:
 
 ```text
 https://cdn.meteocons.com/3.0.0-next.10/svg-static/monochrome/<ikona>.svg
@@ -73,14 +73,14 @@ https://cdn.meteocons.com/3.0.0-next.10/svg-static/monochrome/<ikona>.svg
 Uzavřená sada ikon je `clear-day`, `clear-night`, `mostly-clear-day`,
 `mostly-clear-night`, `partly-cloudy-day`, `partly-cloudy-night`,
 `overcast-day`, `overcast-night`, `overcast`, `drizzle`, `rain`, `sleet`,
-`snow`, `mist` a `thunderstorms`. Každý soubor vykresli
-`tools/render_meteocons_static.mjs` přímo na 84 × 84 px a výsledný PNG předej
+`snow`, `mist` a `thunderstorms`. Každý soubor vykreslete
+`tools/render_meteocons_static.mjs` přímo na 84 × 84 px a výsledný PNG předejte
 `tools/generate_openweather_icons.swift`. Tento generátor nepřijímá SVG ani
 PNG jiné velikosti, aby nemohlo dojít k druhému zmenšení.
 
 ## 2. Povinný vizuální vzorek
 
-Před kompletním během převeď ve všech třech stylech alespoň
+Před kompletním během převeďte ve všech třech stylech alespoň
 `partly-cloudy-day`. Tato ikona současně testuje:
 
 - SVG masku mraku,
@@ -89,8 +89,8 @@ Před kompletním během převeď ve všech třech stylech alespoň
 - zachování barev Flat a Line,
 - přebarvitelný Monochrome.
 
-Zkontroluj animaci, nikoli jen první snímek. Paprsky nesmějí procházet plochou
-mraku ani mizet v odkryté části. Teprve po tomto ověření spusť celou dávku.
+Zkontrolujte animaci, nikoli jen první snímek. Paprsky nesmějí procházet plochou
+mraku ani mizet v odkryté části. Teprve po tomto ověření spusťte celou dávku.
 
 ## 3. Sestavení kompletní knihovny
 
@@ -119,13 +119,13 @@ python3 tools/split_meteocons_asset_package.py \
   --version 3.0.0-next.10-lvgl.2
 ```
 
-Každý styl zabal samostatně tak, aby `asset-manifest.json`, `LICENSE.txt` a
-používané GIFy byly přímo v kořeni ZIPu. Z kompletní pracovní knihovny vyber
-jen klíče uvedené ve `WeatherAnimationService.cpp`. Před zveřejněním proveď
-`unzip -t` a u všech souborů porovnej velikost a SHA-256 s allowlistem. Nestačí
+Každý styl zabalte samostatně tak, aby `asset-manifest.json`, `LICENSE.txt` a
+používané GIFy byly přímo v kořeni ZIPu. Z kompletní pracovní knihovny vyberte
+jen klíče uvedené ve `WeatherAnimationService.cpp`. Před zveřejněním proveďte
+`unzip -t` a u všech souborů porovnejte velikost a SHA-256 s allowlistem. Nestačí
 ověřit pouze počet položek nebo několik vzorků.
 
-Veřejný Pages adresář připrav přímo z ověřeného kompletního balíčku:
+Veřejný Pages adresář připravte přímo z ověřeného kompletního balíčku:
 
 ```sh
 python3 tools/prepare_public_weather_assets.py \
@@ -137,20 +137,20 @@ GIFů spolu s per-style manifesty a upstream MIT licencí.
 
 ## 5. Přepojení firmwaru
 
-1. V `tools/generate_weather_animation_metadata.py` nastav nový prefix verze
-   a předej veřejnou adresu parametrem `--base-url`.
-2. V `WaveshareHodiny/WeatherAnimationService.cpp` změň samostatné verze pro
+1. V `tools/generate_weather_animation_metadata.py` nastavte nový prefix verze
+   a předejte veřejnou adresu parametrem `--base-url`.
+2. V `WaveshareHodiny/WeatherAnimationService.cpp` změňte samostatné verze pro
    Monochrome, Flat a Line.
-3. Přegeneruj allowlist používaných ikon a beze změny přenes velikosti a
+3. Přegenerujte allowlist používaných ikon a beze změny přeneste velikosti a
    SHA-256 do `ASSETS`.
-4. Ověř, že největší používaný GIF nepřekračuje `MAX_ASSET_SIZE`.
-5. Spusť `git diff --check`, `./build.sh` a nahraj vývojový build přes
+4. Ověřte, že největší používaný GIF nepřekračuje `MAX_ASSET_SIZE`.
+5. Spusťte `git diff --check`, `./build.sh` a nahrajte vývojový build přes
    `./upload.sh <port>`.
 
 ## 6. Fyzické přijetí změny
 
 Build ani náhled GIFu v počítači nejsou konečný důkaz. Na připojeném displeji
-ověř:
+ověřte:
 
 - Monochrome, Flat i Line,
 - přechod mezi statickou a animovanou ikonou,
@@ -159,7 +159,7 @@ ověř:
 - změnu barvy pouze u Monochrome,
 - žádný bílý čtverec, zbytky předchozího snímku ani porušenou masku.
 
-Za opravenou považuj knihovnu až po optickém potvrzení na fyzickém displeji.
+Za opravenou považujte knihovnu až po optickém potvrzení na fyzickém displeji.
 
 ## Ověřená referenční konfigurace
 

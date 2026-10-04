@@ -1808,7 +1808,7 @@ void setup() {
   TCA9554PWR_Init(0x70);
   buzzerServiceBegin();
   runtimeConfigMutex = xSemaphoreCreateMutex();
-  // Případná migrace konfigurace zapisuje do flash. Proveď ji dříve, než
+  // Případná migrace konfigurace zapisuje do flash. Proveďte ji dříve, než
   // spustíme RGB panel nad framebufferem v PSRAM, jinak může první start po
   // OTA rozhodit řádkovou synchronizaci displeje.
   if (!clockConfigBegin() || !clockConfigLoad(persistedConfig)) {

@@ -1327,18 +1327,18 @@ bool requireConfigurationAccess() {
   if (server.method() == HTTP_POST && displayDriverStorageTransferActive() &&
       !server.uri().startsWith("/api/background/") &&
       server.uri() != "/api/backup/part" && server.uri() != "/api/backup/cancel") {
-    sendError(409, F("Právě se ukládá obrázek. Počkej na dokončení.")); return false;
+    sendError(409, F("Právě se ukládá obrázek. Počkejte na dokončení.")); return false;
   }
   if (server.method() == HTTP_POST && server.uri().startsWith("/api/background/") &&
       firmwareUpdateServiceSnapshot().busy) {
-    sendError(409, F("Právě probíhá aktualizace firmware. Počkej na dokončení.")); return false;
+    sendError(409, F("Právě probíhá aktualizace firmware. Počkejte na dokončení.")); return false;
   }
   if (server.method() == HTTP_POST && backupBusy() &&
       server.uri() != "/api/backup/part" && server.uri() != "/api/backup/cancel") {
     sendError(409, F("Zálohování nebo obnova právě probíhá.")); return false;
   }
   if (!webActive) {
-    sendError(423, F("Konfigurace je zamčená. Aktivuj ji na displeji hodin."));
+    sendError(423, F("Konfigurace je zamčená. Aktivujte ji na displeji hodin."));
     return false;
   }
   if (server.method() != HTTP_GET && !requestOriginAllowed()) {
@@ -1355,7 +1355,7 @@ bool requireConfigurationAccess() {
 
 void handleWebLogin() {
   if (!webActive) {
-    sendError(423, F("Konfigurace je zamčená. Aktivuj ji na displeji hodin."));
+    sendError(423, F("Konfigurace je zamčená. Aktivujte ji na displeji hodin."));
     return;
   }
   if (!requestOriginAllowed()) {
@@ -1368,7 +1368,7 @@ void handleWebLogin() {
     return;
   }
   if (deadlinePending(loginBlockedUntil)) {
-    sendError(429, F("Příliš mnoho pokusů. Zkus to za chvíli znovu."));
+    sendError(429, F("Příliš mnoho pokusů. Zkuste to za chvíli znovu."));
     return;
   }
   if (!webPasswordMatches(server.arg("password"))) {
@@ -1408,8 +1408,8 @@ void handleWebPassword() {
       (webPasswordEnabled && action == "change");
   if (!expectedAction) {
     sendError(409, webPasswordEnabled
-                       ? F("Heslo už je nastavené. Použij Změnit.")
-                       : F("Heslo zatím není nastavené. Použij Nastavit."));
+                       ? F("Heslo už je nastavené. Použijte Změnit.")
+                       : F("Heslo zatím není nastavené. Použijte Nastavit."));
     return;
   }
   const String password = server.arg("password");
@@ -1968,7 +1968,7 @@ void handleSaveConfig() {
       !parseFiniteFloat(server.arg("openMeteoLongitude"), openMeteoLongitude) ||
       openMeteoLatitude < -90 || openMeteoLatitude > 90 ||
       openMeteoLongitude < -180 || openMeteoLongitude > 180) {
-    sendError(400, F("Nejprve vyhledej platnou polohu zařízení."));
+    sendError(400, F("Nejprve vyhledejte platnou polohu zařízení."));
     return;
   }
   String timeZone = server.arg("timeZone");
@@ -1991,7 +1991,7 @@ void handleSaveConfig() {
   else if (openMeteoCountry == "OTHER" || openMeteoCountry.length() == 2)
     config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_OTHER;
   else {
-    sendError(400, F("Nejprve vyhledej platnou polohu zařízení."));
+    sendError(400, F("Nejprve vyhledejte platnou polohu zařízení."));
     return;
   }
   const int radarRadiusKm = server.arg("radarRadiusKm").toInt();
@@ -2318,7 +2318,7 @@ void handleTmepTest() {
     return;
   }
   if (exportId.isEmpty() || exportKey.isEmpty()) {
-    sendError(400, F("Zadej exportní URL TMEP."));
+    sendError(400, F("Zadejte exportní URL TMEP."));
     return;
   }
   int status = HTTPC_ERROR_CONNECTION_REFUSED;
@@ -2581,7 +2581,7 @@ void handleOpenMeteoLocation() {
   String city = server.arg("city");
   city.trim();
   if (city.length() < 2) {
-    sendError(400, F("Zadej název města."));
+    sendError(400, F("Zadejte název města."));
     return;
   }
   networkDiagnosticsBegin(NetworkDiagnosticKind::OpenMeteoTest);
@@ -2627,7 +2627,7 @@ void handleTestConnection() {
   String token;
   resolveConnectionInput(url, token);
   if (!validHomeAssistantUrl(url) || url.isEmpty() || token.isEmpty()) {
-    sendError(400, F("Doplň adresu Home Assistantu a token."));
+    sendError(400, F("Doplňte adresu Home Assistantu a token."));
     return;
   }
   int status;
@@ -3187,7 +3187,7 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
   registerBoundedPost("/api/background/start", []() {
     if (!requireConfigurationAccess()) return;
     String token;
-    if (!clockBackgroundStart(token)) { sendError(503, F("Úložiště není dostupné nebo již probíhá nahrávání. Zkus to za minutu.")); return; }
+    if (!clockBackgroundStart(token)) { sendError(503, F("Úložiště není dostupné nebo již probíhá nahrávání. Zkuste to za minutu.")); return; }
     sendJson(200, String(F("{\"ok\":true,\"token\":\"")) + token + "\"}");
   });
   registerBoundedPost("/api/background/chunk", []() {

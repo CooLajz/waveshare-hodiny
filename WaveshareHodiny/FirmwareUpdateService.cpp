@@ -365,7 +365,7 @@ bool checkFirmware(bool installWhenAvailable) {
   unlockStatus();
   if (!newer) {
     setMessage(FirmwareUpdateState::Current,
-               "Používáš aktuální verzi firmware.", false);
+               "Používáte aktuální verzi firmware.", false);
     return false;
   }
   if (!installWhenAvailable) {

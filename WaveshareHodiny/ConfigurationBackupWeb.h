@@ -77,7 +77,7 @@ bool prepareBackupSnapshot(BackupJob &job) {
 
 bool validateAndRestoreBackup(BackupJob &job) {
   if (!clockConfigSchemaSupported(job.metadata.configSchema)) {
-    job.error = F("Schéma zálohy není podporované. Použij kompatibilní firmware."); return false;
+    job.error = F("Schéma zálohy není podporované. Použijte kompatibilní firmware."); return false;
   }
   if (!settingsImport(job.plain, job.plainLength)) {
     job.error = F("Struktura zálohy není platná nebo obsahuje nepodporované položky."); return false;
@@ -164,10 +164,10 @@ bool backupBusy() {
 void handleBackupStart(bool importing) {
   if (!requireConfigurationAccess()) return;
   if (!importing && server.arg("format") != "2") {
-    sendError(400, F("Pro úplnou zálohu obnov stránku nastavení.")); return;
+    sendError(400, F("Pro úplnou zálohu obnovte stránku nastavení.")); return;
   }
   if (firmwareUpdateServiceSnapshot().busy) {
-    sendError(409, F("Právě probíhá aktualizace firmware. Počkej na dokončení.")); return;
+    sendError(409, F("Právě probíhá aktualizace firmware. Počkejte na dokončení.")); return;
   }
   const String id = server.arg("saveConfirmationId");
   if (!validSaveConfirmationId(id) || id.length() != 32) {

@@ -131,16 +131,16 @@ Produkční firmware obsluhuje Improv Serial na obou konektorech.
 
 ## První spuštění
 
-1. Nainstaluj firmware a nastav Wi-Fi přes Improv Serial, nebo tento krok
-   přeskoč a použij QR onboarding přímo na displeji hodin.
-2. Počkej na připojení; na displeji se zobrazí IP adresa a stavové ikony.
-3. Otevři `http://waveshare-hodiny.local/`. Pokud mDNS v síti nefunguje,
-   použij IP adresu z nastavení na displeji.
-4. V záložce **Zdroj a poloha** vyber Open-Meteo s TMEP.cz nebo Home Assistant
-   a vyhledej město. Poloha určuje časové pásmo hodin, místo pro počasí Open-Meteo i střed meteoradaru. Platí také při použití Home Assistantu.
-5. Při použití Home Assistantu zadej jeho adresu a long-lived access token a
-   tlačítkem **Otestovat připojení** ověř spojení.
-6. Uprav vzhled, radar a jas a zvol **Uložit změny**.
+1. Nainstalujte firmware a nastavte Wi-Fi přes Improv Serial, nebo tento krok
+   přeskočte a použijte QR onboarding přímo na displeji hodin.
+2. Počkejte na připojení; na displeji se zobrazí IP adresa a stavové ikony.
+3. Otevřete `http://waveshare-hodiny.local/`. Pokud mDNS v síti nefunguje,
+   použijte IP adresu z nastavení na displeji.
+4. V záložce **Zdroj a poloha** vyberte Open-Meteo s TMEP.cz nebo Home Assistant
+   a vyhledejte město. Poloha určuje časové pásmo hodin, místo pro počasí Open-Meteo i střed meteoradaru. Platí také při použití Home Assistantu.
+5. Při použití Home Assistantu zadejte jeho adresu a long-lived access token a
+   tlačítkem **Otestovat připojení** ověřte spojení.
+6. Upravte vzhled, radar a jas a zvolte **Uložit změny**.
 
 Nová konfigurace používá Open-Meteo, polohu Brno a pohled meteoradaru na celou
 Českou republiku. Home Assistant není pro základní provoz povinný.
@@ -176,8 +176,8 @@ Generátor a zdroj databáze jsou popsané v `tools/generate_timezones.py`.
 
 ### TMEP.cz jako doplněk Open-Meteo
 
-K režimu Open-Meteo lze přidat vlastní čidla z TMEP.cz. Vlož celou URL ze sekce
-**Rozšířený JSON – se všemi čidly**, zvol **Ověřit a načíst čidla** a hodnoty až
+K režimu Open-Meteo lze přidat vlastní čidla z TMEP.cz. Vložte celou URL ze sekce
+**Rozšířený JSON – se všemi čidly**, zvolte **Ověřit a načíst čidla** a hodnoty až
 32 čidel se přidají přímo do stejných čtyř výběrů pod skupinu TMEP.cz. Firmware
 používá jednotku vrácenou exportem, takže podporuje i vlastní veličiny.
 
@@ -203,19 +203,19 @@ MQTT, vlastní integraci ani administrátorský účet.
 
 ### Vytvoření tokenu
 
-V Home Assistantu otevři svůj uživatelský profil, sekci **Long-lived access
-tokens**, vytvoř nový token pro hodiny a vlož jej do webové konfigurace.
-Použij účet pouze s oprávněními, která zařízení skutečně potřebuje.
+V Home Assistantu otevřete svůj uživatelský profil, sekci **Long-lived access
+tokens**, vytvořte nový token pro hodiny a vložte jej do webové konfigurace.
+Použijte účet pouze s oprávněními, která zařízení skutečně potřebuje.
 
 Token se po uložení už do webové stránky neposílá a nelze jej z ní přečíst;
 lze jej pouze nahradit. Při testu se uložený token znovu použije jen pro přesně
-stejnou uloženou adresu Home Assistantu. Pokud adresu změníš, musíš zadat také
+stejnou uloženou adresu Home Assistantu. Pokud adresu změníte, musíte zadat také
 nový token.
 
 Firmware podporuje lokální HTTP i HTTPS servery s vlastním nebo neplatným
 certifikátem. U HTTPS spojení s Home Assistantem proto v současnosti neověřuje
 certifikát serveru. Tato volba usnadňuje domácí instalace, ale nechrání token
-před aktivním útočníkem v síti. Používej firmware pouze v důvěryhodné LAN.
+před aktivním útočníkem v síti. Používejte firmware pouze v důvěryhodné LAN.
 
 ### Doporučené entity
 
@@ -320,8 +320,8 @@ Nahrávání probíhá v dialogu s procenty a upozorněním na dočasně černý
 ### Hodinová předpověď počasí
 
 Předpověď je samostatná obrazovka, nikoli čtvrtý ciferník. Vodorovným swipem
-listuješ **Hodiny → Předpověď → Meteoradar → Hodiny**, opačným směrem zpět.
-Mimo ČR se radar vynechá a přepínáš mezi hodinami a předpovědí.
+listujete **Hodiny → Předpověď → Meteoradar → Hodiny**, opačným směrem zpět.
+Mimo ČR se radar vynechá a přepínáte mezi hodinami a předpovědí.
 
 Po obvodu je následujících **12 celých hodin** s teplotou a denní/noční ikonou
 počasí. Barevný vějíř plynule znázorňuje očekávané teploty, radiální čára
@@ -348,7 +348,7 @@ z horních polí nebo metrik A/B.
 
 ### Automatické střídání obrazovek
 
-Ve webu zapni **Automaticky střídat obrazovky** a nastav dobu pro každou stránku
+Ve webu zapněte **Automaticky střídat obrazovky** a nastavte dobu pro každou stránku
 v rozsahu 0–3600 sekund. Výchozí časy jsou hodiny 120 s, předpověď 20 s a radar
 20 s; samotné střídání je po čisté instalaci vypnuté. **0 vynechá danou stránku**,
 všechny tři nuly nechají aktuální stránku beze změny. Ruční swipe funguje i pro
@@ -432,7 +432,7 @@ neaktivní části.
 
 Konfigurační web je ve výchozím režimu **Vždy zapnutý**. Lze jej přepnout na
 deset minut po startu nebo aktivaci z displeje, případně jej úplně vypnout.
-Provozuj jej jen v důvěryhodné síti; aktivní web signalizuje ikona ozubeného
+Provozujte jej jen v důvěryhodné síti; aktivní web signalizuje ikona ozubeného
 kola na dashboardu.
 
 Webové nastavení lze chránit heslem o délce 6 až 20 znaků. Stav bez hesla je
@@ -453,7 +453,7 @@ další plánovanou kontrolu, HTTP stav a právě zpracovávaný soubor.
 ### Záloha konfigurace
 
 Kompletní záloha se stahuje jako soubor `.whbackup`; název obsahuje verzi FW
-a datum i čas exportu. Při exportu zadej
+a datum i čas exportu. Při exportu zadejte
 heslo a jeho potvrzení (alespoň 8 znaků, nejvýše 128 znaků / 256 UTF-8 bajtů).
 Firmware šifruje uložené nastavení pomocí AES-256-GCM; heslo se v hodinách
 trvale neukládá. Neuložené změny a dočasné náhledy nejsou součástí exportu.
@@ -483,11 +483,11 @@ vyžadovat původní heslo webu ze zálohy.
 Starší nešifrované JSON zálohy formátu 2 lze nadále importovat jako omezenou
 obnovu nastavení bez přístupových údajů. Heslo zálohy se u nich nevyžaduje.
 HA token se zachová pouze při shodné URL; chybějící přístup TMEP neblokuje
-uložení vybraných pozic. Chybějící přístupové údaje následně doplň ručně.
+uložení vybraných pozic. Chybějící přístupové údaje následně doplňte ručně.
 
 Při návratu k firmware, který nové úložiště ještě nezná, jsou dostupná pouze
 původní nastavení z doby před přechodem. Pozdější změny se do staršího firmware
-automaticky nepřenesou; před downgrade si ponech odpovídající zálohu.
+automaticky nepřenesou; před downgrade si ponechte odpovídající zálohu.
 
 Podrobnosti formátu, transakcí a migračních testů jsou v
 [docs/configuration-backup.md](docs/configuration-backup.md).
@@ -580,7 +580,7 @@ SemVer a případně ji nainstaluje. Stejnou cestu používá ruční aktualizac
 
 Web zobrazuje URL ovládacího endpointu obsahující náhodný 128bitový secret.
 Pomocí REST příkazů lze aktualizovat data, zapnout či vypnout podsvícení nebo
-vyvolat další podporované akce. URL považuj za přihlašovací údaj: nevkládej ji
+vyvolat další podporované akce. URL považujte za přihlašovací údaj: nevkládejte ji
 do screenshotů, veřejných logů ani Git repozitáře.
 
 Secret je uložený v zařízení, ověřuje se konstantním časem a je součástí pouze
@@ -595,8 +595,8 @@ notifikaci a zobrazí přesný JSON a URL s tlačítky pro zkopírování.
 Testovací hodnoty se neukládají do konfigurace hodin.
 
 `POST /api/control/<SECRET>/notification` přijímá `application/json` nebo
-`application/x-www-form-urlencoded`. Použij základní URL z pole **Ovládací API**
-ve webovém nastavení a připoj `/notification`. Stejně jako ostatní ovládací
+`application/x-www-form-urlencoded`. Použijte základní URL z pole **Ovládací API**
+ve webovém nastavení a připojte `/notification`. Stejně jako ostatní ovládací
 příkazy funguje i při zamčeném webovém nastavení.
 
 | Pole | Význam |
@@ -616,7 +616,7 @@ Příklad časové notifikace na 15 sekund (IP a secret jsou zástupné hodnoty)
 curl --fail-with-body --show-error --max-time 10 \
   --request POST 'http://IP_DISPLEJE/api/control/SECRET/notification' \
   --header 'Content-Type: application/json' \
-  --data '{"title":"Pračka doprala","message":"Prádlo už můžeš pověsit.","durationSeconds":15,"beep":150,"textColor":"#FFFFFF","backgroundColor":"#124734"}'
+  --data '{"title":"Pračka doprala","message":"Prádlo už můžete pověsit.","durationSeconds":15,"beep":150,"textColor":"#FFFFFF","backgroundColor":"#124734"}'
 ```
 
 Pevná notifikace do klepnutí na displej, bez zvuku a s novým řádkem ve zprávě:
@@ -625,13 +625,13 @@ Pevná notifikace do klepnutí na displej, bez zvuku a s novým řádkem ve zpr�
 curl --fail-with-body --show-error --max-time 10 \
   --request POST 'http://IP_DISPLEJE/api/control/SECRET/notification' \
   --header 'Content-Type: application/json' \
-  --data '{"title":"Otevřené okno","message":"Okno v ložnici je otevřené.\nPřed odchodem ho zavři.","durationSeconds":0,"beep":0}'
+  --data '{"title":"Otevřené okno","message":"Okno v ložnici je otevřené.\nPřed odchodem ho zavřete.","durationSeconds":0,"beep":0}'
 ```
 
-`--fail-with-body` vyžaduje cURL 7.76 nebo novější. U staršího cURL použij
+`--fail-with-body` vyžaduje cURL 7.76 nebo novější. U staršího cURL použijte
 `--fail` (bez těla chybové odpovědi).
 
-Pro pevnou notifikaci nastav `"durationSeconds":0`. Klepnutí zavře oba typy;
+Pro pevnou notifikaci nastavte `"durationSeconds":0`. Klepnutí zavře oba typy;
 pevná notifikace se sama časem nezavře. Nový požadavek nahradí předchozí
 notifikaci a začne nový interval. Fronta ani uložení notifikací přes restart
 se nepoužívá.
@@ -674,13 +674,13 @@ bzučák pro požadované pípnutí.
 
 #### Node-RED
 
-Použij běžné uzly **Inject → Function → HTTP request → Debug**; další balíček
-není potřeba. Do prostředí procesu Node-RED nastav proměnnou
+Použijte běžné uzly **Inject → Function → HTTP request → Debug**; další balíček
+není potřeba. Do prostředí procesu Node-RED nastavte proměnnou
 `WAVESHARE_NOTIFICATION_URL` na celou URL notifikace z webu hodin
-(`http://IP_DISPLEJE/api/control/SECRET/notification`) a restartuj Node-RED.
-URL obsahuje secret: neukládej ji do veřejně sdíleného exportu flow.
+(`http://IP_DISPLEJE/api/control/SECRET/notification`) a restartujte Node-RED.
+URL obsahuje secret: neukládejte ji do veřejně sdíleného exportu flow.
 
-Do uzlu **Function** vlož:
+Do uzlu **Function** vložte:
 
 ```javascript
 const url = env.get("WAVESHARE_NOTIFICATION_URL");
@@ -693,7 +693,7 @@ msg.url = url;
 msg.headers = { "Content-Type": "application/json" };
 msg.payload = JSON.stringify({
     title: "Pračka doprala",
-    message: "Prádlo už můžeš pověsit.\nKlepnutím zavřeš zprávu.",
+    message: "Prádlo už můžete pověsit.\nKlepnutím zavřete zprávu.",
     durationSeconds: 15,
     beep: 150,
     textColor: "#FFFFFF",
@@ -702,14 +702,14 @@ msg.payload = JSON.stringify({
 return msg;
 ```
 
-V uzlu **HTTP request** nastav metodu **POST**, URL nech prázdnou (použije
-`msg.url`) a návratový typ nastav na parsovaný JSON objekt. V **Debug** zobrazuj
+V uzlu **HTTP request** nastavte metodu **POST**, URL nechte prázdnou (použije
+`msg.url`) a návratový typ nastavte na parsovaný JSON objekt. V **Debug** zobrazujte
 jen `msg.payload`, ne celou zprávu s tajnou URL. Pro kontrolu HTTP výsledku lze
 přidat druhý Debug pro `msg.statusCode`: úspěch je 200 a `msg.payload.ok` je
-`true`. Po **Deploy** klikni na Inject. Pro trvalou zprávu změň
-`durationSeconds` na 0, pro ticho `beep` na 0. Inject můžeš později nahradit
+`true`. Po **Deploy** klikněte na Inject. Pro trvalou zprávu změňte
+`durationSeconds` na 0, pro ticho `beep` na 0. Inject můžete později nahradit
 událostí nebo automatizací. Návazné uzly mohou změnit jednotlivé hodnoty ve
-Function; pokud sestavuješ zprávu z vlastních dat, vždy použij `JSON.stringify`.
+Function; pokud sestavujete zprávu z vlastních dat, vždy použijte `JSON.stringify`.
 
 Viz oficiální návody Node-RED pro [URL z msg.url](https://cookbook.nodered.org/http/set-request-url),
 [hlavičky požadavku](https://cookbook.nodered.org/http/set-request-header) a
@@ -722,14 +722,14 @@ a volat jako `notify.waveshare_hodiny`. Nevyžaduje to vlastní integraci ani
 Home Assistant token: autorizaci zajišťuje secret hodin v URL. Home Assistant
 musí mít síťový přístup k webovému serveru hodin.
 
-Do lokálního `secrets.yaml` přidej skutečnou URL (nepublikuj ji):
+Do lokálního `secrets.yaml` přidejte skutečnou URL (nepublikujte ji):
 
 ```yaml
 waveshare_notification_url: "http://IP_DISPLEJE/api/control/SECRET/notification"
 ```
 
-Do `configuration.yaml` přidej následující položku. Pokud již máš `notify:`,
-připoj ji do existujícího seznamu, nevytvářej druhý klíč `notify:`.
+Do `configuration.yaml` přidejte následující položku. Pokud již máte `notify:`,
+připojte ji do existujícího seznamu, nevytvářejte druhý klíč `notify:`.
 
 ```yaml
 notify:
@@ -746,8 +746,8 @@ notify:
       backgroundColor: "{{ (data | default({})).get('backgroundColor', '#000000') }}"
 ```
 
-Zkontroluj konfiguraci a restartuj Home Assistant. Pak v **Vývojářské nástroje
-→ Akce** vyzkoušej následující YAML; stejnou akci můžeš vložit do seznamu
+Zkontrolujte konfiguraci a restartujte Home Assistant. Pak v **Vývojářské nástroje
+→ Akce** vyzkoušejte následující YAML; stejnou akci můžete vložit do seznamu
 `actions:` automatizace nebo `sequence:` skriptu:
 
 ```yaml
@@ -755,8 +755,8 @@ action: notify.waveshare_hodiny
 data:
   title: "Pračka doprala"
   message: |-
-    Prádlo už můžeš pověsit.
-    Klepnutím zavřeš zprávu.
+    Prádlo už můžete pověsit.
+    Klepnutím zavřete zprávu.
   data:
     durationSeconds: 15
     beep: 150
@@ -767,12 +767,12 @@ data:
 Vnořené `data:` je součást rozhraní Home Assistant notify, ne JSON pole API
 hodin. Konfigurace REST notifieru z něj vybírá pouze čtyři podporované volby.
 Bez vnořeného `data:` se použije 15 sekund, žádný zvuk a bílý text na černém
-pozadí. Pro zprávu do klepnutí pošli `durationSeconds: 0`. `title` i `message`
-vždy vyplň. Používáme metodu **POST** (formulář), ne **POST_JSON**: šablony
+pozadí. Pro zprávu do klepnutí pošlete `durationSeconds: 0`. `title` i `message`
+vždy vyplňte. Používáme metodu **POST** (formulář), ne **POST_JSON**: šablony
 notifieru vracejí text, který formulářové API hodin umí převést na celá čísla.
-U formuláře platí výše uvedený limit zakódované hodnoty, takže používej krátké
-zprávy. V žádném příkladu neotevírej API hodin do internetu; používej důvěryhodnou
-lokální síť nebo VPN a skutečnou URL nesdílej v logu ani screenshotu.
+U formuláře platí výše uvedený limit zakódované hodnoty, takže používejte krátké
+zprávy. V žádném příkladu neotevírejte API hodin do internetu; používejte důvěryhodnou
+lokální síť nebo VPN a skutečnou URL nesdílejte v logu ani screenshotu.
 
 Test validace a časování bez zařízení:
 
@@ -812,7 +812,7 @@ ignorovaný soubor `WaveshareHodiny/local/arduino-cli.yaml` ji může přepsat.
 ```
 
 `./build.sh` používá výchozí domácí údaje `WIFI_SSID` a `WIFI_PASSWORD`.
-Pracovní profil sestavíš pomocí `./build.sh work`; ten použije samostatné
+Pracovní profil sestavíte pomocí `./build.sh work`; ten použije samostatné
 hodnoty `WIFI_WORK_SSID` a `WIFI_WORK_PASSWORD`.
 
 Volitelný port lze předat explicitně:
@@ -847,7 +847,7 @@ FIRMWARE_SERVER_URL=
 FIRMWARE_PROJECT_SLUG=
 ```
 
-Skutečné hodnoty nikdy necommituj. Generované headery se ukládají pouze do
+Skutečné hodnoty nikdy necommitujte. Generované headery se ukládají pouze do
 ignorovaného adresáře `WaveshareHodiny/local/`.
 
 ### Release build
@@ -859,7 +859,7 @@ cache se automaticky připraví přes `tools/setup_native_arduino_tools.sh`.
 První příprava vyžaduje internet, Python s pip a Command Line Tools. Python
 závislosti jsou oddělené podle verze interpretu. Linuxový CI postup se nemění.
 
-Verzi zvol jako platný SemVer 2.0.0:
+Verzi zvolte jako platný SemVer 2.0.0:
 
 ```sh
 ./build-release.sh 1.0.0
@@ -898,7 +898,7 @@ Pomocný nástroj jej převede na transparentní kruhové PNG 480 × 480 px:
 ./capture-screenshot.sh --night --output screenshots/night.png
 ```
 
-Pokud je připojeno více zařízení, předej `--port`. Nástroj používá pyserial
+Pokud je připojeno více zařízení, předejte `--port`. Nástroj používá pyserial
 3.5 z lokálního ignorovaného adresáře `.arduino/python`.
 
 ## Struktura repozitáře
@@ -920,11 +920,11 @@ upload.sh               USB upload vývojového buildu
 
 ### `waveshare-hodiny.local` se neotevře
 
-- ověř ikonu Wi-Fi na displeji,
-- použij IP adresu z nastavení zařízení,
-- pokud je zvolený časově omezený nebo vypnutý režim webu, otevři nastavení
+- ověřte ikonu Wi-Fi na displeji,
+- použijte IP adresu z nastavení zařízení,
+- pokud je zvolený časově omezený nebo vypnutý režim webu, otevřete nastavení
   dlouhým stiskem kdekoliv na hodinách nebo meteoradaru,
-- zkontroluj, že klient i zařízení jsou ve stejné dosažitelné síti.
+- zkontrolujte, že klient i zařízení jsou ve stejné dosažitelné síti.
 
 Samostatná stránka `http://<IP-adresa>/diagnostics` zůstává dostupná i při
 zamčeném konfiguračním webu.
@@ -932,25 +932,25 @@ zamčeném konfiguračním webu.
 ### Home Assistant test selže
 
 - URL musí obsahovat `http://` nebo `https://`,
-- ověř token a přesná ID entit,
-- při změně URL zadej také nový token,
-- zkontroluj firewall mezi IoT sítí a Home Assistantem.
+- ověřte token a přesná ID entit,
+- při změně URL zadejte také nový token,
+- zkontrolujte firewall mezi IoT sítí a Home Assistantem.
 
 ### Hodnota zůstává `--`
 
-Otevři v Home Assistantu **Vývojářské nástroje → Stavy** a ověř, že entita
+Otevřete v Home Assistantu **Vývojářské nástroje → Stavy** a ověřte, že entita
 existuje a její stav je číselný nebo podporovaný stav počasí.
 
 ### OTA aktualizace není dostupná
 
-Vývojový build OTA neinstaluje. U release buildu ověř připojení k internetu,
+Vývojový build OTA neinstaluje. U release buildu ověřte připojení k internetu,
 synchronizovaný čas a dostupnost nakonfigurovaného HTTPS release serveru.
 Veřejný build používá `https://coolajz.github.io/waveshare-hodiny/firmware/`;
 interní profil může používat jiný server z lokální `.env`.
 
 ### Zařízení se neobjeví na USB
 
-Vyzkoušej oba USB-C konektory a datový kabel. Pro první factory instalaci může
+Vyzkoušejte oba USB-C konektory a datový kabel. Pro první factory instalaci může
 být nutné uvést ESP32-S3 do bootloaderu podle dokumentace Waveshare.
 
 ## Bezpečnost a soukromí
@@ -965,7 +965,7 @@ být nutné uvést ESP32-S3 do bootloaderu podle dokumentace Waveshare.
 - OTA používá samostatná přísnější ověření TLS, originu, velikosti a SHA-256,
 - ovládací API URL obsahuje secret a nesmí se zveřejňovat.
 
-Před nahlášením bezpečnostního problému nezveřejňuj funkční token, Wi-Fi heslo
+Před nahlášením bezpečnostního problému nezveřejňujte funkční token, Wi-Fi heslo
 ani ovládací URL v issue.
 
 ## Poděkování

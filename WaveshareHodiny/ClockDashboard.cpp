@@ -783,7 +783,7 @@ void setRadarVisible(bool visible, int8_t direction = -1) {
   radarVisible = visible;
   if (visible) {
     forecastDialSetVisible(false);
-    // Při návratu na radar neodkrývej snímek, který zůstal v canvasu z
+    // Při návratu na radar neodkrývejte snímek, který zůstal v canvasu z
     // předchozího cyklu. Canvas znovu zobrazí až první snapshot nové animace.
     lv_obj_add_flag(radarCanvas, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(radarProgressBar, LV_OBJ_FLAG_HIDDEN);
@@ -862,7 +862,7 @@ void normalizeMicroSign(char *text) {
   for (size_t index = 0; text[index] != '\0'; ++index) {
     if (static_cast<uint8_t>(text[index]) == 0xCE &&
         static_cast<uint8_t>(text[index + 1]) == 0xBC) {
-      // Řecké malé mí U+03BC nahraď znakem mikro U+00B5, který obsahují
+      // Řecké malé mí U+03BC nahraďte znakem mikro U+00B5, který obsahují
       // dashboardové fonty. Oba znaky mají v UTF-8 stejnou délku.
       text[index] = static_cast<char>(0xC2);
       text[index + 1] = static_cast<char>(0xB5);

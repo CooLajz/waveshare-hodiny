@@ -58,7 +58,7 @@ void handleNotification() {
     if (server.hasArg("textColor")) textColorText = server.arg("textColor");
     if (server.hasArg("backgroundColor")) backgroundColorText = server.arg("backgroundColor");
   } else {
-    sendError(415, F("Použij application/json nebo application/x-www-form-urlencoded."));
+    sendError(415, F("Použijte application/json nebo application/x-www-form-urlencoded."));
     return;
   }
   uint32_t beep = 0;
@@ -75,7 +75,7 @@ void handleNotification() {
       !notificationParseSeconds(secondsText.c_str(), seconds) ||
       !notificationParseColor(textColorText.c_str(), textColor) ||
       !notificationParseColor(backgroundColorText.c_str(), backgroundColor)) {
-    sendError(400, F("Vyplň nadpis (1–96 bajtů), zprávu (1–768 bajtů), celé sekundy 0–86400, beep 0–5000 ms a barvy #RRGGBB."));
+    sendError(400, F("Vyplňte nadpis (1–96 bajtů), zprávu (1–768 bajtů), celé sekundy 0–86400, beep 0–5000 ms a barvy #RRGGBB."));
     return;
   }
   if (firmwareUpdateServiceSnapshot().busy ||
