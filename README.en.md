@@ -268,6 +268,12 @@ or year–month–day, with dots, dashes, or slashes depending on the layout. Ea
 layout offers a variant without leading zeros that retains blank positions and
 inactive segments. The default is DD.MM.YYYY.
 
+Independently enable **Tinted dial fills** and **Tinted hand fills** in the analog
+face settings to use lighter shades of the respective selected colors.
+Both are disabled by default to preserve the original white fills. Outline hands
+and red night mode remain unchanged. Preview lasts until restart;
+use **Save** to keep the setting.
+
 ### Custom background image (development build)
 
 Open **Display → Background image** to choose a JPG, PNG or WebP (up to

@@ -16,6 +16,24 @@ int main() {
   settingsStoreTestReset();
   assert(settingsStoreBegin());
 
+  ClockAppearanceConfig appearance;
+  assert(clockAppearanceLoad(appearance));
+  assert(!appearance.analogTintedDialEnabled);
+  assert(!appearance.analogTintedHandsEnabled);
+  for (bool dial : {false, true}) {
+    for (bool hands : {false, true}) {
+      appearance.analogTintedDialEnabled = dial;
+      appearance.analogTintedHandsEnabled = hands;
+      assert(clockAppearanceSave(appearance));
+      settingsStoreTestReset();
+      assert(settingsStoreBegin());
+      assert(clockAppearanceLoad(appearance));
+      assert(appearance.analogTintedDialEnabled == dial);
+      assert(appearance.analogTintedHandsEnabled == hands);
+    }
+  }
+  puts("PASS: independent dial/hand tint defaults and all four saved combinations");
+
   ClockConfig defaults;
   assert(clockConfigLoad(defaults));
   assert(defaults.automaticFirmwareUpdate);

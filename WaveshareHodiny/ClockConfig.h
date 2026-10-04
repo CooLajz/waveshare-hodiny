@@ -121,6 +121,8 @@ struct ClockAppearanceConfig {
   uint32_t analogCardinalAccentColor = 0xFFAB00;
   bool analogCardinalAccentsEnabled = true;
   bool analogOutlineHandsEnabled = false;
+  bool analogTintedDialEnabled = false;
+  bool analogTintedHandsEnabled = false;
   bool analogMonochromeValuesEnabled = false;
   bool analogValuesAboveHandsEnabled = false;
   uint8_t analogDateFormat = CLOCK_DATE_FORMAT_WEEKDAY_DAY_MONTH;

@@ -1001,6 +1001,28 @@ bool readAppearanceFromRequest(ClockAppearanceConfig &appearance) {
   const String accents = server.arg("analogCardinalAccentsEnabled");
   if (accents != "0" && accents != "1") return false;
   appearance.analogCardinalAccentsEnabled = accents == "1";
+  if (server.hasArg("analogTintedHandsEnabled")) {
+    const String outlineHands = server.arg("analogTintedHandsEnabled");
+    if (outlineHands != "0" && outlineHands != "1") return false;
+    appearance.analogTintedHandsEnabled = outlineHands == "1";
+  } else if (currentAppearanceStateCallback != nullptr) {
+    ClockAppearanceConfig saved;
+    ClockAppearanceConfig active;
+    currentAppearanceStateCallback(saved, active);
+    appearance.analogTintedHandsEnabled =
+        active.analogTintedHandsEnabled;
+  }
+  if (server.hasArg("analogTintedDialEnabled")) {
+    const String outlineHands = server.arg("analogTintedDialEnabled");
+    if (outlineHands != "0" && outlineHands != "1") return false;
+    appearance.analogTintedDialEnabled = outlineHands == "1";
+  } else if (currentAppearanceStateCallback != nullptr) {
+    ClockAppearanceConfig saved;
+    ClockAppearanceConfig active;
+    currentAppearanceStateCallback(saved, active);
+    appearance.analogTintedDialEnabled =
+        active.analogTintedDialEnabled;
+  }
   if (server.hasArg("analogOutlineHandsEnabled")) {
     const String outlineHands = server.arg("analogOutlineHandsEnabled");
     if (outlineHands != "0" && outlineHands != "1") return false;
@@ -1575,6 +1597,18 @@ void handleGetConfig() {
                                                        : F("false");
   result += F(",\"activeAnalogOutlineHandsEnabled\":");
   result += activeAppearance.analogOutlineHandsEnabled ? F("true")
+                                                        : F("false");
+  result += F(",\"analogTintedDialEnabled\":");
+  result += savedAppearance.analogTintedDialEnabled ? F("true")
+                                                       : F("false");
+  result += F(",\"activeAnalogTintedDialEnabled\":");
+  result += activeAppearance.analogTintedDialEnabled ? F("true")
+                                                        : F("false");
+  result += F(",\"analogTintedHandsEnabled\":");
+  result += savedAppearance.analogTintedHandsEnabled ? F("true")
+                                                       : F("false");
+  result += F(",\"activeAnalogTintedHandsEnabled\":");
+  result += activeAppearance.analogTintedHandsEnabled ? F("true")
                                                         : F("false");
   result += F(",\"analogMonochromeValuesEnabled\":");
   result += savedAppearance.analogMonochromeValuesEnabled ? F("true")
@@ -2518,6 +2552,14 @@ void handleClockAppearancePreview() {
   result += saved.analogOutlineHandsEnabled ? F("true") : F("false");
   result += F(",\"activeAnalogOutlineHandsEnabled\":");
   result += active.analogOutlineHandsEnabled ? F("true") : F("false");
+  result += F(",\"analogTintedDialEnabled\":");
+  result += saved.analogTintedDialEnabled ? F("true") : F("false");
+  result += F(",\"activeAnalogTintedDialEnabled\":");
+  result += active.analogTintedDialEnabled ? F("true") : F("false");
+  result += F(",\"analogTintedHandsEnabled\":");
+  result += saved.analogTintedHandsEnabled ? F("true") : F("false");
+  result += F(",\"activeAnalogTintedHandsEnabled\":");
+  result += active.analogTintedHandsEnabled ? F("true") : F("false");
   result += F(",\"analogMonochromeValuesEnabled\":");
   result += saved.analogMonochromeValuesEnabled ? F("true") : F("false");
   result += F(",\"activeAnalogMonochromeValuesEnabled\":");

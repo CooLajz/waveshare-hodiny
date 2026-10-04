@@ -332,6 +332,8 @@ bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
       0xFFFFFF;
   appearance.analogCardinalAccentsEnabled =
       preferences.getBool(APPEARANCE_ACCENTS_KEY, true);
+  appearance.analogTintedDialEnabled = preferences.getBool("tintDial", false);
+  appearance.analogTintedHandsEnabled = preferences.getBool("tintHands", false);
   appearance.analogOutlineHandsEnabled =
       preferences.getBool(APPEARANCE_OUTLINE_HANDS_KEY, false);
   appearance.analogMonochromeValuesEnabled =
@@ -412,6 +414,8 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
       preferences.putBool(APPEARANCE_ACCENTS_KEY,
                           appearance.analogCardinalAccentsEnabled) ==
       sizeof(bool);
+  const bool tintedHighlightsSaved = preferences.putBool("tintDial", appearance.analogTintedDialEnabled) == sizeof(bool);
+  const bool tintedHandsSaved = preferences.putBool("tintHands", appearance.analogTintedHandsEnabled) == sizeof(bool);
   const bool outlineHandsSaved =
       preferences.putBool(APPEARANCE_OUTLINE_HANDS_KEY,
                           appearance.analogOutlineHandsEnabled) ==
@@ -441,7 +445,7 @@ bool clockAppearanceSave(const ClockAppearanceConfig &appearance) {
       sizeof(uint32_t);
   preferences.end();
   const bool ok = backgroundSaved && digitalDividerSaved && retroDateSaved && retroWeekdaySaved && timeFormatSaved && retroWeatherSaved && retroProgressSaved && retroSourcesSaved && retroGhostSaved && styleSaved && toneSaved && handToneSaved && accentColorSaved &&
-         accentsSaved && outlineHandsSaved && monoValuesSaved &&
+         accentsSaved && tintedHandsSaved && tintedHighlightsSaved && outlineHandsSaved && monoValuesSaved &&
          valuesAboveSaved && dateFormatSaved && dateColorSaved &&
          weatherColorSaved && transitionSaved && digitsSavedA && digitsSavedB && retroColorsSaved;
   if (!ok) { if (ownTransaction) settingsTransactionAbort(); return false; }

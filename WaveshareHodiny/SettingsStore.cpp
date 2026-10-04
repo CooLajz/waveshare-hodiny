@@ -46,6 +46,9 @@ const Key keys[] = {
     {"clock-look", "digitalDivider", UInt, 4},
     {"clock-bg", "options", Blob, 16},
     {"clock-look", "analog-bg", UInt, 4},
+    {"clock-look", "tintHighlights", Byte, 1}, // Legacy combined setting.
+    {"clock-look", "tintDial", Byte, 1},
+    {"clock-look", "tintHands", Byte, 1},
 };
 constexpr size_t KEY_COUNT = sizeof(keys) / sizeof(keys[0]);
 struct Image {

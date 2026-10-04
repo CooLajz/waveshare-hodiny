@@ -59,6 +59,8 @@ uint32_t analogHandToneColor = 0x00D6FF;
 uint32_t analogCardinalAccentColor = 0xFFAB00;
 bool analogCardinalAccentsEnabled = true;
 bool analogOutlineHandsEnabled = false;
+bool analogTintedDialEnabled = false;
+bool analogTintedHandsEnabled = false;
 bool analogMonochromeValuesEnabled = false;
 bool analogValuesAboveHandsEnabled = false;
 uint32_t analogDateColor = 0xB5B5B5;
@@ -935,6 +937,11 @@ lv_color_t analogHandTone(float intensity = 1.0f) {
   return lv_color_make(red, green, blue);
 }
 
+lv_color_t analogHighlight(uint32_t tone) {
+  // Světlá výplň zachovává odstín: přibližně 65 % barvy a 35 % bílé.
+  return lv_color_mix(configuredColor(tone), lv_color_white(), 166);
+}
+
 lv_point_t analogPoint(const lv_point_t &center, float angleDegrees,
                        float radius) {
   const float radians = angleDegrees * ANALOG_PI / 180.0f;
@@ -1085,7 +1092,8 @@ void drawAnalogHand(const AnalogDrawTarget &target, const lv_point_t &center,
                               : analogHandTone(0.88f);
   const lv_color_t core = redNightVisualEnabled()
                               ? lv_color_make(255, 112, 112)
-                              : lv_color_make(246, 250, 252);
+                              : (analogTintedHandsEnabled ? analogHighlight(analogHandToneColor)
+                                                               : lv_color_make(246, 250, 252));
   if (analogOutlineHandsEnabled) {
     const lv_color_t outlineColor =
         redNightVisualEnabled() ? COLOR_ERROR : analogHandTone();
@@ -1128,7 +1136,8 @@ void renderAnalogDial(const AnalogDrawTarget &target,
   const lv_color_t amber =
       redNight ? COLOR_ERROR : configuredColor(analogCardinalAccentColor);
   const lv_color_t markerCore =
-      redNight ? lv_color_make(255, 112, 112) : COLOR_TEXT;
+      redNight ? lv_color_make(255, 112, 112)
+               : (analogTintedDialEnabled ? analogHighlight(analogToneColor) : COLOR_TEXT);
   const lv_color_t markerEdge = redNight ? COLOR_ERROR : analogTone(0.75f);
 
   if (!backgroundVisible()) {
@@ -1281,7 +1290,9 @@ void drawAnalogHandsEvent(lv_event_t *event) {
                                            : analogHandTone(0.9f));
   drawAnalogCircle(target, center, 8,
                    redNightVisualEnabled() ? lv_color_make(255, 112, 112)
-                                           : COLOR_TEXT);
+                                           : (analogOutlineHandsEnabled || !analogTintedHandsEnabled
+                                                  ? COLOR_TEXT
+                                                  : analogHighlight(analogHandToneColor)));
   drawAnalogCircle(target, center, 4,
                    redNightVisualEnabled() ? lv_color_make(62, 0, 0)
                                            : lv_color_make(0, 35, 50));
@@ -1311,7 +1322,7 @@ void clearAnalogDialCache() {
 
 bool rebuildAnalogDialCache() {
   if (!analogLayoutEnabled() || clockDashboardRadarVisible()) { clearAnalogDialCache(); return true; }
-  const uint32_t state[] = {analogToneColor, analogCardinalAccentColor,
+  const uint32_t state[] = {uint32_t(analogTintedDialEnabled), analogToneColor, analogCardinalAccentColor,
       (!backgroundVisible() && !redNightVisualEnabled()) ? analogBackgroundColor : 0U,
       uint32_t(analogCardinalAccentsEnabled), uint32_t(redNightVisualEnabled()),
       uint32_t(backgroundVisible()), uint32_t(analogClockOnly()), uint32_t(backgroundShadowOpacity()),
@@ -3753,6 +3764,8 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
       analogHandToneColor == handTone && analogBackgroundColor == backgroundColor &&
       analogCardinalAccentColor == accentColor &&
       analogCardinalAccentsEnabled == accentsEnabled &&
+      analogTintedHandsEnabled == appearance.analogTintedHandsEnabled &&
+      analogTintedDialEnabled == appearance.analogTintedDialEnabled &&
       analogOutlineHandsEnabled == outlineHandsEnabled &&
       analogMonochromeValuesEnabled == monochromeValuesEnabled &&
       analogValuesAboveHandsEnabled == valuesAboveHandsEnabled &&
@@ -3765,7 +3778,7 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
   if (styleChanged && dashboardContent) retroLcdEnable(dashboardContent, style == CLOCK_STYLE_RETRO_LCD);
   const bool valueLayerChanged =
       analogValuesAboveHandsEnabled != valuesAboveHandsEnabled;
-  const bool dialAppearanceChanged = analogToneColor != tone ||
+  const bool dialAppearanceChanged = analogTintedDialEnabled != appearance.analogTintedDialEnabled || analogToneColor != tone ||
       (analogBackgroundColor != backgroundColor && !backgroundVisible() && !redNightVisualEnabled()) ||
                                      analogCardinalAccentColor != accentColor ||
                                      analogCardinalAccentsEnabled !=
@@ -3782,6 +3795,8 @@ void clockDashboardApplyAppearance(const ClockAppearanceConfig &appearance) {
   analogHandToneColor = handTone;
   analogCardinalAccentColor = accentColor;
   analogCardinalAccentsEnabled = accentsEnabled;
+  analogTintedHandsEnabled = appearance.analogTintedHandsEnabled;
+  analogTintedDialEnabled = appearance.analogTintedDialEnabled;
   analogOutlineHandsEnabled = outlineHandsEnabled;
   analogMonochromeValuesEnabled = monochromeValuesEnabled;
   analogValuesAboveHandsEnabled = valuesAboveHandsEnabled;

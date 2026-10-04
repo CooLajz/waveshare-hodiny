@@ -271,6 +271,12 @@ nebo rok–měsíc–den, s tečkami, pomlčkami či lomítky podle varianty. Ka
 formát má variantu bez úvodních nul, která zachová prázdné pozice a podkres.
 Výchozí je DD.MM.YYYY.
 
+V nastavení analogového ciferníku lze nezávisle zapnout **Tónované výplně ciferníku**
+a **Tónované výplně ručiček**. Světlé výplně značek a plných ručiček pak používají
+zesvětlený tón příslušné zvolené barvy. Oba přepínače jsou výchozí vypnuté a zachovávají původní bílé výplně;
+obrysové ručičky a červený noční režim se nemění. Náhled platí do restartu,
+trvale se uloží tlačítkem **Uložit**.
+
 ### Vlastní obrázek na pozadí (vývojová verze)
 
 V záložce **Displej → Obrázek na pozadí** lze nahrát JPG, PNG nebo WebP
