@@ -64,6 +64,7 @@ pozicích 12, 3, 6 a 9 hodin.
   vodorovně mezi hodinami a radarem, s aktuálním počasím uprostřed;
   dostupná také při použití Home Assistantu; automatické střídání má samostatné
   délky pro hodiny, předpověď a radar (0 = vynechat, všechny 0 = bez přepínání),
+- volbu zdroje meteoradaru MAX Z (původní, výchozí) nebo MAX Z s maskou; maska zesvětluje oblasti, kde srážky pravděpodobně nedopadají na zem,
 - srážkový radar ČHMÚ s mapou České republiky, městy a 1 až 15 snímky,
 - rozsahy 25, 50, 100 a 200 km nebo celou ČR ovládané svislým gestem swipe,
 - červenou noční paletu radaru se zachováním rozlišení intenzity srážek,

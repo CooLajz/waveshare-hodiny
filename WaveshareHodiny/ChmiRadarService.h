@@ -55,7 +55,8 @@ void chmiRadarServicePrepareForFirmwareUpdate();
 void chmiRadarServiceSetActive(bool visible, bool backgroundRefresh,
                                float latitude, float longitude,
                                uint16_t radiusKm, uint8_t frameCount,
-                               uint8_t mapOpacity, uint8_t pauseSeconds);
+                               uint8_t mapOpacity, uint8_t pauseSeconds,
+                               uint8_t source);
 void chmiRadarServiceSetRedNightMode(bool enabled);
 void chmiRadarServiceSnapshot(ChmiRadarSnapshot &snapshot);
 void chmiRadarServiceDiagnostics(ChmiRadarDiagnostics &diagnostics);

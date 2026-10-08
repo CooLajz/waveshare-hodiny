@@ -43,7 +43,9 @@ Meteoradar používá radarový kompozit MAX_Z poskytovaný Českým
 hydrometeorologickým ústavem. Data nejsou součástí licence zdrojového kódu a
 vyžadují uvedení zdroje.
 
-Zdroj: https://opendata.chmi.cz/meteorology/weather/radar/composite/maxz/png/
+Zdroje:
+- https://opendata.chmi.cz/meteorology/weather/radar/composite/maxz/png/
+- https://opendata.chmi.cz/meteorology/weather/radar/composite/maxz/png_masked/
 
 ## Mapový podklad meteoradaru
 

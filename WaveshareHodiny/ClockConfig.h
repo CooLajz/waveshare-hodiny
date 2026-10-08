@@ -31,7 +31,8 @@ constexpr size_t CLOCK_METRIC_COLOR_POINT_COUNT = 10;
 // Schema 30 appends the forecast page duration; zero durations skip automatic pages.
 // Schema 29 appends the IANA time zone associated with the saved location.
 // Schema 31 appends the configurable daily firmware update time.
-constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 31;
+// Schema 32 appends the CHMI radar product selection.
+constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 32;
 
 enum ClockLanguage : uint8_t {
   CLOCK_LANGUAGE_UNSET = 0,
@@ -42,6 +43,11 @@ enum ClockLanguage : uint8_t {
 enum ClockDataSource : uint8_t {
   CLOCK_DATA_SOURCE_OPEN_METEO = 0,
   CLOCK_DATA_SOURCE_HOME_ASSISTANT = 1,
+};
+
+enum ClockRadarSource : uint8_t {
+  CLOCK_RADAR_SOURCE_MAX_Z = 0,
+  CLOCK_RADAR_SOURCE_MAX_Z_MASKED = 1,
 };
 
 enum ClockLocationCountry : uint8_t {
@@ -242,6 +248,8 @@ struct ClockConfig {
   char forecastTemperatureEntityId[CLOCK_ENTITY_ID_LENGTH] = "";
   uint16_t firmwareUpdateMinuteOfDay = 250; // Local time, default 04:10.
   uint16_t firmwareUpdateReserved = 0;
+  uint8_t radarSource = CLOCK_RADAR_SOURCE_MAX_Z;
+  uint8_t radarSourceReserved[3] = {};
 };
 
 static_assert(offsetof(ClockConfig, language) == 2106 &&
@@ -254,8 +262,9 @@ static_assert(offsetof(ClockConfig, language) == 2106 &&
                   offsetof(ClockConfig, forecastDisplaySeconds) == 2752 &&
                   offsetof(ClockConfig, forecastTemperatureEntityId) == 2756 &&
                   offsetof(ClockConfig, firmwareUpdateMinuteOfDay) == 2884 &&
-                  sizeof(ClockConfig) == 2888,
-              "Schema 31 must preserve the complete schema 30 prefix.");
+                  offsetof(ClockConfig, radarSource) == 2888 &&
+                  sizeof(ClockConfig) == 2892,
+              "Schema 32 must preserve the complete schema 31 prefix.");
 
 bool clockConfigBegin();
 bool clockConfigLoad(ClockConfig &config);

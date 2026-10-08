@@ -1482,6 +1482,8 @@ void handleGetConfig() {
   result += activeRadarRadiusKm;
   result += F(",\"radarFrameCount\":");
   result += config.radarFrameCount;
+  result += F(",\"radarSource\":");
+  result += config.radarSource;
   result += F(",\"radarMapOpacity\":");
   result += config.radarMapOpacity;
   result += F(",\"radarPauseSeconds\":");
@@ -2000,6 +2002,14 @@ void handleSaveConfig() {
     return;
   }
   config.radarRadiusKm = static_cast<uint16_t>(radarRadiusKm);
+  if (server.hasArg("radarSource")) {
+    const String source = server.arg("radarSource");
+    if (source != "0" && source != "1") {
+      sendError(400, F("Zdroj meteoradaru není platný."));
+      return;
+    }
+    config.radarSource = source == "1" ? CLOCK_RADAR_SOURCE_MAX_Z_MASKED : CLOCK_RADAR_SOURCE_MAX_Z;
+  }
   const int radarFrameCount = server.arg("radarFrameCount").toInt();
   if (radarFrameCount < 1 || radarFrameCount > 15) {
     sendError(400, F("Počet snímků meteoradaru musí být od 1 do 15."));

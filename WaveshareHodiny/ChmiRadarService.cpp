@@ -1,5 +1,6 @@
 #include "ClockTimezone.h"
 #include "ChmiRadarService.h"
+#include "ClockConfig.h"
 
 #include <HTTPClient.h>
 #include <PNGdec.h>
@@ -22,6 +23,14 @@
 namespace {
 constexpr char INDEX_URL[] =
     "https://opendata.chmi.cz/meteorology/weather/radar/composite/maxz/png/";
+constexpr char MASKED_INDEX_URL[] =
+    "https://opendata.chmi.cz/meteorology/weather/radar/composite/maxz/png_masked/";
+// The worker keeps one source for its entire request, including all downloads.
+uint8_t requestedSource = CLOCK_RADAR_SOURCE_MAX_Z;
+uint8_t workerSource = CLOCK_RADAR_SOURCE_MAX_Z;
+const char *radarIndexUrl() {
+  return workerSource == CLOCK_RADAR_SOURCE_MAX_Z_MASKED ? MASKED_INDEX_URL : INDEX_URL;
+}
 constexpr char FILE_PREFIX[] = "pacz2gmaps3.z_max3d.";
 constexpr size_t FILE_NAME_CAPACITY = 56;
 constexpr size_t PNG_CAPACITY = 131072;
@@ -337,7 +346,7 @@ bool latestFileNames(char output[][FILE_NAME_CAPACITY], size_t &count,
   http.useHTTP10(true);
   http.setConnectTimeout(6000);
   http.setTimeout(15000);
-  const String indexUrl = String(INDEX_URL) + F("?clock=") + millis();
+  const String indexUrl = String(radarIndexUrl()) + F("?clock=") + millis();
   if (!http.begin(client, indexUrl)) return false;
   http.addHeader(F("Cache-Control"), F("no-cache"));
   const int status = http.GET();
@@ -402,7 +411,7 @@ bool downloadPng(const char *fileName, size_t &outputSize,
   http.useHTTP10(true);
   http.setConnectTimeout(6000);
   http.setTimeout(15000);
-  const String url = String(INDEX_URL) + fileName;
+  const String url = String(radarIndexUrl()) + fileName;
   portENTER_CRITICAL(&stateMux);
   strlcpy(currentFile, fileName, sizeof(currentFile));
   lastDownloadedBytes = 0;
@@ -919,6 +928,23 @@ bool currentRequest(float &latitude, float &longitude, uint16_t &radiusKm,
                     uint32_t &revision) {
   portENTER_CRITICAL(&stateMux);
   const bool requested = active;
+  if (requested && workerSource != requestedSource) {
+    // Only the worker invalidates cache metadata, after its previous request
+    // has finished. Identical timestamps in the two products are not reusable.
+    workerSource = requestedSource;
+    cachedPngCount = 0;
+    animationFrameCount = 0;
+    pendingRefreshCount = 0;
+    memset(preparedFrameReady, 0, sizeof(preparedFrameReady));
+    ready = false;
+    displayedFrame = -1;
+    lastSuccessfulRefreshAt = 0;
+    rebuildFromCacheRequested = false;
+    restartAnimationRequested = false;
+    reloadRequested = true;
+    showBaseMapRequested = visible;
+    nextAttemptAt = 0;
+  }
   latitude = centerLatitude;
   longitude = centerLongitude;
   radiusKm = centerRadiusKm;
@@ -1728,7 +1754,7 @@ void chmiRadarServiceSetActive(bool requestedVisible, bool backgroundRefresh,
                                float latitude, float longitude,
                                uint16_t radiusKm, uint8_t frameCount,
                                uint8_t mapOpacityValue,
-                               uint8_t pauseSecondsValue) {
+                               uint8_t pauseSecondsValue, uint8_t source) {
   frameCount = constrain(frameCount, static_cast<uint8_t>(1),
                          static_cast<uint8_t>(MAX_ANIMATION_FRAME_COUNT));
   mapOpacityValue = constrain(mapOpacityValue, static_cast<uint8_t>(0),
@@ -1736,6 +1762,8 @@ void chmiRadarServiceSetActive(bool requestedVisible, bool backgroundRefresh,
   pauseSecondsValue = constrain(pauseSecondsValue, static_cast<uint8_t>(0),
                                 static_cast<uint8_t>(30));
   portENTER_CRITICAL(&stateMux);
+  const bool sourceChanged = requestedSource != source;
+  requestedSource = source;
   const bool wasEnabled = active;
   const bool wasVisible = visible;
   const bool requestedEnabled = requestedVisible || backgroundRefresh;
@@ -1744,7 +1772,8 @@ void chmiRadarServiceSetActive(bool requestedVisible, bool backgroundRefresh,
       fabsf(centerLongitude - longitude) > 0.00001f ||
       centerRadiusKm != radiusKm || mapOpacity != mapOpacityValue;
   const bool frameCountChanged = requestedFrameCount != frameCount;
-  bool completePngCache = cachedPngCount == requestedFrameCount;
+  bool completePngCache = workerSource == requestedSource &&
+                          cachedPngCount == requestedFrameCount;
   if (completePngCache) {
     for (size_t index = 0; index < cachedPngCount; ++index)
       if (cachedPngFrames[index] == nullptr || cachedPngSizes[index] == 0 ||
@@ -1774,7 +1803,7 @@ void chmiRadarServiceSetActive(bool requestedVisible, bool backgroundRefresh,
   requestedFrameCount = frameCount;
   mapOpacity = mapOpacityValue;
   pauseSeconds = pauseSecondsValue;
-  if (!requestedEnabled && wasEnabled) {
+  if (!requestedEnabled && (wasEnabled || sourceChanged)) {
     ++requestRevision;
     rebuildFromCacheRequested = false;
     reloadRequested = false;
@@ -1782,11 +1811,11 @@ void chmiRadarServiceSetActive(bool requestedVisible, bool backgroundRefresh,
     restartAnimationRequested = false;
     preparationInProgress = false;
     fullPreparationInProgress = false;
-  } else if (requestedEnabled && (projectionChanged || frameCountChanged)) {
+  } else if (requestedEnabled && (projectionChanged || frameCountChanged || sourceChanged)) {
     ++requestRevision;
     showBaseMapRequested = requestedVisible;
     restartAnimationRequested = false;
-    rebuildFromCacheRequested = projectionChanged && !frameCountChanged &&
+    rebuildFromCacheRequested = !sourceChanged && projectionChanged && !frameCountChanged &&
                                 completePngCache;
     reloadRequested = !rebuildFromCacheRequested;
     nextAttemptAt = 0;

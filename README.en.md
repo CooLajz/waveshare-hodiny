@@ -71,6 +71,7 @@ a page; all-zero durations leave the current page unchanged even when enabled.
   smooth color scales,
 - static and animated weather icons based on Meteocons,
 - a separate twelve-hour Open-Meteo forecast page with current conditions in the center,
+- selectable MAX Z (original, default) or masked MAX Z radar source; the mask lightens areas where precipitation probably does not reach the ground,
 - CHMI precipitation radar with a Czech map, cities and 1–15 frames,
 - 25, 50, 100 and 200 km radar ranges plus a full-country view,
 - optional automatic rotation between clock, forecast and radar with independent durations,

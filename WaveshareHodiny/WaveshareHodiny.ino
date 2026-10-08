@@ -339,7 +339,7 @@ void applyPendingRuntimeConfiguration() {
       dashboardConfigBuffer.radarRadiusKm,
       dashboardConfigBuffer.radarFrameCount,
       dashboardConfigBuffer.radarMapOpacity,
-      dashboardConfigBuffer.radarPauseSeconds);
+      dashboardConfigBuffer.radarPauseSeconds, dashboardConfigBuffer.radarSource);
   // Zápis do flash může na ESP32-S3 rozhodit vertikální synchronizaci RGB
   // panelu. Provádíme ji až po dokončení obsluhy HTTP požadavku.
   LCD_Resync();
@@ -422,7 +422,7 @@ void handleRadarVisibility(bool visible) {
                             config.openMeteoLatitude,
                             config.openMeteoLongitude, config.radarRadiusKm,
                             config.radarFrameCount, config.radarMapOpacity,
-                            config.radarPauseSeconds);
+                            config.radarPauseSeconds, config.radarSource);
 }
 
 void handleRadarRangeChange(int8_t direction) {
@@ -466,7 +466,7 @@ void maintainRadarRangeChange() {
                                 config.radarRadiusKm,
                                 config.radarFrameCount,
                                 config.radarMapOpacity,
-                                config.radarPauseSeconds);
+                                config.radarPauseSeconds, config.radarSource);
     }
   }
 }
@@ -498,7 +498,7 @@ bool previewRadarRangeFromWeb(uint16_t radiusKm) {
                               config.radarRadiusKm,
                               config.radarFrameCount,
                               config.radarMapOpacity,
-                              config.radarPauseSeconds);
+                              config.radarPauseSeconds, config.radarSource);
   }
   return true;
 }
@@ -885,7 +885,7 @@ void maintainNetworkTime() {
         radarAvailable && config.automaticRadarRotation && config.radarDisplaySeconds > 0,
         config.openMeteoLatitude, config.openMeteoLongitude,
         config.radarRadiusKm, config.radarFrameCount,
-        config.radarMapOpacity, config.radarPauseSeconds);
+        config.radarMapOpacity, config.radarPauseSeconds, config.radarSource);
 #if !FIRMWARE_RELEASE
     Serial.println("NTP synchronizovano");
 #endif
@@ -1859,7 +1859,7 @@ void setup() {
       false, false,
       runtimeConfig.openMeteoLatitude, runtimeConfig.openMeteoLongitude,
       runtimeConfig.radarRadiusKm, runtimeConfig.radarFrameCount,
-      runtimeConfig.radarMapOpacity, runtimeConfig.radarPauseSeconds);
+      runtimeConfig.radarMapOpacity, runtimeConfig.radarPauseSeconds, runtimeConfig.radarSource);
   clockDashboardSetSecond(60);
   displayResyncAt = millis() + 2000;
 #if !FIRMWARE_RELEASE
