@@ -16,7 +16,8 @@
 
 namespace {
 constexpr time_t VALID_TIME_THRESHOLD = 1700000000;
-constexpr uint32_t NETWORK_TIMEOUT_MS = 15000;
+constexpr uint32_t NETWORK_IO_TIMEOUT_MS = 15000;
+constexpr uint32_t NETWORK_LOCK_WAIT_MS = 300000;
 constexpr size_t DOWNLOAD_BUFFER_SIZE = 4096;
 
 SemaphoreHandle_t statusMutex = nullptr;
@@ -134,10 +135,14 @@ String sha256Hex(const uint8_t digest[32]) {
 
 bool installFirmware(const String &url, uint32_t expectedSize,
                      const String &expectedSha256) {
-  NetworkOperationGuard networkGuard(NETWORK_TIMEOUT_MS);
+  setMessage(FirmwareUpdateState::Checking,
+             "Čekám na dokončení jiné síťové operace…", true);
+  NetworkOperationGuard networkGuard(NETWORK_LOCK_WAIT_MS);
   if (!networkGuard) {
     setMessage(FirmwareUpdateState::Failed,
-               "Síť je právě vytížená jinou operací.", false);
+               "Aktualizaci se nepodařilo spustit, protože síť byla příliš "
+               "dlouho vytížená. Zkuste ji prosím zopakovat.",
+               false);
     return false;
   }
   setMessage(FirmwareUpdateState::Downloading,
@@ -150,10 +155,10 @@ bool installFirmware(const String &url, uint32_t expectedSize,
 
   WiFiClientSecure client;
   client.setCACert(FIRMWARE_RELEASE_ROOT_CA);
-  client.setTimeout(NETWORK_TIMEOUT_MS);
+  client.setTimeout(NETWORK_IO_TIMEOUT_MS);
   HTTPClient http;
-  http.setConnectTimeout(NETWORK_TIMEOUT_MS);
-  http.setTimeout(NETWORK_TIMEOUT_MS);
+  http.setConnectTimeout(NETWORK_IO_TIMEOUT_MS);
+  http.setTimeout(NETWORK_IO_TIMEOUT_MS);
   if (!http.begin(client, url)) {
     setMessage(FirmwareUpdateState::Failed,
                "Nepodařilo se otevřít OTA adresu.", false);
@@ -206,7 +211,8 @@ bool installFirmware(const String &url, uint32_t expectedSize,
   while (received < expectedSize) {
     const int available = stream->available();
     if (available <= 0) {
-      if (!http.connected() || millis() - lastDataAt >= NETWORK_TIMEOUT_MS) {
+      if (!http.connected() ||
+          millis() - lastDataAt >= NETWORK_IO_TIMEOUT_MS) {
         writeOk = false;
         break;
       }
@@ -279,22 +285,27 @@ bool checkFirmware(bool installWhenAvailable) {
     return false;
   }
 
-  NetworkOperationGuard networkGuard(NETWORK_TIMEOUT_MS);
+  setMessage(FirmwareUpdateState::Checking,
+             "Čekám na dokončení jiné síťové operace…", true);
+  NetworkOperationGuard networkGuard(NETWORK_LOCK_WAIT_MS);
   if (!networkGuard) {
     setMessage(FirmwareUpdateState::Failed,
-               "Síť je právě vytížená jinou operací.", false);
+               "Kontrolu se nepodařilo spustit, protože síť byla příliš "
+               "dlouho vytížená. Zkuste ji prosím zopakovat.",
+               false);
     return false;
   }
+  setMessage(FirmwareUpdateState::Checking, "Kontroluji novou verzi…", true);
 
   String payload;
   {
     const String metadataEndpoint = metadataUrl();
     WiFiClientSecure client;
     client.setCACert(FIRMWARE_RELEASE_ROOT_CA);
-    client.setTimeout(NETWORK_TIMEOUT_MS);
+    client.setTimeout(NETWORK_IO_TIMEOUT_MS);
     HTTPClient http;
-    http.setConnectTimeout(NETWORK_TIMEOUT_MS);
-    http.setTimeout(NETWORK_TIMEOUT_MS);
+    http.setConnectTimeout(NETWORK_IO_TIMEOUT_MS);
+    http.setTimeout(NETWORK_IO_TIMEOUT_MS);
     if (!http.begin(client, metadataEndpoint)) {
       setMessage(FirmwareUpdateState::Failed,
                  "Nepodařilo se otevřít server aktualizací.", false);
