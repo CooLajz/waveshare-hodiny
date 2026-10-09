@@ -1473,7 +1473,8 @@ void handleGetConfig() {
   result += F(",\"openMeteoLongitude\":");
   result += String(config.openMeteoLongitude, 5);
   result += F(",\"openMeteoCountry\":\"");
-  result += clockConfigRadarAvailable(config) ? F("CZ") : F("OTHER");
+  result += config.openMeteoCountry == CLOCK_LOCATION_COUNTRY_SLOVAKIA ? F("SK")
+      : config.openMeteoCountry == CLOCK_LOCATION_COUNTRY_CZECHIA ? F("CZ") : F("OTHER");
   result += F("\",\"radarAvailable\":");
   result += clockConfigRadarAvailable(config) ? F("true") : F("false");
   result += F(",\"radarRadiusKm\":");
@@ -1990,6 +1991,8 @@ void handleSaveConfig() {
   openMeteoCountry.toUpperCase();
   if (openMeteoCountry == "CZ")
     config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_CZECHIA;
+  else if (openMeteoCountry == "SK")
+    config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_SLOVAKIA;
   else if (openMeteoCountry == "OTHER" || openMeteoCountry.length() == 2)
     config.openMeteoCountry = CLOCK_LOCATION_COUNTRY_OTHER;
   else {
@@ -2435,7 +2438,7 @@ void handleRadarRangeState() {
 void handleRadarRangePreview() {
   extendWebAvailability();
   if (!clockConfigRadarAvailable(currentConfig())) {
-    sendError(409, F("Meteoradar ČHMÚ je dostupný pouze pro lokality v České republice."));
+    sendError(409, F("Meteoradar je dostupný pro lokality v České republice a na Slovensku."));
     return;
   }
   const int radiusKm = server.arg("radiusKm").toInt();
@@ -2869,6 +2872,14 @@ void handleDiagnostics() {
   result += radar.nextRefreshInMs;
   result += F(",\"lastHttpStatus\":");
   result += radar.lastHttpStatus;
+  result += F(",\"lastBatchMs\":");
+  result += radar.lastBatchMs;
+  result += F(",\"lastBatchConnections\":");
+  result += radar.lastBatchConnections;
+  result += F(",\"lastBatchRequests\":");
+  result += radar.lastBatchRequests;
+  result += F(",\"lastBatchBytes\":");
+  result += radar.lastBatchBytes;
   result += F(",\"lastDownloadedBytes\":");
   result += static_cast<unsigned long>(radar.lastDownloadedBytes);
   result += F(",\"lastDecodeResult\":");

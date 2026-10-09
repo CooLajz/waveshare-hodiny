@@ -82,6 +82,20 @@ int main() {
     assert(clockConfigLoad(loaded));
     assert(loaded.radarSource == source);
   }
+  for (uint8_t country : {CLOCK_LOCATION_COUNTRY_CZECHIA, CLOCK_LOCATION_COUNTRY_OTHER, CLOCK_LOCATION_COUNTRY_SLOVAKIA}) {
+    defaults.openMeteoCountry = country;
+    defaults.radarSource = CLOCK_RADAR_SOURCE_MAX_Z_MASKED;
+    assert(clockConfigSave(defaults));
+    settingsStoreTestReset();
+    assert(settingsStoreBegin());
+    ClockConfig loaded;
+    assert(clockConfigLoad(loaded));
+    assert(loaded.openMeteoCountry == country);
+    assert(clockConfigRadarAvailable(loaded) == (country != CLOCK_LOCATION_COUNTRY_OTHER));
+    assert(clockConfigEffectiveRadarSource(loaded) == (country == CLOCK_LOCATION_COUNTRY_SLOVAKIA ? CLOCK_RADAR_SOURCE_SHMU : CLOCK_RADAR_SOURCE_MAX_Z_MASKED));
+    assert(loaded.radarSource == CLOCK_RADAR_SOURCE_MAX_Z_MASKED);
+  }
+  defaults.openMeteoCountry = CLOCK_LOCATION_COUNTRY_CZECHIA;
   defaults.radarSource = 2;
   assert(!clockConfigValidate(defaults));
   defaults.radarSource = CLOCK_RADAR_SOURCE_MAX_Z;

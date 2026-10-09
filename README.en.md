@@ -5,7 +5,7 @@
 An open-source information dashboard for the round 480 × 480 px
 [Waveshare ESP32-S3-Touch-LCD-2.1](https://www.waveshare.com/esp32-s3-touch-lcd-2.1.htm).
 It displays time, date, weather, temperatures, additional sensor values and
-precipitation radar data from the Czech Hydrometeorological Institute (CHMI).
+precipitation radar data from CHMI (Czechia) or SHMU (Slovakia).
 Values can come from Open-Meteo without an account, optionally extended with
 personal TMEP.cz sensors, or from Home Assistant. Appearance, data sources,
 location, radar, brightness, animations and updates are configured in a web
@@ -72,7 +72,7 @@ a page; all-zero durations leave the current page unchanged even when enabled.
 - static and animated weather icons based on Meteocons,
 - a separate twelve-hour Open-Meteo forecast page with current conditions in the center,
 - selectable MAX Z (original, default) or masked MAX Z radar source; the mask lightens areas where precipitation probably does not reach the ground,
-- CHMI precipitation radar with a Czech map, cities and 1–15 frames,
+- CHMI/SHMU precipitation radar with Czech or Slovak maps, cities and 1–15 frames (SK: at most 10),
 - 25, 50, 100 and 200 km radar ranges plus a full-country view,
 - optional automatic rotation between clock, forecast and radar with independent durations,
 - two additional values such as CO₂, VOC, particulate matter, humidity,
@@ -152,7 +152,7 @@ Republic radar view. Home Assistant is optional.
 
 Open-Meteo is the default source and requires no account or token. It supplies
 the current weather and four configurable values. The selected city coordinates
-also define the center of local CHMI radar views. Each of the four slots can
+also define the center of local radar views. Each of the four slots can
 independently display 0–2 decimal places; the same setting also applies when a
 TMEP.cz value is selected.
 
@@ -322,7 +322,7 @@ the editor when disabled. Uploads show a progress dialog explaining the temporar
 ### Hourly weather forecast
 
 The forecast is a separate page, not a fourth clock face. Swipe horizontally
-through **Clock → Forecast → Radar → Clock**, or in reverse. Outside Czechia,
+through **Clock → Forecast → Radar → Clock**, or in reverse. Outside Czechia and Slovakia,
 the radar is omitted and you switch between clock and forecast.
 
 The next **twelve whole hours** appear around the dial with temperatures and
@@ -359,21 +359,54 @@ open pages excluded from automatic rotation.
 Rotation requires Wi-Fi and synchronized time. It pauses in settings, with the
 display switched off or while a notification is active. A loading/unavailable
 radar is temporarily skipped without stalling clock/forecast rotation. Outside
-Czechia, only clock and forecast rotate. Radar finishes its current animation
+Czechia and Slovakia, only clock and forecast rotate. Radar finishes its current animation
 cycle before leaving, so its configured duration is a minimum.
 
-### CHMI precipitation radar
+### CHMI and SHMU precipitation radar
 
-Radar imagery comes from the open MAX_Z composite published by the Czech
-Hydrometeorological Institute. Views cover 25, 50, 100 or 200 km around the
-saved coordinates, or the whole Czech Republic. The map includes the national
-outline and a range-specific selection of cities.
+The saved location country selects both the map and provider: `CZ` uses the
+open CHMI MAX_Z composite (including the existing masked source option), while
+`SK` uses SHMU ZMAX through [Nebovidy Radar](https://radar.nebovidy.cz:18443/).
+Both maps include national borders and cities, with 25, 50, 100 and 200 km
+views around the saved coordinates and a whole-country view. Controls, map
+opacity, night mode and automatic rotation are shared.
 
-The radar is available only when Open-Meteo location search identifies the
-saved country as `CZ`. For locations outside Czechia, the firmware does not
-start the radar, download its data in the background or respond to radar
-gestures, and automatic screen rotation skips the radar. Open-Meteo weather and
-Home Assistant remain available without this restriction.
+The Slovak server provides at most 10 frames. Settings of 11–15 use 10 for SK
+while preserving the Czech preference. Radar and coverage share one NRD2 file
+with row compression and ready-to-use palette indices. The full file is checked
+against their size and SHA-256 over certificate-verified HTTPS. Gray hatching
+means missing observations, not zero precipitation. A manifest whose latest
+measurement is older than 30 minutes is rejected; on failure the last prepared
+animation retains its original timestamps and diagnostics report the error.
+
+**After installing the update that adds Slovak radar, users with a previously
+saved Slovak location must search for, select and save their city again in the
+web settings.** This stores the `SK` country code and enables Slovak radar.
+This is a one-time step; subsequent updates do not require selecting the city again. Other countries do not start the radar or background downloads.
+Open-Meteo weather and Home Assistant are unaffected.
+
+Slovak frames use an indexed RGB565 palette matching the SHMU legend, retaining
+one byte per pixel. City positions and raster sampling share pixel-center
+geometry. This version expects the SHMU web extent (east 23.79°).
+
+Requests to Nebovidy Radar send the firmware version and a persistent random
+UUID v4 in `X-Radar-Firmware` and `X-Radar-Device-ID`. The ID contains no MAC
+address, is excluded from portable settings backups, and survives restarts and
+updates. A full flash erase creates a new ID. If storage fails, radar remains
+available without the identity header. These headers are not sent to CHMI or
+other services. Nebovidy Radar records request counts and transferred bytes,
+retains IP history for 30 days, and keeps long-term aggregates without IPs.
+The ID does not authenticate a device.
+
+Slovak radar data: SHMU, [CC BY 4.0](https://opendata.shmu.sk/README.txt),
+converted to NRD2 by Nebovidy Radar. Source frames are cached in PSRAM, so ordinary zoom changes require no new
+downloads. The SK source cache has a 1 MiB budget and keeps free memory in
+reserve. Exceptionally large files may cause older sources to be released while
+prepared animation frames remain intact. A zoom change may then need to fetch
+the released sources again. Refreshing the same view downloads only missing
+frames, including after a longer pause. Maps and cities are drawn
+on the clock. Borders: Natural Earth (public domain).
+Cities: [GeoNames](https://www.geonames.org/) (CC BY 4.0).
 
 One frame creates a static view; 2–15 frames create an animation from oldest to
 newest. The pause after the newest frame is configurable from 0 to 30 seconds
@@ -466,7 +499,7 @@ See [the backup format and storage contract](docs/configuration-backup.md).
 
 Long-press on the clock, forecast or radar to open the settings pages.
 Horizontal swipes cycle through clock, forecast and radar; the opposite direction
-cycles back. Outside Czechia, only clock and forecast are available.
+cycles back. Outside Czechia and Slovakia, only clock and forecast are available.
 On the clock, swiping up cycles Digital → Analog → Retro LCD; swiping down
 cycles in reverse. This is temporary: restart restores the saved clock face.
 With animated transitions enabled, faces slide vertically in the swipe

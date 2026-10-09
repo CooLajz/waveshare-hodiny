@@ -48,12 +48,15 @@ enum ClockDataSource : uint8_t {
 enum ClockRadarSource : uint8_t {
   CLOCK_RADAR_SOURCE_MAX_Z = 0,
   CLOCK_RADAR_SOURCE_MAX_Z_MASKED = 1,
+  // Derived from location; never stored in radarSource.
+  CLOCK_RADAR_SOURCE_SHMU = 2,
 };
 
 enum ClockLocationCountry : uint8_t {
   CLOCK_LOCATION_COUNTRY_UNKNOWN = 0,
   CLOCK_LOCATION_COUNTRY_CZECHIA = 1,
   CLOCK_LOCATION_COUNTRY_OTHER = 2,
+  CLOCK_LOCATION_COUNTRY_SLOVAKIA = 3,
 };
 
 enum ClockSecondEffect : uint8_t {
@@ -274,6 +277,7 @@ bool clockConfigValidate(const ClockConfig &config);
 bool clockConfigDecodeRecord(const void *data, size_t size, ClockConfig &config);
 void clockConfigApplyDefaults(ClockConfig &config);
 bool clockConfigRadarAvailable(const ClockConfig &config);
+uint8_t clockConfigEffectiveRadarSource(const ClockConfig &config);
 bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
                          uint32_t defaultMonochromeWeatherIconColor = 0xFFFFFF,
                          uint8_t defaultAnalogDateFormat =

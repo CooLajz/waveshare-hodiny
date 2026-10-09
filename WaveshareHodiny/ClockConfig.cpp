@@ -214,7 +214,7 @@ void normalizeConfig(ClockConfig &config) {
       config.language, static_cast<uint8_t>(CLOCK_LANGUAGE_UNSET),
       static_cast<uint8_t>(CLOCK_LANGUAGE_ENGLISH));
   if (config.openMeteoCountry < CLOCK_LOCATION_COUNTRY_CZECHIA ||
-      config.openMeteoCountry > CLOCK_LOCATION_COUNTRY_OTHER) {
+      config.openMeteoCountry > CLOCK_LOCATION_COUNTRY_SLOVAKIA) {
     // Verze 1.5.5 i všechna dosavadní vývojová schémata byla určená české
     // komunitě. Konfigurace bez uložené země proto při migraci dostane CZ.
     // Každé nové vyhledání už ukládá výslovný country_code z Open-Meteo.
@@ -287,7 +287,13 @@ void normalizeConfig(ClockConfig &config) {
 }  // namespace
 
 bool clockConfigRadarAvailable(const ClockConfig &config) {
-  return config.openMeteoCountry == CLOCK_LOCATION_COUNTRY_CZECHIA;
+  return config.openMeteoCountry == CLOCK_LOCATION_COUNTRY_CZECHIA ||
+         config.openMeteoCountry == CLOCK_LOCATION_COUNTRY_SLOVAKIA;
+}
+
+uint8_t clockConfigEffectiveRadarSource(const ClockConfig &config) {
+  return config.openMeteoCountry == CLOCK_LOCATION_COUNTRY_SLOVAKIA
+      ? CLOCK_RADAR_SOURCE_SHMU : config.radarSource;
 }
 
 bool clockAppearanceLoad(ClockAppearanceConfig &appearance,
@@ -543,7 +549,7 @@ bool clockConfigValidate(const ClockConfig &c) {
       c.schemaVersion != CLOCK_CONFIG_SCHEMA_VERSION || c.dataSource > 1 ||
       c.weatherIconStyle > 2 || c.nightVisualMode > 1 || c.timeFont > 3 ||
       c.dateFormat > 5 || c.timeColonEffect > 2 || c.secondEffect > 2 ||
-      c.language > 2 || c.openMeteoCountry > 2 || c.dayBrightness < 1 || c.dayBrightness > 100 ||
+      c.language > 2 || c.openMeteoCountry > CLOCK_LOCATION_COUNTRY_SLOVAKIA || c.dayBrightness < 1 || c.dayBrightness > 100 ||
       c.nightBrightness < 1 || c.nightBrightness > 100 ||
       c.sunriseOffsetMinutes < -60 || c.sunriseOffsetMinutes > 60 || c.sunriseOffsetMinutes % 15 ||
       c.sunsetOffsetMinutes < -60 || c.sunsetOffsetMinutes > 60 || c.sunsetOffsetMinutes % 15 ||

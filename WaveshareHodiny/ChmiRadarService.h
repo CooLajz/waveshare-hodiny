@@ -34,6 +34,7 @@ struct ChmiRadarDiagnostics {
   uint16_t radiusKm = 50;
   uint32_t lastSuccessfulRefreshAgeMs = 0;
   uint32_t nextRefreshInMs = 0;
+  uint32_t lastBatchMs = 0, lastBatchConnections = 0, lastBatchRequests = 0, lastBatchBytes = 0;
   int lastHttpStatus = 0;
   size_t lastDownloadedBytes = 0;
   int lastDecodeResult = 0;

@@ -14,11 +14,20 @@
 #include <cmath>
 #include <cstring>
 #include <new>
+#include <utility>
 #include <time.h>
 
 #include "ChmiCa.h"
 #include "CzechMapData.h"
+#include "SlovakMapData.h"
+#include "SlovakRadarManifest.h"
+#include "SlovakRadarFrame.h"
+#include "SlovakRadarRendering.h"
+#include "FirmwareHubCa.h"
+#include <mbedtls/sha256.h>
 #include "NetworkCoordinator.h"
+#include "RadarClientIdentity.h"
+#include "RadarHttpBody.h"
 
 namespace {
 constexpr char INDEX_URL[] =
@@ -32,8 +41,24 @@ const char *radarIndexUrl() {
   return workerSource == CLOCK_RADAR_SOURCE_MAX_Z_MASKED ? MASKED_INDEX_URL : INDEX_URL;
 }
 constexpr char FILE_PREFIX[] = "pacz2gmaps3.z_max3d.";
-constexpr size_t FILE_NAME_CAPACITY = 56;
-constexpr size_t PNG_CAPACITY = 131072;
+constexpr size_t FILE_NAME_CAPACITY = slovakRadar::PATH_CAPACITY;
+bool slovakSource() { return workerSource == CLOCK_RADAR_SOURCE_SHMU; }
+slovakRadar::Frame *slovakFrames = nullptr;
+size_t slovakFrameCount = 0;
+void slovakCacheName(const slovakRadar::Frame &frame, char *name) {
+  // Content hash covers both precipitation and coverage.
+  strlcpy(name, frame.image.path, FILE_NAME_CAPACITY);
+}
+const slovakRadar::Frame *slovakFrame(const char *name) {
+  for (size_t i = 0; i < slovakFrameCount; ++i) {
+    char expected[FILE_NAME_CAPACITY];
+    slovakCacheName(slovakFrames[i], expected);
+    if (strcmp(expected, name) == 0) return &slovakFrames[i];
+  }
+  return nullptr;
+}
+// Download workspace; cached frames allocate only their actual compressed size.
+constexpr size_t PNG_CAPACITY = slovakRadar::FRAME_LIMIT;
 constexpr size_t MAX_ANIMATION_FRAME_COUNT = 15;
 constexpr size_t MAX_PENDING_REFRESH_FRAMES = 4;
 constexpr size_t DISPLAY_BUFFER_COUNT = 2;
@@ -45,8 +70,7 @@ constexpr unsigned long ANIMATION_STEP_MS = 500;
 constexpr unsigned long PREPARATION_FRAME_MIN_MS = 500;
 constexpr int RADAR_SOURCE_WIDTH = 680;
 constexpr int RADAR_SOURCE_HEIGHT = 460;
-constexpr size_t DOWNLOAD_CHUNK_SIZE = 512;
-constexpr unsigned long DOWNLOAD_CHUNK_PAUSE_MS = 4;
+
 
 constexpr float LON_LEFT = 11.267f;
 constexpr float LON_RIGHT = 20.770f;
@@ -89,7 +113,7 @@ uint8_t *preparedFrames[MAX_ANIMATION_FRAME_COUNT] = {};
 bool preparedFrameReady[MAX_ANIMATION_FRAME_COUNT] = {};
 uint32_t preparedFrameRevisions[MAX_ANIMATION_FRAME_COUNT] = {};
 char preparedFrameTimes[MAX_ANIMATION_FRAME_COUNT][6] = {};
-char preparedFrameNames[MAX_ANIMATION_FRAME_COUNT][FILE_NAME_CAPACITY] = {};
+char (*preparedFrameNames)[FILE_NAME_CAPACITY] = nullptr;
 uint8_t activeDisplayBuffer = 0;
 uint16_t activeRadiusKm = 50;
 bool rebuildFromCacheRequested = false;
@@ -125,16 +149,17 @@ char currentFile[FILE_NAME_CAPACITY] = "";
 
 PNG *pngDecoder = nullptr;
 uint8_t *pngBuffer = nullptr;
+size_t pngBufferCapacity = 0;
 uint8_t *cachedPngFrames[MAX_ANIMATION_FRAME_COUNT] = {};
 size_t cachedPngSizes[MAX_ANIMATION_FRAME_COUNT] = {};
 size_t cachedPngCapacities[MAX_ANIMATION_FRAME_COUNT] = {};
-char cachedPngNames[MAX_ANIMATION_FRAME_COUNT][FILE_NAME_CAPACITY] = {};
+char (*cachedPngNames)[FILE_NAME_CAPACITY] = nullptr;
 size_t cachedPngCount = 0;
 uint8_t *pendingPreparedFrames[MAX_PENDING_REFRESH_FRAMES] = {};
 uint8_t *pendingPngFrames[MAX_PENDING_REFRESH_FRAMES] = {};
 size_t pendingPngSizes[MAX_PENDING_REFRESH_FRAMES] = {};
 size_t pendingPngCapacities[MAX_PENDING_REFRESH_FRAMES] = {};
-char pendingFrameNames[MAX_PENDING_REFRESH_FRAMES][FILE_NAME_CAPACITY] = {};
+char (*pendingFrameNames)[FILE_NAME_CAPACITY] = nullptr;
 char pendingFrameTimes[MAX_PENDING_REFRESH_FRAMES][6] = {};
 uint32_t pendingFrameRevisions[MAX_PENDING_REFRESH_FRAMES] = {};
 size_t pendingRefreshCount = 0;
@@ -145,6 +170,7 @@ int imageWidth = 0;
 int imageHeight = 0;
 int sourceX[CHMI_RADAR_WIDTH] = {};
 int sourceY[CHMI_RADAR_HEIGHT] = {};
+slovakRadarRender::View slovakView{};
 int dataX1 = 0;
 int dataY0 = 0;
 uint16_t decodedLineCount = 0;
@@ -157,6 +183,12 @@ uint8_t rgb565ToRgb332(uint16_t color);
 uint16_t rgb332ToRgb565(uint8_t color);
 uint16_t nightRadarColor(uint8_t color);
 void applyNightRadarPalette(uint16_t *buffer);
+uint8_t encodePreparedColor(uint16_t color) {
+  return slovakSource() ? slovakRadarRender::encode(color) : rgb565ToRgb332(color);
+}
+uint16_t decodePreparedColor(uint8_t color) {
+  return slovakSource() ? slovakRadarRender::decode(color) : rgb332ToRgb565(color);
+}
 
 bool ensurePngDecoder() {
   if (pngDecoder != nullptr) return true;
@@ -168,6 +200,8 @@ bool ensurePngDecoder() {
 }
 
 unsigned long millisecondsUntilNextRefreshSlot() {
+  // SHMÚ manifest je levná kontrola; nezměněné snímky zůstávají v cache.
+  if (slovakSource()) return 60000UL;
   const time_t now = time(nullptr);
   if (now < VALID_TIME_THRESHOLD) return REFRESH_INTERVAL_MS;
   struct tm localTime = {};
@@ -211,11 +245,13 @@ long daysFromCivil(int year, unsigned month, unsigned day) {
 }
 
 int longitudeToX(float longitude) {
+  if (slovakSource()) return lround(slovakRadarRender::edgeX(longitude) - 0.5);
   return lroundf((longitude - LON_LEFT) * (imageWidth - 1) /
                  (LON_RIGHT - LON_LEFT));
 }
 
 int latitudeToY(float latitude) {
+  if (slovakSource()) return lround(slovakRadarRender::edgeY(latitude) - 0.5);
   const float top = mercatorY(LAT_TOP);
   const float bottom = mercatorY(LAT_BOTTOM);
   return lroundf((top - mercatorY(latitude)) * (imageHeight - 1) /
@@ -238,9 +274,17 @@ bool ensureBuffers() {
     }
     if (buffer == nullptr) return false;
   }
-  if (pngBuffer == nullptr) {
+  const size_t capacity = slovakSource() ? PNG_CAPACITY : 131072;
+  if (pngBufferCapacity != capacity) {
+    // No source decoder retains this workspace between requests.
+    heap_caps_free(pngBuffer);
+    pngBuffer = nullptr;
+    pngBufferCapacity = 0;
+  }
+  if (!pngBuffer) {
     pngBuffer = static_cast<uint8_t *>(allocateRadarMemory(
-        PNG_CAPACITY, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+        capacity, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (pngBuffer) pngBufferCapacity = capacity;
   }
   return pngBuffer != nullptr;
 }
@@ -254,10 +298,37 @@ bool ensurePreparedFrame(size_t index) {
   return preparedFrames[index] != nullptr;
 }
 
+// Source files are optional: prepared animation frames are never evicted.
+// Bound SK source retention independently of the server's worst-case file size.
+bool reserveSourceCache(size_t extra) {
+  if (!slovakSource()) return true;
+  constexpr size_t sourceBudget = 1024 * 1024;
+  constexpr size_t freeReserve = 768 * 1024;
+  auto fits = [&]() {
+    size_t used = 0;
+    for (size_t n : cachedPngCapacities) used += n;
+    for (size_t n : pendingPngCapacities) used += n;
+    return used + extra <= sourceBudget &&
+        heap_caps_get_free_size(MALLOC_CAP_SPIRAM) >= extra + freeReserve;
+  };
+  // Oldest sources first; names/readiness continue to identify prepared frames.
+  for (size_t i = 0; !fits() && i < MAX_ANIMATION_FRAME_COUNT; ++i) {
+    portENTER_CRITICAL(&stateMux);
+    uint8_t *old = cachedPngFrames[i];
+    cachedPngFrames[i] = nullptr;
+    cachedPngSizes[i] = cachedPngCapacities[i] = 0;
+    portEXIT_CRITICAL(&stateMux);
+    heap_caps_free(old);
+  }
+  return fits();
+}
+
 bool cacheDownloadedPng(size_t index, size_t size, const char *fileName) {
   if (index >= MAX_ANIMATION_FRAME_COUNT || size == 0 || size > PNG_CAPACITY)
     return false;
+  if (!reserveSourceCache(0)) return false;
   if (cachedPngCapacities[index] < size) {
+    if (!reserveSourceCache(size)) return false;
     uint8_t *replacement = static_cast<uint8_t *>(allocateRadarMemory(
         size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (replacement == nullptr) return false;
@@ -333,65 +404,182 @@ void parseIndexChunk(const uint8_t *data, size_t length, size_t &prefixMatch,
   }
 }
 
-bool latestFileNames(char output[][FILE_NAME_CAPACITY], size_t &count,
-                     uint32_t revision) {
-  count = 0;
-  memset(output, 0,
-         MAX_ANIMATION_FRAME_COUNT * FILE_NAME_CAPACITY * sizeof(char));
-  NetworkOperationGuard networkGuard(15000);
-  if (!networkGuard) return false;
-  WiFiClientSecure client;
-  client.setCACert(CHMI_ROOT_CA);
+// One worker-owned HTTP/1.1 session per complete refresh. The network guard
+// spans the batch so another TLS operation cannot exhaust internal memory.
+uint32_t lastBatchMs = 0, lastBatchConnections = 0, lastBatchRequests = 0;
+uint32_t lastBatchBytes = 0;
+class RadarTlsClient : public WiFiClientSecure {
+ public:
+  uint32_t connections = 0;
+  int connect(const char *host, uint16_t port, int32_t timeout) override {
+    ++connections;
+    return WiFiClientSecure::connect(host, port, timeout);
+  }
+};
+struct RadarHttpBatch {
+  NetworkOperationGuard guard{15000};
+  RadarTlsClient client;
   HTTPClient http;
-  http.useHTTP10(true);
-  http.setConnectTimeout(6000);
-  http.setTimeout(15000);
-  const String indexUrl = String(radarIndexUrl()) + F("?clock=") + millis();
-  if (!http.begin(client, indexUrl)) return false;
-  http.addHeader(F("Cache-Control"), F("no-cache"));
-  const int status = http.GET();
-  portENTER_CRITICAL(&stateMux);
-  lastHttpStatus = status;
-  lastDownloadedBytes = 0;
-  currentFile[0] = '\0';
-  portEXIT_CRITICAL(&stateMux);
-  if (status != HTTP_CODE_OK) {
+  uint32_t started = millis(), requests = 0, bytes = 0;
+  RadarHttpBatch() {
+    client.setCACert(slovakSource() ? FIRMWARE_RELEASE_ROOT_CA : CHMI_ROOT_CA);
+    const char *headers[] = {"Transfer-Encoding"};
+    http.collectHeaders(headers, 1);
+    http.useHTTP10(false);
+    http.setReuse(true);
+    http.setConnectTimeout(6000);
+    http.setTimeout(15000);
+    http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+  }
+  ~RadarHttpBatch() {
+    http.setReuse(false);
+    http.end();
+    client.stop();
+    portENTER_CRITICAL(&stateMux);
+    lastBatchMs = millis() - started;
+    lastBatchConnections = client.connections;
+    lastBatchRequests = requests;
+    lastBatchBytes = bytes;
+    portEXIT_CRITICAL(&stateMux);
+  }
+  bool begin(const String &url) {
+    if (!guard || !http.begin(client, url)) return false;
+    if (slovakSource()) addRadarClientHeaders(http);
+    http.addHeader(F("Cache-Control"), F("no-cache"));
+    ++requests;
+    const int status = http.GET();
+    portENTER_CRITICAL(&stateMux);
+    lastHttpStatus = status;
+    portEXIT_CRITICAL(&stateMux);
+    if (status == HTTP_CODE_OK) return true;
+    client.stop();  // Never reuse an unread error body.
     http.end();
     return false;
   }
+};
+RadarHttpBatch *httpBatch = nullptr;
 
-  WiFiClient *stream = http.getStreamPtr();
-  uint8_t chunk[768];
-  size_t prefixMatch = 0;
-  char candidate[FILE_NAME_CAPACITY] = "";
-  size_t candidateLength = 0;
-  size_t indexBytesRead = 0;
-  int remaining = http.getSize();
-  unsigned long lastDataAt = millis();
-  while (remaining > 0 || remaining == -1) {
-    if (!requestMatches(revision)) {
-      http.end();
-      return false;
-    }
-    const size_t available = stream->available();
-    if (available == 0) {
-      const unsigned long idleFor = millis() - lastDataAt;
-      if (idleFor > 15000 || (!http.connected() && idleFor > 750)) break;
-      delay(2);
-      continue;
-    }
-    const size_t wanted = min(available, sizeof(chunk));
-    const int bytesRead = stream->readBytes(chunk, wanted);
-    if (bytesRead <= 0) break;
-    indexBytesRead += static_cast<size_t>(bytesRead);
-    lastDataAt = millis();
-    parseIndexChunk(chunk, static_cast<size_t>(bytesRead), prefixMatch, candidate,
-                    candidateLength, output, count);
-    if (remaining > 0) remaining -= bytesRead;
+// Body parsing is cooperative even while waiting between CHMI HTTP chunks.
+// A partial/cancelled body always closes TLS.
+class RadarBodySink : public Stream {
+ public:
+  using Consumer = bool (*)(const uint8_t *, size_t, void *);
+  Consumer consumer;
+  void *context;
+  size_t limit, received = 0;
+  uint32_t revision, yieldedAt = millis();
+  bool failed = false;
+  RadarBodySink(Consumer c, void *ctx, size_t maxBytes, uint32_t rev)
+      : consumer(c), context(ctx), limit(maxBytes), revision(rev) {}
+  size_t write(uint8_t value) override { return write(&value, 1); }
+  size_t write(const uint8_t *data, size_t size) override {
+    if (failed || !requestMatches(revision) || size > limit - received ||
+        !consumer(data, size, context)) { failed = true; return 0; }
+    received += size;
     advanceAnimation(millis());
-    delay(2);
+    if (millis() - yieldedAt >= 10) { delay(1); yieldedAt = millis(); }
+    return size;
   }
-  http.end();
+  int available() override { return 0; }
+  int read() override { return -1; }
+  int peek() override { return -1; }
+  void flush() override {}
+};
+bool readRadarBody(RadarBodySink &sink) {
+  const int declared = httpBatch->http.getSize();
+  if (declared > static_cast<int>(sink.limit)) {
+    httpBatch->client.stop(); httpBatch->http.end(); return false;
+  }
+  String encoding = httpBatch->http.header("Transfer-Encoding");
+  encoding.trim();
+  encoding.toLowerCase();
+  const uint32_t started = millis();
+  uint32_t lastData = started;
+  auto readSome = [&](uint8_t *out, size_t wanted) -> int {
+    while (requestMatches(sink.revision)) {
+      const uint32_t now = millis();
+      if (now - lastData >= 15000 || now - started >= 45000) return -1;
+      const int available = httpBatch->client.available();
+      if (available > 0) {
+        const size_t amount = min(wanted, static_cast<size_t>(available));
+        const int n = httpBatch->client.read(out, amount);
+        if (n > 0) { lastData = millis(); return n; }
+      } else if (!httpBatch->client.connected()) {
+        return 0;
+      }
+      advanceAnimation(now);
+      delay(1);  // No busy wait: leave the UI, TCP/IP and watchdog time to run.
+    }
+    return -1;
+  };
+  const bool framingSupported = encoding.isEmpty() || encoding == "chunked";
+  const bool valid = framingSupported &&
+      radarHttp::readBody(readSome, sink, declared, encoding == "chunked") &&
+      !sink.failed && requestMatches(sink.revision);
+  httpBatch->bytes += sink.received;
+  if (!valid) httpBatch->client.stop();
+  httpBatch->http.end();  // Keep-alive only after a complete response.
+  portENTER_CRITICAL(&stateMux);
+  lastDownloadedBytes = sink.received;
+  portEXIT_CRITICAL(&stateMux);
+  return valid;
+}
+struct RadarBuffer { uint8_t *data; size_t used = 0; };
+bool appendRadarBuffer(const uint8_t *data, size_t size, void *context) {
+  auto &buffer = *static_cast<RadarBuffer *>(context);
+  memcpy(buffer.data + buffer.used, data, size);
+  buffer.used += size;
+  return true;
+}
+
+bool latestSlovakNames(char output[][FILE_NAME_CAPACITY], size_t &count,
+                       uint32_t revision) {
+  count = 0;
+  if (!httpBatch || !httpBatch->begin(slovakRadar::MANIFEST_URL)) return false;
+  constexpr size_t maxManifestBytes = 16384;
+  char *body = static_cast<char *>(allocateRadarMemory(maxManifestBytes + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!body) { httpBatch->client.stop(); httpBatch->http.end(); return false; }
+  RadarBuffer buffer{reinterpret_cast<uint8_t *>(body)};
+  RadarBodySink sink(appendRadarBuffer, &buffer, maxManifestBytes, revision);
+  const bool complete = readRadarBody(sink);
+  const size_t received = buffer.used;
+  body[received] = '\0';
+  bool valid = complete && requestMatches(revision) &&
+      slovakRadar::parse(body, time(nullptr), slovakFrames, slovakFrameCount);
+  heap_caps_free(body);
+  if (!valid) return false;
+  count = slovakFrameCount;
+  for (size_t i = 0; i < count; ++i) slovakCacheName(slovakFrames[i], output[i]);
+  portENTER_CRITICAL(&stateMux);
+  lastDownloadedBytes = received;
+  strlcpy(latestIndexFile, output[count - 1], sizeof(latestIndexFile));
+  portEXIT_CRITICAL(&stateMux);
+  return true;
+}
+
+bool latestFileNames(char output[][FILE_NAME_CAPACITY], size_t &count,
+                     uint32_t revision) {
+  if (slovakSource()) return latestSlovakNames(output, count, revision);
+  count = 0;
+  memset(output, 0,
+         MAX_ANIMATION_FRAME_COUNT * FILE_NAME_CAPACITY * sizeof(char));
+  if (!httpBatch || !httpBatch->begin(String(radarIndexUrl()) + F("?clock=") + millis())) return false;
+  struct IndexState {
+    size_t prefixMatch = 0, candidateLength = 0;
+    char candidate[FILE_NAME_CAPACITY] = {};
+    char (*names)[FILE_NAME_CAPACITY];
+    size_t *count;
+  } state{};
+  state.names = output;
+  state.count = &count;
+  RadarBodySink sink([](const uint8_t *data, size_t size, void *context) {
+    auto &state = *static_cast<IndexState *>(context);
+    parseIndexChunk(data, size, state.prefixMatch, state.candidate,
+                   state.candidateLength, state.names, *state.count);
+    return true;
+  }, &state, 2 * 1024 * 1024, revision);
+  if (!readRadarBody(sink)) return false;
+  const size_t indexBytesRead = sink.received;
   portENTER_CRITICAL(&stateMux);
   lastDownloadedBytes = indexBytesRead;
   if (count > 0)
@@ -400,73 +588,50 @@ bool latestFileNames(char output[][FILE_NAME_CAPACITY], size_t &count,
   return count > 0;
 }
 
-bool downloadPng(const char *fileName, size_t &outputSize,
-                 uint32_t revision) {
+bool downloadSinglePng(const char *fileName, size_t &outputSize,
+                 uint32_t revision, size_t offset = 0) {
   outputSize = 0;
-  NetworkOperationGuard networkGuard(15000);
-  if (!networkGuard) return false;
-  WiFiClientSecure client;
-  client.setCACert(CHMI_ROOT_CA);
-  HTTPClient http;
-  http.useHTTP10(true);
-  http.setConnectTimeout(6000);
-  http.setTimeout(15000);
-  const String url = String(radarIndexUrl()) + fileName;
+  const String url = String(slovakSource() ? slovakRadar::ORIGIN : radarIndexUrl()) + fileName;
   portENTER_CRITICAL(&stateMux);
   strlcpy(currentFile, fileName, sizeof(currentFile));
   lastDownloadedBytes = 0;
   portEXIT_CRITICAL(&stateMux);
-  if (!http.begin(client, url)) return false;
-  const int status = http.GET();
-  portENTER_CRITICAL(&stateMux);
-  lastHttpStatus = status;
-  portEXIT_CRITICAL(&stateMux);
-  if (status != HTTP_CODE_OK) {
-    http.end();
-    return false;
-  }
-  const int declaredSize = http.getSize();
-  if (declaredSize > static_cast<int>(PNG_CAPACITY)) {
-    http.end();
-    return false;
-  }
-
-  WiFiClient *stream = http.getStreamPtr();
-  int remaining = declaredSize;
-  unsigned long lastDataAt = millis();
-  while (outputSize < PNG_CAPACITY &&
-         (remaining > 0 || remaining == -1)) {
-    if (!requestMatches(revision)) {
-      http.end();
-      return false;
-    }
-    const size_t available = stream->available();
-    if (available == 0) {
-      const unsigned long idleFor = millis() - lastDataAt;
-      if (idleFor > 15000 || (!http.connected() && idleFor > 750)) break;
-      delay(2);
-      continue;
-    }
-    const size_t capacity = PNG_CAPACITY - outputSize;
-    const size_t wanted = min(min(available, capacity), DOWNLOAD_CHUNK_SIZE);
-    const int count = stream->readBytes(pngBuffer + outputSize, wanted);
-    if (count <= 0) break;
-    outputSize += static_cast<size_t>(count);
-    lastDataAt = millis();
-    if (remaining > 0) remaining -= count;
-    portENTER_CRITICAL(&stateMux);
-    lastDownloadedBytes = outputSize;
-    portEXIT_CRITICAL(&stateMux);
-    advanceAnimation(millis());
-    delay(DOWNLOAD_CHUNK_PAUSE_MS);
-  }
-  http.end();
-  if (declaredSize >= 0 && outputSize != static_cast<size_t>(declaredSize))
-    return false;
+  if (!httpBatch || !httpBatch->begin(url)) return false;
+  const size_t limit = slovakSource() ? slovakRadar::FRAME_LIMIT : 131072;
+  RadarBuffer buffer{pngBuffer + offset};
+  RadarBodySink sink(appendRadarBuffer, &buffer, limit, revision);
+  const bool complete = readRadarBody(sink);
+  outputSize = buffer.used;
+  if (!complete) return false;
+  if (slovakSource()) return outputSize >= 2236 && memcmp(pngBuffer, "NRD2", 4) == 0;
   static const uint8_t signature[] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a,
                                       '\n'};
   return outputSize >= sizeof(signature) &&
-         memcmp(pngBuffer, signature, sizeof(signature)) == 0;
+         memcmp(pngBuffer + offset, signature, sizeof(signature)) == 0;
+}
+
+bool verifySlovakImage(const slovakRadar::Image &image, size_t size, size_t offset) {
+  if (size != image.bytes) return false;
+  uint8_t digest[32];
+  if (mbedtls_sha256(pngBuffer + offset, size, digest, 0) != 0) return false;
+  char hex[65];
+  for (size_t i = 0; i < 32; ++i) snprintf(hex + i * 2, 3, "%02x", digest[i]);
+  return strcmp(hex, image.sha256) == 0;
+}
+
+bool downloadPng(const char *fileName, size_t &outputSize, uint32_t revision) {
+  if (!slovakSource()) return downloadSinglePng(fileName, outputSize, revision);
+  const auto *frame = slovakFrame(fileName);
+  if (!frame || !downloadSinglePng(frame->image.path, outputSize, revision) ||
+      !verifySlovakImage(frame->image, outputSize, 0)) return false;
+  nrd2::Frame packed;
+  if (!packed.open(pngBuffer, outputSize) || packed.measured != frame->time) return false;
+  // Validate all rows before admitting the complete source frame into the cache.
+  for (unsigned y = 0; y < 550; ++y) {
+    if (!packed.validateRow(y) || !requestMatches(revision)) return false;
+    if ((y & 31) == 0) { advanceAnimation(millis()); delay(1); }
+  }
+  return true;
 }
 
 bool downloadPngWithRetry(const char *fileName, size_t &outputSize,
@@ -496,7 +661,7 @@ void drawDecodedLine(PNGDRAW *draw) {
       const int source = sourceX[targetX];
       if (source >= 0 && source < imageWidth && source <= dataX1 &&
           draw->y >= dataY0) {
-        row[targetX] = rgb565ToRgb332(lineBuffer[source]);
+        row[targetX] = encodePreparedColor(lineBuffer[source]);
       }
     }
     if ((targetY & 7) == 0) {
@@ -530,9 +695,8 @@ void blendMapPixel(uint16_t &pixel, uint16_t color, uint8_t opacity) {
 }
 
 void blendMapPixel(uint8_t &pixel, uint16_t color, uint8_t opacity) {
-  // Hotové snímky jsou RGB332. Průhlednou mapu mícháme nad touto paletou,
-  // bez celoplošného RGB565 mezibufferu; neprůhledné barvy zůstávají shodné.
-  pixel = rgb565ToRgb332(blendRgb565(rgb332ToRgb565(pixel), color, opacity));
+  // SHMU uses indexed RGB565 colors; Czech frames retain RGB332.
+  pixel = encodePreparedColor(blendRgb565(decodePreparedColor(pixel), color, opacity));
 }
 
 template <typename Pixel>
@@ -653,6 +817,11 @@ void drawMapText(Pixel *buffer, int x, int y, const char *text,
 
 void projectRadarPoint(float latitude, float longitude, int cropX1, int cropX2,
                        int cropY1, int cropY2, int &x, int &y) {
+  if (slovakSource()) {
+    x = slovakView.mapX(longitude);
+    y = slovakView.mapY(latitude);
+    return;
+  }
   x = static_cast<int64_t>(longitudeToX(longitude) - cropX1) *
       CHMI_RADAR_WIDTH / (cropX2 - cropX1 + 1);
   y = static_cast<int64_t>(latitudeToY(latitude) - cropY1) *
@@ -678,16 +847,22 @@ void drawMapOverlay(Pixel *buffer, float markerLatitude,
   if (opacity == 0) return;
   constexpr uint16_t borderColor = 0xbdf7;
   constexpr uint16_t cityColor = 0x07ff;
+  const CzechMapPoint *border = slovakSource() ? SLOVAK_MAP_BORDER : CZECH_MAP_BORDER;
+  const size_t borderCount = slovakSource() ? sizeof(SLOVAK_MAP_BORDER) / sizeof(SLOVAK_MAP_BORDER[0])
+      : sizeof(CZECH_MAP_BORDER) / sizeof(CZECH_MAP_BORDER[0]);
+  const CzechMapCity *cities = slovakSource() ? SLOVAK_MAP_CITIES : CZECH_MAP_CITIES;
+  const size_t cityCount = slovakSource() ? sizeof(SLOVAK_MAP_CITIES) / sizeof(SLOVAK_MAP_CITIES[0])
+      : sizeof(CZECH_MAP_CITIES) / sizeof(CZECH_MAP_CITIES[0]);
   int previousX = 0;
   int previousY = 0;
   for (size_t index = 0;
-       index < sizeof(CZECH_MAP_BORDER) / sizeof(CZECH_MAP_BORDER[0]);
+       index < borderCount;
        ++index) {
     const float longitude = CZECH_MAP_LON_ORIGIN +
-                            CZECH_MAP_BORDER[index].longitude *
+                            border[index].longitude *
                                 CZECH_MAP_COORD_SCALE;
     const float latitude = CZECH_MAP_LAT_ORIGIN +
-                           CZECH_MAP_BORDER[index].latitude *
+                           border[index].latitude *
                                CZECH_MAP_COORD_SCALE;
     int x = 0;
     int y = 0;
@@ -699,12 +874,13 @@ void drawMapOverlay(Pixel *buffer, float markerLatitude,
     previousY = y;
   }
 
-  MapLabelBox occupied[sizeof(CZECH_MAP_CITIES) /
-                       sizeof(CZECH_MAP_CITIES[0])] = {};
+  MapLabelBox occupied[sizeof(CZECH_MAP_CITIES) / sizeof(CZECH_MAP_CITIES[0]) +
+                       sizeof(SLOVAK_MAP_CITIES) / sizeof(SLOVAK_MAP_CITIES[0])] = {};
   size_t occupiedCount = 0;
   const bool showFullNames = radiusKm > 0 && radiusKm <= 50;
   for (uint8_t tier = 1; tier <= 2; ++tier) {
-    for (const CzechMapCity &city : CZECH_MAP_CITIES) {
+    for (size_t cityIndex = 0; cityIndex < cityCount; ++cityIndex) {
+      const CzechMapCity &city = cities[cityIndex];
       if (city.tier != tier) continue;
       int x = 0;
       int y = 0;
@@ -775,9 +951,10 @@ void radarProjectionBounds(float latitude, float longitude, uint16_t radiusKm,
   const uint16_t projectionRadiusKm =
       radiusKm == 0 ? WHOLE_COUNTRY_RADIUS_KM : radiusKm;
   if (radiusKm == 0) {
-    latitude = WHOLE_COUNTRY_LATITUDE;
-    longitude = WHOLE_COUNTRY_LONGITUDE;
+    latitude = slovakSource() ? 48.70f : WHOLE_COUNTRY_LATITUDE;
+    longitude = slovakSource() ? 19.65f : WHOLE_COUNTRY_LONGITUDE;
   }
+  if (slovakSource()) slovakView.set(latitude, longitude, projectionRadiusKm);
   const float latitudeSpan = projectionRadiusKm / 111.32f;
   const float longitudeSpan =
       projectionRadiusKm /
@@ -791,8 +968,8 @@ void radarProjectionBounds(float latitude, float longitude, uint16_t radiusKm,
 bool showBaseMap(float latitude, float longitude, uint16_t radiusKm,
                  uint8_t mapOpacityValue, uint32_t revision) {
   if (!ensureBuffers()) return false;
-  imageWidth = RADAR_SOURCE_WIDTH;
-  imageHeight = RADAR_SOURCE_HEIGHT;
+  imageWidth = slovakSource() ? 800 : RADAR_SOURCE_WIDTH;
+  imageHeight = slovakSource() ? 550 : RADAR_SOURCE_HEIGHT;
   int cropX1 = 0;
   int cropX2 = 0;
   int cropY1 = 0;
@@ -824,9 +1001,50 @@ bool showBaseMap(float latitude, float longitude, uint16_t radiusKm,
   return true;
 }
 
+bool decodeSlovakRadar(const uint8_t *data, size_t size, float latitude,
+                       float longitude, uint16_t radiusKm, uint8_t opacity,
+                       uint8_t *target) {
+  nrd2::Frame packed;
+  if (!target || !packed.open(data, size)) return false;
+  imageWidth = 800;
+  imageHeight = 550;
+  int x1, x2, y1, y2;
+  radarProjectionBounds(latitude, longitude, radiusKm, x1, x2, y1, y2);
+  memset(target, 0, RADAR_PIXEL_COUNT);
+  uint8_t sourceRow[800];
+  int previousY = -1;
+  for (int x = 0; x < CHMI_RADAR_WIDTH; ++x) sourceX[x] = slovakView.sourceX(x);
+  for (int y = 0; y < CHMI_RADAR_HEIGHT; ++y) {
+    const int sy = slovakView.sourceY(y);
+    if (sy < 0 || sy >= 550) continue;
+    if (sy != previousY) {
+      if (!packed.row(sy, sourceRow)) return false;
+      previousY = sy;
+    }
+    for (int x = 0; x < CHMI_RADAR_WIDTH; ++x) {
+      const long dx = x - CHMI_RADAR_WIDTH / 2, dy = y - CHMI_RADAR_HEIGHT / 2;
+      if (dx * dx + dy * dy > 238L * 238L || sourceX[x] < 0 || sourceX[x] >= 800) continue;
+      const uint8_t value = sourceRow[sourceX[x]];
+      target[y * CHMI_RADAR_WIDTH + x] = value == 255
+          ? ((x + y) % 12 < 2 ? slovakRadarRender::encode(0x4208) : 0) : value;
+    }
+    if ((y & 31) == 0) { advanceAnimation(millis()); delay(1); }
+  }
+  portENTER_CRITICAL(&stateMux);
+  lastDecodeResult = PNG_SUCCESS;
+  lastDecodedLineCount = 550;
+  acceptedCompleteDecodeError = false;
+  portEXIT_CRITICAL(&stateMux);
+  drawMapOverlay(target, latitude, longitude, radiusKm, x1, x2, y1, y2, opacity);
+  drawDisplayRing(target);
+  return true;
+}
+
 bool decodeRadar(const uint8_t *pngData, size_t pngSize, float latitude,
                  float longitude, uint16_t radiusKm, uint8_t mapOpacityValue,
                  uint8_t *target) {
+  if (slovakSource()) return decodeSlovakRadar(pngData, pngSize, latitude,
+      longitude, radiusKm, mapOpacityValue, target);
   if (pngData == nullptr || !ensurePngDecoder() ||
       pngDecoder->openRAM(const_cast<uint8_t *>(pngData),
                           static_cast<int>(pngSize), drawDecodedLine) !=
@@ -834,7 +1052,8 @@ bool decodeRadar(const uint8_t *pngData, size_t pngSize, float latitude,
     return false;
   imageWidth = pngDecoder->getWidth();
   imageHeight = pngDecoder->getHeight();
-  if (imageWidth <= 0 || imageHeight <= 0 || imageWidth > 2048) {
+  if (imageWidth <= 0 || imageHeight <= 0 || imageWidth > 2048 ||
+      (slovakSource() && (imageWidth != 800 || imageHeight != 550))) {
     pngDecoder->close();
     return false;
   }
@@ -858,16 +1077,17 @@ bool decodeRadar(const uint8_t *pngData, size_t pngSize, float latitude,
   radarProjectionBounds(latitude, longitude, radiusKm, cropX1, cropX2, cropY1,
                         cropY2);
   for (int x = 0; x < CHMI_RADAR_WIDTH; ++x) {
-    sourceX[x] = cropX1 + static_cast<int64_t>(x) * (cropX2 - cropX1 + 1) /
+    sourceX[x] = slovakSource() ? slovakView.sourceX(x) : cropX1 + static_cast<int64_t>(x) * (cropX2 - cropX1 + 1) /
                               CHMI_RADAR_WIDTH;
   }
   for (int y = 0; y < CHMI_RADAR_HEIGHT; ++y) {
-    sourceY[y] = cropY1 + static_cast<int64_t>(y) * (cropY2 - cropY1 + 1) /
+    sourceY[y] = slovakSource() ? slovakView.sourceY(y) : cropY1 + static_cast<int64_t>(y) * (cropY2 - cropY1 + 1) /
                               CHMI_RADAR_HEIGHT;
   }
-  dataX1 = longitudeToX(LON_DATA_RIGHT);
-  dataY0 = latitudeToY(LAT_DATA_TOP);
+  dataX1 = slovakSource() ? imageWidth - 1 : longitudeToX(LON_DATA_RIGHT);
+  dataY0 = slovakSource() ? 0 : latitudeToY(LAT_DATA_TOP);
   memset(target, 0, RADAR_PIXEL_COUNT);
+  // Pixels outside the source image remain black, including the whole-country view.
   decodedLineCount = 0;
   decodedLinesSequential = true;
   decodeTarget = target;
@@ -893,6 +1113,18 @@ bool decodeRadar(const uint8_t *pngData, size_t pngSize, float latitude,
 }
 
 void frameTimeFromName(const char *fileName, char *output) {
+  if (slovakSource()) {
+    // Timestamp stays available even when a cached PNG is reprojected after manifest rotation.
+    struct tm utc = {};
+    int year, month, day, hour, minute, second;
+    if (sscanf(fileName, "/v2/sk/frames/%4d%2d%2d%2d%2d%2d-", &year, &month, &day, &hour, &minute, &second) != 6) {
+      output[0] = '\0'; return;
+    }
+    const time_t epoch = static_cast<time_t>(daysFromCivil(year, month, day)) * 86400L + hour * 3600 + minute * 60 + second;
+    clockLocaltime(&epoch, &utc);
+    snprintf(output, 6, "%02d:%02d", utc.tm_hour, utc.tm_min);
+    return;
+  }
   const char *timestamp = strstr(fileName, FILE_PREFIX);
   if (timestamp == nullptr) {
     output[0] = '\0';
@@ -936,6 +1168,8 @@ bool currentRequest(float &latitude, float &longitude, uint16_t &radiusKm,
     animationFrameCount = 0;
     pendingRefreshCount = 0;
     memset(preparedFrameReady, 0, sizeof(preparedFrameReady));
+    if (cachedPngNames) memset(cachedPngNames, 0, MAX_ANIMATION_FRAME_COUNT * FILE_NAME_CAPACITY);
+    if (preparedFrameNames) memset(preparedFrameNames, 0, MAX_ANIMATION_FRAME_COUNT * FILE_NAME_CAPACITY);
     ready = false;
     displayedFrame = -1;
     lastSuccessfulRefreshAt = 0;
@@ -1036,7 +1270,9 @@ bool ensurePendingFrame(size_t slot) {
 bool cachePendingPng(size_t slot, size_t size) {
   if (slot >= MAX_PENDING_REFRESH_FRAMES || size == 0 || size > PNG_CAPACITY)
     return false;
+  if (!reserveSourceCache(0)) return false;
   if (pendingPngCapacities[slot] < size) {
+    if (!reserveSourceCache(size)) return false;
     uint8_t *replacement = static_cast<uint8_t *>(allocateRadarMemory(
         size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (replacement == nullptr) return false;
@@ -1171,7 +1407,7 @@ bool rebuildAnimationFromCache(float latitude, float longitude,
                       cachedPngNames[index], latitude, longitude, radiusKm,
                       mapOpacityValue, revision) ||
         !showProgressivelyPreparedFrame(index, radiusKm, revision)) {
-      setStatus(false, "Snimek CHMU se nepodarilo pripravit");
+      setStatus(false, "Snimek radaru se nepodarilo pripravit");
       portENTER_CRITICAL(&stateMux);
       if (revision == requestRevision) preparationInProgress = false;
       portEXIT_CRITICAL(&stateMux);
@@ -1183,9 +1419,97 @@ bool rebuildAnimationFromCache(float latitude, float longitude,
   return requestMatches(revision);
 }
 
+void releasePendingWorkspace() {
+  pendingRefreshCount = 0;
+  for (size_t i = 0; i < MAX_PENDING_REFRESH_FRAMES; ++i) {
+    heap_caps_free(pendingPreparedFrames[i]);
+    pendingPreparedFrames[i] = nullptr;
+    heap_caps_free(pendingPngFrames[i]);
+    pendingPngFrames[i] = nullptr;
+    pendingPngSizes[i] = pendingPngCapacities[i] = 0;
+    pendingFrameNames[i][0] = '\0';
+    pendingFrameRevisions[i] = 0;
+  }
+}
+
+// Salvage successful downloads from an interrupted incremental batch before a
+// changed manifest or memory pressure sends us through the general loader.
+void adoptPendingFrames(const char names[][FILE_NAME_CAPACITY], size_t count,
+                        uint32_t revision) {
+  for (size_t slot = 0; slot < MAX_PENDING_REFRESH_FRAMES; ++slot) {
+    if (!pendingPreparedFrames[slot] || pendingFrameRevisions[slot] != revision ||
+        !pendingFrameNames[slot][0]) continue;
+    bool wanted = false, present = false;
+    for (size_t i = 0; i < count; ++i)
+      if (strcmp(names[i], pendingFrameNames[slot]) == 0) wanted = true;
+    for (size_t i = 0; i < MAX_ANIMATION_FRAME_COUNT; ++i)
+      if (strcmp(cachedPngNames[i], pendingFrameNames[slot]) == 0) present = true;
+    if (!wanted || present) continue;
+    for (size_t i = 0; i < MAX_ANIMATION_FRAME_COUNT; ++i) {
+      bool needed = false;
+      for (size_t j = 0; j < count; ++j)
+        if (strcmp(cachedPngNames[i], names[j]) == 0) needed = true;
+      if (needed) continue;
+      portENTER_CRITICAL(&stateMux);
+      std::swap(preparedFrames[i], pendingPreparedFrames[slot]);
+      std::swap(cachedPngFrames[i], pendingPngFrames[slot]);
+      std::swap(cachedPngSizes[i], pendingPngSizes[slot]);
+      std::swap(cachedPngCapacities[i], pendingPngCapacities[slot]);
+      preparedFrameReady[i] = true;
+      preparedFrameRevisions[i] = revision;
+      strlcpy(preparedFrameNames[i], pendingFrameNames[slot], FILE_NAME_CAPACITY);
+      strlcpy(cachedPngNames[i], pendingFrameNames[slot], FILE_NAME_CAPACITY);
+      strlcpy(preparedFrameTimes[i], pendingFrameTimes[slot], sizeof(preparedFrameTimes[i]));
+      portEXIT_CRITICAL(&stateMux);
+      break;
+    }
+  }
+}
+
+void reconcileFrameCache(const char names[][FILE_NAME_CAPACITY], size_t count) {
+  portENTER_CRITICAL(&stateMux);
+  preparationInProgress = true;
+  animationPause = false;
+  lastProgressiveFrameShownAt = 0;
+  displayedFrame = -1;
+  for (size_t i = 0; i < count; ++i) {
+    size_t match = i;
+    while (match < MAX_ANIMATION_FRAME_COUNT &&
+           strcmp(cachedPngNames[match], names[i]) != 0) ++match;
+    if (match == MAX_ANIMATION_FRAME_COUNT) {
+      // Reuse a slot that is not needed later in the new sequence.
+      for (match = i; match < MAX_ANIMATION_FRAME_COUNT; ++match) {
+        bool needed = false;
+        for (size_t j = i + 1; j < count; ++j)
+          if (strcmp(cachedPngNames[match], names[j]) == 0) needed = true;
+        if (!needed) break;
+      }
+      preparedFrameReady[match] = false;
+      cachedPngSizes[match] = 0;
+      cachedPngNames[match][0] = '\0';
+    }
+    if (match != i) {
+      std::swap(preparedFrames[i], preparedFrames[match]);
+      std::swap(preparedFrameReady[i], preparedFrameReady[match]);
+      std::swap(preparedFrameRevisions[i], preparedFrameRevisions[match]);
+      std::swap(preparedFrameTimes[i], preparedFrameTimes[match]);
+      std::swap(preparedFrameNames[i], preparedFrameNames[match]);
+      std::swap(cachedPngFrames[i], cachedPngFrames[match]);
+      std::swap(cachedPngSizes[i], cachedPngSizes[match]);
+      std::swap(cachedPngCapacities[i], cachedPngCapacities[match]);
+      std::swap(cachedPngNames[i], cachedPngNames[match]);
+    }
+  }
+  animationFrameCount = count;
+  cachedPngCount = 0;
+  portEXIT_CRITICAL(&stateMux);
+}
+
 bool loadAnimation(float latitude, float longitude, uint16_t radiusKm,
                    uint8_t wantedFrameCount, uint8_t mapOpacityValue,
-                   uint32_t revision) {
+                   uint32_t revision,
+                   const char (*knownNames)[FILE_NAME_CAPACITY] = nullptr,
+                   size_t knownCount = 0) {
   if (WiFi.status() != WL_CONNECTED) {
     setStatus(false, "Wi-Fi neni pripojena");
     return false;
@@ -1198,11 +1522,12 @@ bool loadAnimation(float latitude, float longitude, uint16_t radiusKm,
   fullPreparationInProgress = true;
   ++generation;
   portEXIT_CRITICAL(&stateMux);
-  setStatus(true, "Obnovuji radar CHMU...");
+  setStatus(true, "Obnovuji radar...");
   char latestNames[MAX_ANIMATION_FRAME_COUNT][FILE_NAME_CAPACITY] = {};
-  size_t latestCount = 0;
-  if (!latestFileNames(latestNames, latestCount, revision)) {
-    setStatus(false, "Seznam CHMU se nepodarilo nacist");
+  size_t latestCount = knownCount;
+  if (knownNames) memcpy(latestNames, knownNames, knownCount * FILE_NAME_CAPACITY);
+  if (!knownNames && !latestFileNames(latestNames, latestCount, revision)) {
+    setStatus(false, "Seznam radaru se nepodarilo nacist");
     portENTER_CRITICAL(&stateMux);
     if (revision == requestRevision) fullPreparationInProgress = false;
     portEXIT_CRITICAL(&stateMux);
@@ -1218,35 +1543,11 @@ bool loadAnimation(float latitude, float longitude, uint16_t radiusKm,
     return false;
   }
 
+  adoptPendingFrames(latestNames + selectedStart, selectedCount, revision);
+  releasePendingWorkspace();
+  reconcileFrameCache(latestNames + selectedStart, selectedCount);
+  releaseUnusedFrames(selectedCount);
   size_t loadedCount = 0;
-  bool canResume = animationFrameCount == selectedCount &&
-                   cachedPngCount > 0 && cachedPngCount < selectedCount;
-  if (canResume) {
-    for (size_t index = 0; index < selectedCount; ++index) {
-      if (!preparedFrameReady[index]) continue;
-      if (strcmp(latestNames[selectedStart + index], cachedPngNames[index]) !=
-              0 ||
-          strcmp(cachedPngNames[index], preparedFrameNames[index]) != 0) {
-        canResume = false;
-        break;
-      }
-      ++loadedCount;
-    }
-    if (loadedCount != cachedPngCount) canResume = false;
-  }
-  if (canResume) {
-    portENTER_CRITICAL(&stateMux);
-    preparationInProgress = true;
-    animationPause = false;
-    lastProgressiveFrameShownAt = 0;
-    portEXIT_CRITICAL(&stateMux);
-  } else {
-    beginProgressivePreparation(selectedCount);
-    portENTER_CRITICAL(&stateMux);
-    cachedPngCount = 0;
-    portEXIT_CRITICAL(&stateMux);
-    loadedCount = 0;
-  }
 
   const auto prepareMissingFrame = [&](size_t index) {
     const char *fileName = latestNames[selectedStart + index];
@@ -1258,13 +1559,13 @@ bool loadAnimation(float latitude, float longitude, uint16_t radiusKm,
     // PNG ponecháváme v cache. Po návratu je musíme znovu promítnout do
     // aktuálního výřezu a označit novou revizí; jinak showPreparedFrame()
     // starý snímek odmítne a na displeji zůstane pouze podkladová mapa.
-    if (index < cachedPngCount && cachedPngFrames[index] != nullptr &&
+    if (cachedPngFrames[index] != nullptr &&
         cachedPngSizes[index] > 0 &&
         strcmp(cachedPngNames[index], fileName) == 0) {
       if (!prepareFrame(index, cachedPngFrames[index], cachedPngSizes[index],
                         cachedPngNames[index], latitude, longitude, radiusKm,
                         mapOpacityValue, revision)) {
-        setStatus(false, "Snimek CHMU se nepodarilo pripravit");
+        setStatus(false, "Snimek radaru se nepodarilo pripravit");
         return false;
       }
       return true;
@@ -1272,25 +1573,22 @@ bool loadAnimation(float latitude, float longitude, uint16_t radiusKm,
 
     size_t pngSize = 0;
     if (!downloadPngWithRetry(fileName, pngSize, revision)) {
-      setStatus(false, "Snimek CHMU se nepodarilo stahnout");
+      setStatus(false, "Snimek radaru se nepodarilo stahnout");
       return false;
     }
+    if (!prepareFrame(index, pngBuffer, pngSize, fileName, latitude,
+                      longitude, radiusKm, mapOpacityValue, revision)) {
+      setStatus(false, "Snimek radaru se nepodarilo pripravit");
+      return false;
+    }
+    // Retaining the source is optional under pressure, retaining its identity
+    // is not: refresh must still recognize the already prepared image.
     if (!cacheDownloadedPng(index, pngSize, fileName)) {
-      setStatus(false, "Nedostatek pameti pro radar");
-      return false;
+      heap_caps_free(cachedPngFrames[index]);
+      cachedPngFrames[index] = nullptr;
+      cachedPngSizes[index] = cachedPngCapacities[index] = 0;
+      strlcpy(cachedPngNames[index], fileName, FILE_NAME_CAPACITY);
     }
-    if (!prepareFrame(index, cachedPngFrames[index], cachedPngSizes[index],
-                      cachedPngNames[index], latitude, longitude, radiusKm,
-                      mapOpacityValue, revision)) {
-      setStatus(false, "Snimek CHMU se nepodarilo pripravit");
-      return false;
-    }
-    ++loadedCount;
-    portENTER_CRITICAL(&stateMux);
-    cachedPngCount = loadedCount;
-    ready = true;
-    activeRadiusKm = radiusKm;
-    portEXIT_CRITICAL(&stateMux);
     return true;
   };
 
@@ -1301,8 +1599,14 @@ bool loadAnimation(float latitude, float longitude, uint16_t radiusKm,
       portEXIT_CRITICAL(&stateMux);
       return false;
     }
+    ++loadedCount;
+    portENTER_CRITICAL(&stateMux);
+    cachedPngCount = loadedCount;
+    ready = true;
+    activeRadiusKm = radiusKm;
+    portEXIT_CRITICAL(&stateMux);
     if (!showProgressivelyPreparedFrame(index, radiusKm, revision)) {
-      setStatus(false, "Snímek CHMU se nepodařilo zobrazit");
+      setStatus(false, "Snímek radaru se nepodařilo zobrazit");
       portENTER_CRITICAL(&stateMux);
       if (revision == requestRevision) fullPreparationInProgress = false;
       portEXIT_CRITICAL(&stateMux);
@@ -1380,11 +1684,11 @@ bool refreshLatestFrame(float latitude, float longitude, uint16_t radiusKm,
                         uint8_t wantedFrameCount, uint8_t mapOpacityValue,
                         uint32_t revision) {
   if (WiFi.status() != WL_CONNECTED || !ensureBuffers()) return false;
-  setStatus(true, "Obnovuji radar CHMU...");
+  setStatus(true, "Obnovuji radar...");
   char latestNames[MAX_ANIMATION_FRAME_COUNT][FILE_NAME_CAPACITY] = {};
   size_t latestCount = 0;
   if (!latestFileNames(latestNames, latestCount, revision)) {
-    setStatus(false, "Seznam CHMU se nepodarilo nacist");
+    setStatus(false, "Seznam radaru se nepodarilo nacist");
     return false;
   }
   const size_t selectedCount =
@@ -1393,7 +1697,7 @@ bool refreshLatestFrame(float latitude, float longitude, uint16_t radiusKm,
   if (selectedCount != animationFrameCount || selectedCount != cachedPngCount ||
       selectedCount == 0) {
     return loadAnimation(latitude, longitude, radiusKm, wantedFrameCount,
-                         mapOpacityValue, revision);
+                         mapOpacityValue, revision, latestNames, latestCount);
   }
   bool unchanged = true;
   for (size_t index = 0; index < selectedCount; ++index) {
@@ -1426,23 +1730,37 @@ bool refreshLatestFrame(float latitude, float longitude, uint16_t radiusKm,
   }
   if (shift == 0) {
     return loadAnimation(latitude, longitude, radiusKm, wantedFrameCount,
-                         mapOpacityValue, revision);
+                         mapOpacityValue, revision, latestNames, latestCount);
   }
 
   pendingRefreshCount = 0;
+  for (size_t slot = 0; slot < shift; ++slot) {
+    if (!ensurePendingFrame(slot)) {
+      return loadAnimation(latitude, longitude, radiusKm, wantedFrameCount,
+                           mapOpacityValue, revision, latestNames, latestCount);
+    }
+  }
   const size_t firstNew = selectedCount - shift;
   for (size_t slot = 0; slot < shift; ++slot) {
     const char *fileName = latestNames[selectedStart + firstNew + slot];
+    if (pendingFrameRevisions[slot] == revision &&
+        strcmp(pendingFrameNames[slot], fileName) == 0) continue;
+    // A failed retry must never advertise the previous contents of this slot.
+    pendingFrameNames[slot][0] = '\0';
+    pendingFrameRevisions[slot] = 0;
     size_t pngSize = 0;
     if (!downloadPngWithRetry(fileName, pngSize, revision) ||
-        !cachePendingPng(slot, pngSize) ||
-        !ensurePendingFrame(slot) ||
         !decodeRadar(pngBuffer, pngSize, latitude, longitude, radiusKm,
                      mapOpacityValue, pendingPreparedFrames[slot]) ||
         !requestMatches(revision)) {
-      setStatus(false, "Nove snimky CHMU se nepodarilo pripravit");
+      setStatus(false, "Nove snimky radaru se nepodarilo pripravit");
       pendingRefreshCount = 0;
       return false;
+    }
+    if (!cachePendingPng(slot, pngSize)) {
+      heap_caps_free(pendingPngFrames[slot]);
+      pendingPngFrames[slot] = nullptr;
+      pendingPngSizes[slot] = pendingPngCapacities[slot] = 0;
     }
     strlcpy(pendingFrameNames[slot], fileName,
             sizeof(pendingFrameNames[slot]));
@@ -1487,8 +1805,9 @@ bool showPreparedFrame(size_t index, unsigned long now) {
   uint16_t *target = displayBuffers[targetBuffer];
   const uint8_t *source = preparedFrames[index];
   for (size_t pixel = 0; pixel < RADAR_PIXEL_COUNT; ++pixel)
-    target[pixel] = nightVisual ? nightRadarColor(source[pixel])
-                                : rgb332ToRgb565(source[pixel]);
+    target[pixel] = nightVisual
+        ? nightRadarColor(slovakSource() ? rgb565ToRgb332(decodePreparedColor(source[pixel])) : source[pixel])
+        : decodePreparedColor(source[pixel]);
   portENTER_CRITICAL(&stateMux);
   if (!active || index >= animationFrameCount || !preparedFrameReady[index] ||
       preparedFrameRevisions[index] != requestRevision) {
@@ -1646,15 +1965,19 @@ void radarTask(void *) {
       portEXIT_CRITICAL(&stateMux);
       continue;
     }
-    if (reloadNow || !haveFrames ||
-        static_cast<long>(now - nextAttemptAt) >= 0) {
+    // Respect retry backoff even when the first frame has not loaded yet.
+    if (reloadNow || nextAttemptAt == 0 ||
+        static_cast<int32_t>(now - nextAttemptAt) >= 0) {
       const bool fullPreparation = reloadNow || !haveFrames;
-      const bool success =
-          fullPreparation
+      RadarHttpBatch batch;
+      httpBatch = &batch;
+      const bool success = batch.guard &&
+          (fullPreparation
               ? loadAnimation(latitude, longitude, radiusKm, wantedFrameCount,
                               mapOpacityValue, revision)
               : refreshLatestFrame(latitude, longitude, radiusKm,
-                                   wantedFrameCount, mapOpacityValue, revision);
+                                   wantedFrameCount, mapOpacityValue, revision));
+      httpBatch = nullptr;
       portENTER_CRITICAL(&stateMux);
       const bool requestChanged = revision != requestRevision;
       if (!requestChanged) reloadRequested = false;
@@ -1681,6 +2004,21 @@ void chmiRadarServiceMemoryReclaimCompleted() {
 
 void chmiRadarServiceBegin() {
   if (taskHandle != nullptr) return;
+  struct Metadata {
+    slovakRadar::Frame frames[slovakRadar::MAX_FRAMES];
+    char prepared[MAX_ANIMATION_FRAME_COUNT][FILE_NAME_CAPACITY];
+    char cached[MAX_ANIMATION_FRAME_COUNT][FILE_NAME_CAPACITY];
+    char pending[MAX_PENDING_REFRESH_FRAMES][FILE_NAME_CAPACITY];
+  };
+  if (!slovakFrames) {
+    void *storage = heap_caps_malloc(sizeof(Metadata), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!storage) { setStatus(false, "Nedostatek pameti pro radar"); return; }
+    auto *metadata = new (storage) Metadata{};
+    slovakFrames = metadata->frames;
+    preparedFrameNames = metadata->prepared;
+    cachedPngNames = metadata->cached;
+    pendingFrameNames = metadata->pending;
+  }
   xTaskCreatePinnedToCoreWithCaps(
       radarTask, "chmi-radar", 12288, nullptr, 1, &taskHandle, 0,
       MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -1708,6 +2046,7 @@ void chmiRadarServicePrepareForFirmwareUpdate() {
   }
   if (pngBuffer != nullptr) heap_caps_free(pngBuffer);
   pngBuffer = nullptr;
+  pngBufferCapacity = 0;
   if (lineBuffer != nullptr) heap_caps_free(lineBuffer);
   lineBuffer = nullptr;
   lineCapacity = 0;
@@ -1756,7 +2095,7 @@ void chmiRadarServiceSetActive(bool requestedVisible, bool backgroundRefresh,
                                uint8_t mapOpacityValue,
                                uint8_t pauseSecondsValue, uint8_t source) {
   frameCount = constrain(frameCount, static_cast<uint8_t>(1),
-                         static_cast<uint8_t>(MAX_ANIMATION_FRAME_COUNT));
+                         static_cast<uint8_t>(source == CLOCK_RADAR_SOURCE_SHMU ? slovakRadar::MAX_FRAMES : MAX_ANIMATION_FRAME_COUNT));
   mapOpacityValue = constrain(mapOpacityValue, static_cast<uint8_t>(0),
                               static_cast<uint8_t>(100));
   pauseSecondsValue = constrain(pauseSecondsValue, static_cast<uint8_t>(0),
@@ -1783,7 +2122,7 @@ void chmiRadarServiceSetActive(bool requestedVisible, bool backgroundRefresh,
       }
   }
   bool completePreparedCache =
-      ready && completePngCache &&
+      ready && workerSource == requestedSource &&
       animationFrameCount == requestedFrameCount;
   if (completePreparedCache) {
     for (size_t index = 0; index < animationFrameCount; ++index)
@@ -1917,6 +2256,10 @@ void chmiRadarServiceDiagnostics(ChmiRadarDiagnostics &diagnostics) {
     ++diagnostics.preparedFrameCount;
   }
   diagnostics.lastHttpStatus = lastHttpStatus;
+  diagnostics.lastBatchMs = lastBatchMs;
+  diagnostics.lastBatchConnections = lastBatchConnections;
+  diagnostics.lastBatchRequests = lastBatchRequests;
+  diagnostics.lastBatchBytes = lastBatchBytes;
   diagnostics.lastDownloadedBytes = lastDownloadedBytes;
   diagnostics.lastDecodeResult = lastDecodeResult;
   diagnostics.lastDecodedLineCount = lastDecodedLineCount;

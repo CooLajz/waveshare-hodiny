@@ -22,6 +22,7 @@
 #include "RetroLcd.h"
 #include "ClockConfig.h"
 #include "ChmiRadarService.h"
+#include "RadarClientIdentity.h"
 #include "ConfigurationWeb.h"
 #include "DayNightLogic.h"
 #include "DisplayDriver.h"
@@ -339,7 +340,7 @@ void applyPendingRuntimeConfiguration() {
       dashboardConfigBuffer.radarRadiusKm,
       dashboardConfigBuffer.radarFrameCount,
       dashboardConfigBuffer.radarMapOpacity,
-      dashboardConfigBuffer.radarPauseSeconds, dashboardConfigBuffer.radarSource);
+      dashboardConfigBuffer.radarPauseSeconds, clockConfigEffectiveRadarSource(dashboardConfigBuffer));
   // Zápis do flash může na ESP32-S3 rozhodit vertikální synchronizaci RGB
   // panelu. Provádíme ji až po dokončení obsluhy HTTP požadavku.
   LCD_Resync();
@@ -422,7 +423,7 @@ void handleRadarVisibility(bool visible) {
                             config.openMeteoLatitude,
                             config.openMeteoLongitude, config.radarRadiusKm,
                             config.radarFrameCount, config.radarMapOpacity,
-                            config.radarPauseSeconds, config.radarSource);
+                            config.radarPauseSeconds, clockConfigEffectiveRadarSource(config));
 }
 
 void handleRadarRangeChange(int8_t direction) {
@@ -466,7 +467,7 @@ void maintainRadarRangeChange() {
                                 config.radarRadiusKm,
                                 config.radarFrameCount,
                                 config.radarMapOpacity,
-                                config.radarPauseSeconds, config.radarSource);
+                                config.radarPauseSeconds, clockConfigEffectiveRadarSource(config));
     }
   }
 }
@@ -498,7 +499,7 @@ bool previewRadarRangeFromWeb(uint16_t radiusKm) {
                               config.radarRadiusKm,
                               config.radarFrameCount,
                               config.radarMapOpacity,
-                              config.radarPauseSeconds, config.radarSource);
+                              config.radarPauseSeconds, clockConfigEffectiveRadarSource(config));
   }
   return true;
 }
@@ -837,6 +838,20 @@ void initializeNetworkTime() {
 
 void maintainNetworkTime() {
   const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  // The radar task uses a PSRAM stack and must not write NVS itself.
+  static bool radarIdentityReady = false;
+  static unsigned long radarIdentityAttemptAt = 0;
+  if (wifiConnected && !radarIdentityReady &&
+      clockConfigEffectiveRadarSource(runtimeConfig) == CLOCK_RADAR_SOURCE_SHMU &&
+      (radarIdentityAttemptAt == 0 ||
+       millis() - radarIdentityAttemptAt >= 60000UL)) {
+    radarIdentityAttemptAt = millis();
+    radarIdentityReady = prepareRadarClientIdentity();
+    if (radarIdentityReady) {
+      LCD_Resync();
+      displayResyncAt = millis() + 2000;
+    }
+  }
   if (!wifiConnected) {
     if (!displayedWifiIp.isEmpty()) {
       displayedWifiIp = "";
@@ -885,7 +900,7 @@ void maintainNetworkTime() {
         radarAvailable && config.automaticRadarRotation && config.radarDisplaySeconds > 0,
         config.openMeteoLatitude, config.openMeteoLongitude,
         config.radarRadiusKm, config.radarFrameCount,
-        config.radarMapOpacity, config.radarPauseSeconds, config.radarSource);
+        config.radarMapOpacity, config.radarPauseSeconds, clockConfigEffectiveRadarSource(config));
 #if !FIRMWARE_RELEASE
     Serial.println("NTP synchronizovano");
 #endif
@@ -1859,7 +1874,7 @@ void setup() {
       false, false,
       runtimeConfig.openMeteoLatitude, runtimeConfig.openMeteoLongitude,
       runtimeConfig.radarRadiusKm, runtimeConfig.radarFrameCount,
-      runtimeConfig.radarMapOpacity, runtimeConfig.radarPauseSeconds, runtimeConfig.radarSource);
+      runtimeConfig.radarMapOpacity, runtimeConfig.radarPauseSeconds, clockConfigEffectiveRadarSource(runtimeConfig));
   clockDashboardSetSecond(60);
   displayResyncAt = millis() + 2000;
 #if !FIRMWARE_RELEASE

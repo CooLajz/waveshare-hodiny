@@ -4370,24 +4370,15 @@ void clockDashboardSetRadarSnapshot(const uint16_t *pixels,
   const bool highlightLatestFrame = latestFrame && !redNightVisualEnabled();
   const char *timePrefix = highlightLatestFrame ? "#65FF45 " : "";
   const char *timeSuffix = highlightLatestFrame ? "#" : "";
-  if (radiusKm == 0 && frameTime != nullptr && frameTime[0] != '\0')
-    snprintf(title, sizeof(title), englishLanguage() ? "CHMI - CZ - %s%s%s"
-                                                    : "ČHMÚ - ČR - %s%s%s",
-             timePrefix,
-             frameTime, timeSuffix);
-  else if (radiusKm == 0)
-    snprintf(title, sizeof(title), englishLanguage() ? "CHMI - CZ"
-                                                    : "ČHMÚ - ČR");
-  else if (frameTime != nullptr && frameTime[0] != '\0')
-    snprintf(title, sizeof(title),
-             englishLanguage() ? "CHMI - %u km - %s%s%s"
-                               : "ČHMÚ - %u km - %s%s%s",
-             radiusKm,
-             timePrefix, frameTime, timeSuffix);
-  else
-    snprintf(title, sizeof(title), englishLanguage() ? "CHMI - %u km"
-                                                    : "ČHMÚ - %u km",
-             radiusKm);
+  const bool slovak = dashboardRuntimeConfig.openMeteoCountry == CLOCK_LOCATION_COUNTRY_SLOVAKIA;
+  const char *provider = slovak ? (englishLanguage() ? "SHMU" : "SHMÚ")
+                                : (englishLanguage() ? "CHMI" : "ČHMÚ");
+  char range[20];
+  if (radiusKm == 0) snprintf(range, sizeof(range), "%s", slovak ? "SK" : (englishLanguage() ? "CZ" : "ČR"));
+  else snprintf(range, sizeof(range), "%u km", radiusKm);
+  if (frameTime != nullptr && frameTime[0] != '\0')
+    snprintf(title, sizeof(title), "%s - %s - %s%s%s", provider, range, timePrefix, frameTime, timeSuffix);
+  else snprintf(title, sizeof(title), "%s - %s", provider, range);
   lv_label_set_text(radarTitleLabel, title);
   lv_label_set_text(radarStatusLabel, pixels != nullptr ? "" :
       (englishLanguage() ? "LOADING RADAR" : "NAČÍTÁNÍ RADARU"));

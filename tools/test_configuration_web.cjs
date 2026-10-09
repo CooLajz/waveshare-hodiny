@@ -25,7 +25,7 @@ const browser=await chromium.launch({headless:true,channel:"chrome"});
 const page=await browser.newPage({viewport:{width:1360,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
 let notificationStatus=200;const notifications=[];
 const requests=[];let config={ok:true,controlSecret:'test-notification-secret',language:'cs',dataSource:'open-meteo',leftSide:{},rightSide:{},metricA:{},metricB:{},dayBrightness:80,nightBrightness:10,clockStyle:'digital',timeFont:'barlow',saveConfirmationId:''};let saves=0,active=0,maxActive=0,saveMode="ok";
-await page.route('**/api/**',async route=>{const req=route.request(),url=new URL(req.url());if(url.pathname==='/')return route.fulfill({contentType:'text/html',headers:{'Content-Encoding':'gzip'},body:compressedHtml});if(url.pathname==='/ui-language.js')return route.fulfill({contentType:'text/javascript',headers:{'Content-Encoding':'gzip'},body:compressedLocalization});let data={ok:true};if(url.pathname.endsWith('/notification')){notifications.push(JSON.parse(req.postData()));assert(req.headers()['content-type'].includes('application/json'));await new Promise(r=>setTimeout(r,150));return route.fulfill({status:notificationStatus,contentType:'application/json',body:JSON.stringify(notificationStatus===200?{ok:true}:{ok:false,message:'Displej je vypnutý.'})})}if(url.pathname==='/api/config'){if(req.method()==='POST'){saves++;const body=Object.fromEntries(new URLSearchParams(req.postData()));config={...config,...body,forecastTemperatureEntityId:body.forecastTemperatureEntity??config.forecastTemperatureEntityId,use12HourFormat:body.use12HourFormat==="1",automaticDayNight:body.automaticDayNight==="1",automaticRadarRotation:body.automaticRadarRotation==="1"};if(saveMode==="lost")return route.abort("failed");if(saveMode==="wrong")config.saveConfirmationId="different";}data=config;}else if(url.pathname.endsWith('/preview')){active++;maxActive=Math.max(maxActive,active);requests.push({url:url.pathname,data:Object.fromEntries(new URLSearchParams(req.postData()))});await new Promise(r=>setTimeout(r,240));active--;}else if(url.pathname==='/api/update-status'){await new Promise(r=>setTimeout(r,2500));data={ok:true,currentVersion:'test',state:'current'};}return route.fulfill({contentType:'application/json',body:JSON.stringify(data)});});
+await page.route('**/api/**',async route=>{const req=route.request(),url=new URL(req.url());if(url.pathname==='/')return route.fulfill({contentType:'text/html',headers:{'Content-Encoding':'gzip'},body:compressedHtml});if(url.pathname==='/ui-language.js')return route.fulfill({contentType:'text/javascript',headers:{'Content-Encoding':'gzip'},body:compressedLocalization});let data={ok:true};if(url.pathname.endsWith('/notification')){notifications.push(JSON.parse(req.postData()));assert(req.headers()['content-type'].includes('application/json'));await new Promise(r=>setTimeout(r,150));return route.fulfill({status:notificationStatus,contentType:'application/json',body:JSON.stringify(notificationStatus===200?{ok:true}:{ok:false,message:'Displej je vypnutý.'})})}if(url.pathname==='/api/config'){if(req.method()==='POST'){saves++;const body=Object.fromEntries(new URLSearchParams(req.postData()));assert(Buffer.byteLength(body.openMeteoCity)<64,'city exceeds firmware buffer');config={...config,...body,forecastTemperatureEntityId:body.forecastTemperatureEntity??config.forecastTemperatureEntityId,use12HourFormat:body.use12HourFormat==="1",automaticDayNight:body.automaticDayNight==="1",automaticRadarRotation:body.automaticRadarRotation==="1"};if(saveMode==="lost")return route.abort("failed");if(saveMode==="wrong")config.saveConfirmationId="different";}data=config;}else if(url.pathname.endsWith('/preview')){active++;maxActive=Math.max(maxActive,active);requests.push({url:url.pathname,data:Object.fromEntries(new URLSearchParams(req.postData()))});await new Promise(r=>setTimeout(r,240));active--;}else if(url.pathname==='/api/update-status'){await new Promise(r=>setTimeout(r,2500));data={ok:true,currentVersion:'test',state:'current'};}return route.fulfill({contentType:'application/json',body:JSON.stringify(data)});});
 const start=Date.now();await page.goto(origin+'/');await page.locator('#configForm').waitFor({state:'visible'});assert(Date.now()-start<2400,'form blocked by firmware');
 console.log('form visible before delayed firmware status');console.log(await page.title());
 await page.locator('[data-tab="display"]').click();
@@ -79,6 +79,48 @@ assert.equal(await page.locator('#forecastTemperatureEntity').inputValue(),'sens
 await page.locator('#forecastTemperatureEntity').fill('');
 await page.evaluate(()=>saveConfiguration());
 assert.equal(config.forecastTemperatureEntityId,'');
+
+// Geocoder labels must fit the persisted UTF-8 buffer even with diacritics.
+const cityCapacity=Number(fs.readFileSync(root+'WaveshareHodiny/ClockConfig.h','utf8').match(/CLOCK_OPEN_METEO_CITY_LENGTH = (\d+)/)[1]);
+const longLocation={name:'Spišská Belá',admin2:'Okres Kežmarok',admin1:'Prešovský kraj',country:'Slovensko',country_code:'SK',latitude:49.187,longitude:20.459,timezone:'Europe/Bratislava'};
+assert(Buffer.byteLength([longLocation.name,longLocation.admin2,longLocation.admin1,longLocation.country].join(' · '))>=cityCapacity);
+await page.evaluate(location=>{applyDeviceLanguage('cs');chooseOpenMeteoLocation(location)},longLocation);
+const savedCity=await page.locator('#openMeteoCity').inputValue();
+assert(savedCity.startsWith(longLocation.name));assert(Buffer.byteLength(savedCity)<cityCapacity);
+assert((await page.locator('#openMeteoFeedback').textContent()).includes(longLocation.admin2));
+await page.evaluate(()=>saveConfiguration());
+assert.equal(config.openMeteoCity,savedCity);
+assert.equal(Number(config.openMeteoLatitude),longLocation.latitude);
+assert.equal(Number(config.openMeteoLongitude),longLocation.longitude);
+assert.equal(config.timeZone,longLocation.timezone);assert.equal(config.openMeteoCountry,'SK');
+assert(await page.locator('#saveFeedback').evaluate(el=>el.classList.contains('success')));
+for(const name of ['Brno','a'.repeat(63),'a'.repeat(64),'ě'.repeat(40),'😀'.repeat(20)]){
+  const stored=await page.evaluate(name=>storedLocationLabel({name}),name);
+  assert(Buffer.byteLength(stored)<cityCapacity);assert(name.startsWith(stored));assert(!stored.includes('�'));
+  if(Buffer.byteLength(name)<cityCapacity)assert.equal(stored,name);
+}
+console.log('long UTF-8 location label saves with exact coordinates and timezone');
+
+// Slovak location chooses SHMU without overwriting the saved Czech source.
+await page.evaluate(()=>{applyDeviceLanguage('cs');document.getElementById('radarSource').value='1';chooseOpenMeteoLocation({name:'Bratislava',country_code:'SK',latitude:48.1486,longitude:17.1077,timezone:'Europe/Bratislava'});});
+await page.locator('[data-tab="radar"]').click();
+assert(await page.locator('#radarSettingsContent').isVisible());
+assert(await page.locator('#radarSlovakSource').isVisible());
+assert.equal(await page.locator('#radarSource').isVisible(),false);
+assert.equal(await page.locator('[data-radar-radius="0"]').innerText(),'SK');
+assert.equal(await page.locator('#radarSource').inputValue(),'1');
+await page.locator('#tab-radar').screenshot({path:'/private/tmp/sk-radar-web-desktop.png'});
+await page.setViewportSize({width:390,height:844});
+await page.locator('#tab-radar').screenshot({path:'/private/tmp/sk-radar-web-mobile.png'});
+await page.evaluate(()=>{chooseOpenMeteoLocation({name:'Brno',country_code:'CZ',latitude:49.1951,longitude:16.6068,timezone:'Europe/Prague'});});
+assert(await page.locator('#radarSource').isVisible());
+assert.equal(await page.locator('#radarSlovakSource').isVisible(),false);
+assert.equal(await page.locator('#radarSource').inputValue(),'1');
+await page.evaluate(()=>{chooseOpenMeteoLocation({name:'Wien',country_code:'AT',latitude:48.2,longitude:16.3,timezone:'Europe/Vienna'});});
+assert(await page.locator('#radarUnavailable').isVisible());
+assert.equal(await page.locator('#radarSettingsContent').isVisible(),false);
+await page.evaluate(()=>{chooseOpenMeteoLocation({name:'Brno',country_code:'CZ',latitude:49.1951,longitude:16.6068,timezone:'Europe/Prague'});});
+await page.setViewportSize({width:1360,height:1000});
 
 // Notification tester: independent form, matching JSON/URL, delivery and errors.
 await page.evaluate(()=>applyDeviceLanguage('cs'));

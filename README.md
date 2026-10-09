@@ -5,7 +5,7 @@
 Český informační dashboard pro kulatý dotykový displej
 [Waveshare ESP32-S3-Touch-LCD-2.1](https://www.waveshare.com/esp32-s3-touch-lcd-2.1.htm)
 s rozlišením 480 × 480 px. Zobrazuje čas, datum, počasí, teploty, další
-měřené hodnoty a srážkový radar ČHMÚ. Jako zdroj hodnot lze použít Open-Meteo
+měřené hodnoty a srážkový radar ČHMÚ/SHMÚ. Jako zdroj hodnot lze použít Open-Meteo
 bez účtu, volitelně doplněné vlastními čidly TMEP.cz, nebo Home Assistant.
 Vzhled, zdroje dat, poloha, radar, jas, animace i aktualizace se nastavují
 z webového rozhraní bez úpravy zdrojového kódu.
@@ -65,8 +65,8 @@ pozicích 12, 3, 6 a 9 hodin.
   dostupná také při použití Home Assistantu; automatické střídání má samostatné
   délky pro hodiny, předpověď a radar (0 = vynechat, všechny 0 = bez přepínání),
 - volbu zdroje meteoradaru MAX Z (původní, výchozí) nebo MAX Z s maskou; maska zesvětluje oblasti, kde srážky pravděpodobně nedopadají na zem,
-- srážkový radar ČHMÚ s mapou České republiky, městy a 1 až 15 snímky,
-- rozsahy 25, 50, 100 a 200 km nebo celou ČR ovládané svislým gestem swipe,
+- srážkový radar ČHMÚ/SHMÚ s mapou ČR nebo Slovenska, městy a 1 až 15 snímky (SK nejvýše 10),
+- rozsahy 25, 50, 100 a 200 km nebo celý stát ovládané svislým gestem swipe,
 - červenou noční paletu radaru se zachováním rozlišení intenzity srážek,
 - volitelné automatické střídání hodin, předpovědi a radaru se samostatnou dobou zobrazení,
 - dvě další měřené veličiny, například CO₂, VOC, vlhkost, tlak nebo baterii,
@@ -152,7 +152,7 @@ Nová konfigurace používá Open-Meteo, polohu Brno a pohled meteoradaru na cel
 
 Open-Meteo je výchozí zdroj a nevyžaduje účet ani token. Poskytuje aktuální
 počasí a čtyři konfigurovatelné hodnoty. Vybrané město a jeho GPS souřadnice
-současně určují střed lokálních pohledů meteoradaru ČHMÚ. U každé ze čtyř
+současně určují střed lokálních pohledů meteoradaru. U každé ze čtyř
 pozic lze samostatně nastavit 0 až 2 desetinná místa; stejné nastavení platí
 i při výběru hodnoty TMEP.cz.
 
@@ -249,7 +249,7 @@ Web umožňuje nastavit:
 - levou a pravou horní hodnotu včetně typu, názvu, jednotky, přesnosti, ikony
   a barevné škály,
 - styl animovaných ikon `Monochrome`, `Flat` nebo `Line`,
-- meteoradar ČHMÚ s obrysem ČR, městy, pohledy 25, 50, 100, 200 km nebo celá ČR a volbou 1 až 15 snímků,
+- meteoradar ČHMÚ/SHMÚ s obrysem ČR nebo SK, městy a pohledy 25, 50, 100, 200 km nebo celý stát,
 - měřené hodnoty A a B, jednotky, přesnost a barevné škály,
 - barvu hodin, data a obou částí vteřinového efektu,
 - denní/noční jas, ruční nebo automatický režim a automatické střídání tří stránek,
@@ -323,7 +323,7 @@ Nahrávání probíhá v dialogu s procenty a upozorněním na dočasně černý
 
 Předpověď je samostatná obrazovka, nikoli čtvrtý ciferník. Vodorovným swipem
 listujete **Hodiny → Předpověď → Meteoradar → Hodiny**, opačným směrem zpět.
-Mimo ČR se radar vynechá a přepínáte mezi hodinami a předpovědí.
+Mimo ČR a Slovensko se radar vynechá a přepínáte mezi hodinami a předpovědí.
 
 Po obvodu je následujících **12 celých hodin** s teplotou a denní/noční ikonou
 počasí. Barevný vějíř plynule znázorňuje očekávané teploty, radiální čára
@@ -358,22 +358,52 @@ stránku vynechanou automatickým střídáním.
 
 Střídání čeká na Wi-Fi a synchronizovaný čas a pozastaví se v nastavení,
 při vypnutém displeji nebo aktivní notifikaci. Nedostupný či nepřipravený radar
-se dočasně přeskočí, aniž by zastavil střídání hodin a předpovědi. Mimo ČR se
+se dočasně přeskočí, aniž by zastavil střídání hodin a předpovědi. Mimo ČR a Slovensko se
 střídají pouze hodiny a předpověď. Radar svůj rozběhnutý animační cyklus před
 přechodem dokončí, takže jeho nastavená doba je minimum.
 
-### Meteoradar ČHMÚ
+### Meteoradar ČHMÚ a SHMÚ
 
-Radar používá výhradně otevřená data radarového kompozitu MAX_Z Českého
-hydrometeorologického ústavu. Nabízí pohledy 25, 50, 100 a 200 km kolem
-uložené GPS polohy a přehled celé České republiky. Mapový podklad obsahuje
-obrys státu a města přizpůsobená jednotlivým rozsahům.
+Podle země uložené polohy se automaticky vybírá mapa a zdroj: `CZ` používá
+otevřený kompozit MAX_Z ČHMÚ (včetně stávající volby maskované varianty), `SK`
+používá SHMÚ ZMAX přes [Nebovidy Radar](https://radar.nebovidy.cz:18443/).
+Mapy obou zemí obsahují hranice a města, pohledy 25, 50, 100 a 200 km kolem
+uložené GPS polohy a přehled celého státu. Ovládání, průhlednost mapy,
+noční režim a automatické střídání jsou společné.
 
-Meteoradar je dostupný pouze pro polohy, které vyhledávání Open-Meteo označí
-kódem země `CZ`. U lokality mimo Českou republiku firmware radar nespouští,
-nestahuje jeho data na pozadí, nereaguje na radarová gesta a automatické
-střídání radar vynechá. Počasí Open-Meteo i Home Assistant zůstávají bez
-tohoto omezení.
+Slovenský server poskytuje nejvýše 10 snímků. Nastavení 11–15 proto pro SK
+použije 10, česká preference se zachová. Radar a pokrytí jsou v jediném souboru
+NRD2 s řádkovou kompresí a hotovými indexy palety. Celý soubor se kontroluje
+pomocí velikosti a SHA-256 přes HTTPS s ověřením certifikátu. Šedé šrafování
+znamená chybějící měření, nikoli nulové srážky. Seznam s nejnovějším měřením
+starším než 30 minut se odmítne; při výpadku zůstane poslední připravená
+animace s původními časy a chybovým stavem v diagnostice.
+
+**Po aktualizaci přidávající slovenský radar je u dříve uložené slovenské
+polohy potřeba ve webovém nastavení znovu vyhledat, vybrat a uložit město.**
+Tím se uloží kód země `SK` a zpřístupní slovenský meteoradar. Stačí to provést
+jednou; další aktualizace opakovaný výběr nevyžadují. Pro jiné země se radar nespouští ani nestahuje na pozadí.
+Počasí Open-Meteo a Home Assistant toto omezení nemají.
+
+Požadavky na Nebovidy Radar posílají verzi firmwaru a náhodné trvalé UUID v4
+v hlavičkách `X-Radar-Firmware` a `X-Radar-Device-ID`. ID neobsahuje MAC adresu,
+uchovává se mimo přenositelnou zálohu nastavení a přežívá restart i aktualizaci.
+Úplné vymazání flash vytvoří nové ID. Při chybě uložení zůstává radar funkční
+bez identifikační hlavičky. Hlavičky se neposílají ČHMÚ ani jiným službám.
+Provozovatel Nebovidy Radar eviduje požadavky a přenosy; historii IP uchovává
+30 dní a dlouhodobé agregace bez IP. ID není ověřením pravosti zařízení.
+
+Slovenská radarová data: SHMÚ, [CC BY 4.0](https://opendata.shmu.sk/README.txt).
+Převod do NRD2 provádí Nebovidy Radar. Zdrojové snímky se uchovávají v PSRAM,
+takže běžná změna rozsahu nevyžaduje nové stažení. SK zdrojová cache má rozpočet
+1 MiB a ponechává rezervu volné paměti. Při mimořádně velkých souborech se mohou
+uvolnit starší zdroje; připravené snímky animace zůstávají zachované. Změna rozsahu
+pak může vyžadovat doplnění uvolněných zdrojů. Aktualizace ve stejném výřezu
+stahuje pouze chybějící snímky i po delší pauze. Mapa a města se kreslí v hodinách. Slovenské snímky používají indexovanou
+paletu RGB565 podle legendy SHMÚ, stále s jedním bajtem na pixel. Poloha
+měst a vzorkování rastru používají společný výpočet středů pixelů.
+Serverová geometrie této verze odpovídá webovému rozsahu SHMÚ (východ 23,79°). Hranice: Natural Earth (public domain),
+města: [GeoNames](https://www.geonames.org/) (CC BY 4.0).
 
 Počet snímků lze nastavit od 1 do 15. Jeden snímek znamená statický radar;
 vyšší počet vytvoří animaci od nejstaršího snímku k nejnovějšímu. Po posledním
@@ -498,7 +528,7 @@ Podrobnosti formátu, transakcí a migračních testů jsou v
 
 Nastavení otevře dlouhý stisk na hodinách, předpovědi i meteoradaru.
 Vodorovné gesto listuje mezi třemi stránkami; opačný směr prochází zpět.
-Mimo ČR jsou dostupné pouze hodiny a předpověď.
+Mimo ČR a Slovensko jsou dostupné pouze hodiny a předpověď.
 
 Na hodinách swipe nahoru cyklí ciferníky Digitální → Analogový → Retro LCD,
 swipe dolů prochází opačným směrem. Přepnutí je dočasné; po restartu se vrátí
