@@ -366,15 +366,14 @@ cycle before leaving, so its configured duration is a minimum.
 
 The saved location country selects both the map and provider: `CZ` uses the
 open CHMI MAX_Z composite (including the existing masked source option), while
-`SK` uses SHMU ZMAX through [Nebovidy Radar](https://radar.nebovidy.cz:18443/).
+`SK` uses SHMU ZMAX. The clock uses a supporting server to process and retrieve
+Slovak radar data.
 Both maps include national borders and cities, with 25, 50, 100 and 200 km
 views around the saved coordinates and a whole-country view. Controls, map
 opacity, night mode and automatic rotation are shared.
 
-The Slovak server provides at most 10 frames. Settings of 11–15 use 10 for SK
-while preserving the Czech preference. Radar and coverage share one NRD2 file
-with row compression and ready-to-use palette indices. The full file is checked
-against their size and SHA-256 over certificate-verified HTTPS. Gray hatching
+Slovak radar supports at most 10 frames. Settings of 11–15 use 10 for SK
+while preserving the Czech preference. Gray hatching
 means missing observations, not zero precipitation. A manifest whose latest
 measurement is older than 30 minutes is rejected; on failure the last prepared
 animation retains its original timestamps and diagnostics report the error.
@@ -387,19 +386,10 @@ Open-Meteo weather and Home Assistant are unaffected.
 
 Slovak frames use an indexed RGB565 palette matching the SHMU legend, retaining
 one byte per pixel. City positions and raster sampling share pixel-center
-geometry. This version expects the SHMU web extent (east 23.79°).
+geometry.
 
-Requests to Nebovidy Radar send the firmware version and a persistent random
-UUID v4 in `X-Radar-Firmware` and `X-Radar-Device-ID`. The ID contains no MAC
-address, is excluded from portable settings backups, and survives restarts and
-updates. A full flash erase creates a new ID. If storage fails, radar remains
-available without the identity header. These headers are not sent to CHMI or
-other services. Nebovidy Radar records request counts and transferred bytes,
-retains IP history for 30 days, and keeps long-term aggregates without IPs.
-The ID does not authenticate a device.
-
-Slovak radar data: SHMU, [CC BY 4.0](https://opendata.shmu.sk/README.txt),
-converted to NRD2 by Nebovidy Radar. Source frames are cached in PSRAM, so ordinary zoom changes require no new
+Slovak radar data: SHMU, [CC BY 4.0](https://opendata.shmu.sk/README.txt).
+Source frames are cached in PSRAM, so ordinary zoom changes require no new
 downloads. The SK source cache has a 1 MiB budget and keeps free memory in
 reserve. Exceptionally large files may cause older sources to be released while
 prepared animation frames remain intact. A zoom change may then need to fetch

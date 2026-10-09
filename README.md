@@ -366,15 +366,14 @@ přechodem dokončí, takže jeho nastavená doba je minimum.
 
 Podle země uložené polohy se automaticky vybírá mapa a zdroj: `CZ` používá
 otevřený kompozit MAX_Z ČHMÚ (včetně stávající volby maskované varianty), `SK`
-používá SHMÚ ZMAX přes [Nebovidy Radar](https://radar.nebovidy.cz:18443/).
+používá SHMÚ ZMAX. Pro zpracování a načítání slovenských radarových dat
+hodiny využívají pomocný server.
 Mapy obou zemí obsahují hranice a města, pohledy 25, 50, 100 a 200 km kolem
 uložené GPS polohy a přehled celého státu. Ovládání, průhlednost mapy,
 noční režim a automatické střídání jsou společné.
 
-Slovenský server poskytuje nejvýše 10 snímků. Nastavení 11–15 proto pro SK
-použije 10, česká preference se zachová. Radar a pokrytí jsou v jediném souboru
-NRD2 s řádkovou kompresí a hotovými indexy palety. Celý soubor se kontroluje
-pomocí velikosti a SHA-256 přes HTTPS s ověřením certifikátu. Šedé šrafování
+Slovenský radar podporuje nejvýše 10 snímků. Nastavení 11–15 proto pro SK
+použije 10, česká preference se zachová. Šedé šrafování
 znamená chybějící měření, nikoli nulové srážky. Seznam s nejnovějším měřením
 starším než 30 minut se odmítne; při výpadku zůstane poslední připravená
 animace s původními časy a chybovým stavem v diagnostice.
@@ -385,16 +384,8 @@ Tím se uloží kód země `SK` a zpřístupní slovenský meteoradar. Stačí t
 jednou; další aktualizace opakovaný výběr nevyžadují. Pro jiné země se radar nespouští ani nestahuje na pozadí.
 Počasí Open-Meteo a Home Assistant toto omezení nemají.
 
-Požadavky na Nebovidy Radar posílají verzi firmwaru a náhodné trvalé UUID v4
-v hlavičkách `X-Radar-Firmware` a `X-Radar-Device-ID`. ID neobsahuje MAC adresu,
-uchovává se mimo přenositelnou zálohu nastavení a přežívá restart i aktualizaci.
-Úplné vymazání flash vytvoří nové ID. Při chybě uložení zůstává radar funkční
-bez identifikační hlavičky. Hlavičky se neposílají ČHMÚ ani jiným službám.
-Provozovatel Nebovidy Radar eviduje požadavky a přenosy; historii IP uchovává
-30 dní a dlouhodobé agregace bez IP. ID není ověřením pravosti zařízení.
-
 Slovenská radarová data: SHMÚ, [CC BY 4.0](https://opendata.shmu.sk/README.txt).
-Převod do NRD2 provádí Nebovidy Radar. Zdrojové snímky se uchovávají v PSRAM,
+Zdrojové snímky se uchovávají v PSRAM,
 takže běžná změna rozsahu nevyžaduje nové stažení. SK zdrojová cache má rozpočet
 1 MiB a ponechává rezervu volné paměti. Při mimořádně velkých souborech se mohou
 uvolnit starší zdroje; připravené snímky animace zůstávají zachované. Změna rozsahu
@@ -402,7 +393,7 @@ pak může vyžadovat doplnění uvolněných zdrojů. Aktualizace ve stejném v
 stahuje pouze chybějící snímky i po delší pauze. Mapa a města se kreslí v hodinách. Slovenské snímky používají indexovanou
 paletu RGB565 podle legendy SHMÚ, stále s jedním bajtem na pixel. Poloha
 měst a vzorkování rastru používají společný výpočet středů pixelů.
-Serverová geometrie této verze odpovídá webovému rozsahu SHMÚ (východ 23,79°). Hranice: Natural Earth (public domain),
+Hranice: Natural Earth (public domain),
 města: [GeoNames](https://www.geonames.org/) (CC BY 4.0).
 
 Počet snímků lze nastavit od 1 do 15. Jeden snímek znamená statický radar;
