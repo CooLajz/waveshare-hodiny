@@ -366,7 +366,7 @@ přechodem dokončí, takže jeho nastavená doba je minimum.
 
 Podle země uložené polohy se automaticky vybírá mapa a zdroj: `CZ` používá
 otevřený kompozit MAX_Z ČHMÚ (včetně stávající volby maskované varianty), `SK`
-používá SHMÚ ZMAX. Pro zpracování a načítání slovenských radarových dat
+používá SHMÚ ZMAX. Pro zpracování a načítání radarových dat
 hodiny využívají pomocný server.
 Mapy obou zemí obsahují hranice a města, pohledy 25, 50, 100 a 200 km kolem
 uložené GPS polohy a přehled celého státu. Ovládání, průhlednost mapy,

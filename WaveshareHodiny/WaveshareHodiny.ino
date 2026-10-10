@@ -888,7 +888,6 @@ void maintainNetworkTime() {
   static bool radarIdentityReady = false;
   static unsigned long radarIdentityAttemptAt = 0;
   if (wifiConnected && !radarIdentityReady &&
-      clockConfigEffectiveRadarSource(runtimeConfig) == CLOCK_RADAR_SOURCE_SHMU &&
       (radarIdentityAttemptAt == 0 ||
        millis() - radarIdentityAttemptAt >= 60000UL)) {
     radarIdentityAttemptAt = millis();

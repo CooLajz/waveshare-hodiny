@@ -367,7 +367,7 @@ cycle before leaving, so its configured duration is a minimum.
 The saved location country selects both the map and provider: `CZ` uses the
 open CHMI MAX_Z composite (including the existing masked source option), while
 `SK` uses SHMU ZMAX. The clock uses a supporting server to process and retrieve
-Slovak radar data.
+radar data.
 Both maps include national borders and cities, with 25, 50, 100 and 200 km
 views around the saved coordinates and a whole-country view. Controls, map
 opacity, night mode and automatic rotation are shared.

@@ -22,6 +22,8 @@ struct ChmiRadarSnapshot {
 };
 
 struct ChmiRadarDiagnostics {
+  bool directChmi = false;
+  uint32_t helperRetryInMs = 0;
   bool active = false;
   bool loading = false;
   bool ready = false;

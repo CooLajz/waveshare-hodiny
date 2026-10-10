@@ -2887,6 +2887,10 @@ void handleDiagnostics() {
   result += '}';
   result += F(",\"chmiRadar\":{\"active\":");
   result += radar.active ? F("true") : F("false");
+  result += F(",\"directChmi\":");
+  result += radar.directChmi ? F("true") : F("false");
+  result += F(",\"helperRetryInMs\":");
+  result += radar.helperRetryInMs;
   result += F(",\"loading\":");
   result += radar.loading ? F("true") : F("false");
   result += F(",\"ready\":");

@@ -21,6 +21,8 @@
 #include "CzechMapData.h"
 #include "SlovakMapData.h"
 #include "SlovakRadarManifest.h"
+#include "CzechRadarManifest.h"
+#include "RadarTlsClient.h"
 #include "SlovakRadarFrame.h"
 #include "SlovakRadarRendering.h"
 #include "FirmwareHubCa.h"
@@ -44,6 +46,11 @@ constexpr char FILE_PREFIX[] = "pacz2gmaps3.z_max3d.";
 constexpr size_t FILE_NAME_CAPACITY = slovakRadar::PATH_CAPACITY;
 bool slovakSource() { return workerSource == CLOCK_RADAR_SOURCE_SHMU; }
 slovakRadar::Frame *slovakFrames = nullptr;
+czechRadar::Frame *czechFrames = nullptr;
+size_t czechFrameCount = 0;
+char (*czechProbeNames)[slovakRadar::PATH_CAPACITY] = nullptr;
+czechRadar::Backend czechBackend;
+bool czechBatchUsesHelper = false;
 size_t slovakFrameCount = 0;
 void slovakCacheName(const slovakRadar::Frame &frame, char *name) {
   // Content hash covers both precipitation and coverage.
@@ -100,6 +107,16 @@ void *allocateRadarMemory(size_t bytes, uint32_t caps) {
 }
 
 portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
+void failCzechBackend() {
+  portENTER_CRITICAL(&stateMux);
+  czechBackend.failed(millis());
+  portEXIT_CRITICAL(&stateMux);
+}
+void recoverCzechBackend() {
+  portENTER_CRITICAL(&stateMux);
+  czechBackend.recovered();
+  portEXIT_CRITICAL(&stateMux);
+}
 bool active = false;
 bool visible = false;
 float centerLatitude = 49.1951f;
@@ -408,19 +425,12 @@ void parseIndexChunk(const uint8_t *data, size_t length, size_t &prefixMatch,
 // spans the batch so another TLS operation cannot exhaust internal memory.
 uint32_t lastBatchMs = 0, lastBatchConnections = 0, lastBatchRequests = 0;
 uint32_t lastBatchBytes = 0;
-class RadarTlsClient : public WiFiClientSecure {
- public:
-  uint32_t connections = 0;
-  int connect(const char *host, uint16_t port, int32_t timeout) override {
-    ++connections;
-    return WiFiClientSecure::connect(host, port, timeout);
-  }
-};
 struct RadarHttpBatch {
   NetworkOperationGuard guard{15000};
   RadarTlsClient client;
   HTTPClient http;
   uint32_t started = millis(), requests = 0, bytes = 0;
+  bool ownServer = false;
   RadarHttpBatch() {
     client.setCACert(slovakSource() ? FIRMWARE_RELEASE_ROOT_CA : CHMI_ROOT_CA);
     const char *headers[] = {"Transfer-Encoding"};
@@ -443,8 +453,17 @@ struct RadarHttpBatch {
     portEXIT_CRITICAL(&stateMux);
   }
   bool begin(const String &url) {
-    if (!guard || !http.begin(client, url)) return false;
-    if (slovakSource()) addRadarClientHeaders(http);
+    if (!guard) return false;
+    const bool helper = url.startsWith(String(slovakRadar::ORIGIN) + "/");
+    if (helper != ownServer) { http.end(); client.stop(); }
+    ownServer = helper;
+    client.setCACert(helper ? FIRMWARE_RELEASE_ROOT_CA : CHMI_ROOT_CA);
+    client.setHandshakeTimeout(15);
+    client.requestDeadline(helper && !slovakSource());
+    http.setConnectTimeout(client.bounded ? 1000 : 6000);
+    http.setTimeout(client.bounded ? 1000 : 15000);
+    if (!http.begin(client, url)) return false;
+    if (helper) addRadarClientHeaders(http);
     http.addHeader(F("Cache-Control"), F("no-cache"));
     ++requests;
     const int status = http.GET();
@@ -557,9 +576,43 @@ bool latestSlovakNames(char output[][FILE_NAME_CAPACITY], size_t &count,
   return true;
 }
 
+bool latestCzechNames(char output[][FILE_NAME_CAPACITY], size_t &count,
+                      uint32_t revision) {
+  count = 0;
+  const bool masked = workerSource == CLOCK_RADAR_SOURCE_MAX_Z_MASKED;
+  const String url = String(slovakRadar::ORIGIN) + "/v1/cz/" + czechRadar::product(masked) + "/manifest.json";
+  if (!httpBatch || !httpBatch->begin(url)) return false;
+  constexpr size_t limit = 16384;
+  char *body = static_cast<char *>(allocateRadarMemory(limit + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!body) { httpBatch->client.stop(); httpBatch->http.end(); return false; }
+  RadarBuffer buffer{reinterpret_cast<uint8_t *>(body)};
+  RadarBodySink sink(appendRadarBuffer, &buffer, limit, revision);
+  const bool complete = readRadarBody(sink);
+  body[buffer.used] = 0;
+  const bool valid = complete && requestMatches(revision) &&
+      czechRadar::parse(body, masked, time(nullptr), czechFrames, czechFrameCount);
+  heap_caps_free(body);
+  if (!valid) return false;
+  count = czechFrameCount;
+  for (size_t i = 0; i < count; ++i) strlcpy(output[i], czechFrames[i].name, FILE_NAME_CAPACITY);
+  return true;
+}
+
 bool latestFileNames(char output[][FILE_NAME_CAPACITY], size_t &count,
                      uint32_t revision) {
   if (slovakSource()) return latestSlovakNames(output, count, revision);
+  czechBatchUsesHelper = false;
+  if (!czechBackend.fallback) {
+    if (latestCzechNames(output, count, revision)) {
+      czechBatchUsesHelper = true;
+      portENTER_CRITICAL(&stateMux);
+      strlcpy(latestIndexFile, output[count - 1], sizeof(latestIndexFile));
+      portEXIT_CRITICAL(&stateMux);
+      return true;
+    }
+    if (!requestMatches(revision)) return false;
+    failCzechBackend();
+  }
   count = 0;
   memset(output, 0,
          MAX_ANIMATION_FRAME_COUNT * FILE_NAME_CAPACITY * sizeof(char));
@@ -589,9 +642,9 @@ bool latestFileNames(char output[][FILE_NAME_CAPACITY], size_t &count,
 }
 
 bool downloadSinglePng(const char *fileName, size_t &outputSize,
-                 uint32_t revision, size_t offset = 0) {
+                 uint32_t revision, size_t offset = 0, bool helper = false) {
   outputSize = 0;
-  const String url = String(slovakSource() ? slovakRadar::ORIGIN : radarIndexUrl()) + fileName;
+  const String url = String(slovakSource() || helper ? slovakRadar::ORIGIN : radarIndexUrl()) + fileName;
   portENTER_CRITICAL(&stateMux);
   strlcpy(currentFile, fileName, sizeof(currentFile));
   lastDownloadedBytes = 0;
@@ -620,7 +673,19 @@ bool verifySlovakImage(const slovakRadar::Image &image, size_t size, size_t offs
 }
 
 bool downloadPng(const char *fileName, size_t &outputSize, uint32_t revision) {
-  if (!slovakSource()) return downloadSinglePng(fileName, outputSize, revision);
+  if (!slovakSource()) {
+    if (czechBatchUsesHelper) {
+      const czechRadar::Frame *frame = nullptr;
+      for (size_t i = 0; i < czechFrameCount; ++i)
+        if (!strcmp(fileName, czechFrames[i].name)) frame = &czechFrames[i];
+      if (frame && downloadSinglePng(frame->image.path, outputSize, revision, 0, true) &&
+          verifySlovakImage(frame->image, outputSize, 0)) return true;
+      if (!requestMatches(revision)) return false;
+      failCzechBackend();
+      czechBatchUsesHelper = false;
+    }
+    return downloadSinglePng(fileName, outputSize, revision);
+  }
   const auto *frame = slovakFrame(fileName);
   if (!frame || !downloadSinglePng(frame->image.path, outputSize, revision) ||
       !verifySlovakImage(frame->image, outputSize, 0)) return false;
@@ -1977,12 +2042,29 @@ void radarTask(void *) {
                               mapOpacityValue, revision)
               : refreshLatestFrame(latitude, longitude, radiusKm,
                                    wantedFrameCount, mapOpacityValue, revision));
+      bool recovered = false;
+      if (!slovakSource() && batch.guard && requestMatches(revision)) {
+        if (!success && czechBatchUsesHelper) {
+          failCzechBackend();
+          czechBatchUsesHelper = false;
+        } else if (czechBackend.probeDue(millis())) {
+          size_t count = 0;
+          // Keep the displayed animation and the source cache intact during the probe.
+          recovered = latestCzechNames(czechProbeNames, count, revision);
+          // Do not switch back to a helper whose latest frame trails the direct source.
+          if (recovered && latestIndexFile[0] && strcmp(czechProbeNames[count-1], latestIndexFile) < 0) recovered = false;
+          if (requestMatches(revision)) {
+            if (recovered) recoverCzechBackend();
+            else failCzechBackend();
+          }
+        }
+      }
       httpBatch = nullptr;
       portENTER_CRITICAL(&stateMux);
       const bool requestChanged = revision != requestRevision;
       if (!requestChanged) reloadRequested = false;
       portEXIT_CRITICAL(&stateMux);
-      nextAttemptAt = requestChanged
+      nextAttemptAt = (requestChanged || recovered)
                           ? 0
                           : millis() + (success ? millisecondsUntilNextRefreshSlot()
                                                 : RETRY_INTERVAL_MS);
@@ -2006,6 +2088,8 @@ void chmiRadarServiceBegin() {
   if (taskHandle != nullptr) return;
   struct Metadata {
     slovakRadar::Frame frames[slovakRadar::MAX_FRAMES];
+    czechRadar::Frame czech[czechRadar::MAX_FRAMES];
+    char probe[czechRadar::MAX_FRAMES][FILE_NAME_CAPACITY];
     char prepared[MAX_ANIMATION_FRAME_COUNT][FILE_NAME_CAPACITY];
     char cached[MAX_ANIMATION_FRAME_COUNT][FILE_NAME_CAPACITY];
     char pending[MAX_PENDING_REFRESH_FRAMES][FILE_NAME_CAPACITY];
@@ -2015,6 +2099,8 @@ void chmiRadarServiceBegin() {
     if (!storage) { setStatus(false, "Nedostatek pameti pro radar"); return; }
     auto *metadata = new (storage) Metadata{};
     slovakFrames = metadata->frames;
+    czechFrames = metadata->czech;
+    czechProbeNames = metadata->probe;
     preparedFrameNames = metadata->prepared;
     cachedPngNames = metadata->cached;
     pendingFrameNames = metadata->pending;
@@ -2227,6 +2313,9 @@ void chmiRadarServiceSnapshot(ChmiRadarSnapshot &snapshot) {
 void chmiRadarServiceDiagnostics(ChmiRadarDiagnostics &diagnostics) {
   const unsigned long now = millis();
   portENTER_CRITICAL(&stateMux);
+  diagnostics.directChmi = requestedSource != CLOCK_RADAR_SOURCE_SHMU && czechBackend.fallback;
+  const uint32_t elapsed = now - czechBackend.failedAt;
+  diagnostics.helperRetryInMs = diagnostics.directChmi && elapsed < 3600000UL ? 3600000UL - elapsed : 0;
   diagnostics.active = visible;
   diagnostics.loading = loading;
   diagnostics.ready = ready;
