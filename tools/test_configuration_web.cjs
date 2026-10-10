@@ -190,6 +190,8 @@ await page.locator('#alarmsEnabled').uncheck();
 await page.waitForFunction(()=>!alarmToggleWork);
 assert.equal(config.alarmsEnabled,false);assert.equal(saves,beforeToggle);
 assert.equal(JSON.stringify(config.alarms),savedAlarms); // Unsaved row edits stay local.
+assert(await page.evaluate(()=>formInputDirty));
+assert(await page.locator("#saveFeedback").evaluate(el=>el.classList.contains("dirty")));
 alarmToggleStatus=500;await page.locator('#alarmsEnabled').check();await page.waitForFunction(()=>!alarmToggleWork);
 assert.equal(await page.locator('#alarmsEnabled').isChecked(),false);
 assert(await page.locator('#alarmToggleFeedback').evaluate(el=>el.classList.contains('error')));
@@ -197,6 +199,15 @@ alarmToggleStatus=200;await page.locator('#alarmsEnabled').check();await page.wa
 assert.equal(config.alarmsEnabled,true);
 await page.locator('#headerSaveButton').click();await page.waitForFunction(()=>!settingsSaving);
 assert.equal(config.alarmsEnabled,true);
+assert.equal(await page.evaluate(()=>formInputDirty),false);
+await page.locator('#alarmsEnabled').uncheck();await page.waitForFunction(()=>!alarmToggleWork);
+assert.equal(await page.evaluate(()=>formInputDirty),false);
+assert.equal(await page.locator('#saveFeedback').evaluate(el=>el.classList.contains('dirty')),false);
+alarmToggleStatus=500;await page.locator('#alarmsEnabled').check();await page.waitForFunction(()=>!alarmToggleWork);
+assert.equal(await page.locator('#alarmsEnabled').isChecked(),false);
+assert.equal(await page.evaluate(()=>formInputDirty),false);
+alarmToggleStatus=200;await page.locator('#alarmsEnabled').check();await page.waitForFunction(()=>!alarmToggleWork);
+assert.equal(await page.evaluate(()=>formInputDirty),false);
 await page.screenshot({path:'/tmp/waveshare-alarms-desktop.png'});
 await page.setViewportSize({width:390,height:844});
 await page.screenshot({path:'/tmp/waveshare-alarms-mobile.png'});
