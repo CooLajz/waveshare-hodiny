@@ -49,7 +49,11 @@ const Key keys[] = {
     {"clock-look", "tintHighlights", Byte, 1}, // Legacy combined setting.
     {"clock-look", "tintDial", Byte, 1},
     {"clock-look", "tintHands", Byte, 1},
+    {"clock-config", "alarm-enabled", Blob, 4},
+    {"clock-config", "alarm-skip", Blob, 4},
+    {"clock-config", "alarm-minute", Blob, 4},
 };
+constexpr const char *ALARM_KEYS[] = {"alarm-enabled", "alarm-skip", "alarm-minute"};
 constexpr size_t KEY_COUNT = sizeof(keys) / sizeof(keys[0]);
 struct Image {
   size_t length = 0;
@@ -242,6 +246,15 @@ bool settingsStoreBegin() {
       ok = style <= 2 && replaceValue(*committed, keyId("clock-look", "style"), &style, 1);
     }
   }
+  for (unsigned field = 0; ok && field < 3; ++field) {
+    const char *key = ALARM_KEYS[field];
+    if (!disk.isKey(key)) continue;
+    const uint64_t record = disk.getULong64(key, UINT64_MAX);
+    if ((record >> 32) != commitRevision) continue;
+    const uint32_t value = uint32_t(record);
+    ok = (field != 0 || value <= 1) &&
+         replaceValue(*committed, keyId("clock-config", key), &value, sizeof(value));
+  }
   disk.end();
   initialized = ok;
   return ok;
@@ -316,6 +329,26 @@ bool settingsSaveClockStyle(uint8_t style) {
   bool ok = disk.begin("settings-v1", false, "clockcfg");
   if (ok) ok = disk.putULong64("style", record) == sizeof(record);
   if (ok) ok = disk.getULong64("style", UINT64_MAX) == record;
+  disk.end();
+  if (ok) *committed = *working;
+  mbedtls_platform_zeroize(working, sizeof(*working));
+  return ok;
+}
+
+bool settingsSaveAlarmValue(unsigned field, uint32_t value) {
+  if (field >= 3 || (field == 0 && value > 1) || transaction || !settingsStoreBegin()) return false;
+  const char *key = ALARM_KEYS[field];
+  const int id = keyId("clock-config", key);
+  size_t length = 0;
+  const uint8_t *old = findValue(*committed, id, length);
+  if (old && length == sizeof(value) && !memcmp(old, &value, sizeof(value))) return true;
+  *working = *committed;
+  if (!replaceValue(*working, id, &value, sizeof(value))) return false;
+  const uint64_t record = (uint64_t(commitRevision) << 32) | value;
+  Preferences disk;
+  bool ok = disk.begin("settings-v1", false, "clockcfg");
+  if (ok) ok = disk.putULong64(key, record) == sizeof(record);
+  if (ok) ok = disk.getULong64(key, UINT64_MAX) == record;
   disk.end();
   if (ok) *committed = *working;
   mbedtls_platform_zeroize(working, sizeof(*working));

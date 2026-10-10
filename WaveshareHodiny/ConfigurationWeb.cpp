@@ -4,6 +4,7 @@
 #include "DisplayDriver.h"
 #include "ConfigPsramBuffer.h"
 #include "DisplayNotification.h"
+#include "AlarmService.h"
 #include "BuzzerService.h"
 #include "Touch_CST820.h"
 #include "NotificationRules.h"
@@ -159,8 +160,9 @@ class BoundedWebServer : public WebServer {
       if (equalsAt == fieldEnd || equalsAt - fieldStart > MAX_POST_KEY_BYTES ||
           fieldEnd - equalsAt - 1 > (equalsAt - fieldStart == 6 &&
               memcmp(postBody_ + fieldStart, "backup", 6) == 0 ? 24000 :
+              (equalsAt - fieldStart == 6 && memcmp(postBody_ + fieldStart, "alarms", 6) == 0 ? 4096 :
               ((uri() == "/api/background/chunk" || uri() == "/api/backup/part") && equalsAt - fieldStart == 4 &&
-               memcmp(postBody_ + fieldStart, "data", 4) == 0 ? 16384 : MAX_POST_VALUE_BYTES))) {
+               memcmp(postBody_ + fieldStart, "data", 4) == 0 ? 16384 : MAX_POST_VALUE_BYTES)))) {
         return false;
       }
       fieldStart = fieldEnd + 1;
@@ -1485,6 +1487,23 @@ void handleGetConfig() {
   result += config.radarFrameCount;
   result += F(",\"radarSource\":");
   result += config.radarSource;
+  result += F(",\"alarmsEnabled\":");
+  result += config.alarms.enabled ? F("true") : F("false");
+  result += F(",\"alarms\":[");
+  bool firstAlarm = true;
+  for (const auto &alarm : config.alarms.entries) {
+    if (!alarm.days) continue;
+    if (!firstAlarm) result += ',';
+    firstAlarm = false;
+    result += F("{\"minute\":"); result += alarm.minute;
+    result += F(",\"days\":"); result += alarm.days;
+    result += F(",\"enabled\":"); result += alarm.enabled ? F("true") : F("false");
+    result += '}';
+  }
+  result += F("],\"alarmNext\":\"");
+  char nextAlarmText[80]; alarmServiceDescribeNext(nextAlarmText, sizeof(nextAlarmText));
+  result += jsonEscape(nextAlarmText); result += '\"';
+
   result += F(",\"radarMapOpacity\":");
   result += config.radarMapOpacity;
   result += F(",\"radarPauseSeconds\":");
@@ -2230,6 +2249,32 @@ void handleSaveConfig() {
     config.firmwareUpdateMinuteOfDay = value.substring(0, 2).toInt() * 60 +
                                       value.substring(3).toInt();
   }
+  if (server.hasArg("alarms")) {
+    const String raw = server.arg("alarms");
+    cJSON *array = cJSON_ParseWithLengthOpts(raw.c_str(), raw.length() + 1, nullptr, true);
+    bool valid = cJSON_IsArray(array) && cJSON_GetArraySize(array) <= CLOCK_ALARM_COUNT;
+    AlarmSettings alarms = config.alarms;
+    for (auto &entry : alarms.entries) entry = ClockAlarm{};
+    const String enabled = server.arg("alarmsEnabled");
+    valid = valid && (!server.hasArg("alarmsEnabled") || enabled == "0" || enabled == "1");
+    if (server.hasArg("alarmsEnabled")) alarms.enabled = enabled == "1";
+    for (int i = 0; valid && i < cJSON_GetArraySize(array); ++i) {
+      cJSON *entry = cJSON_GetArrayItem(array, i);
+      cJSON *minute = cJSON_GetObjectItemCaseSensitive(entry, "minute");
+      cJSON *days = cJSON_GetObjectItemCaseSensitive(entry, "days");
+      cJSON *active = cJSON_GetObjectItemCaseSensitive(entry, "enabled");
+      valid = cJSON_IsObject(entry) && cJSON_IsNumber(minute) && cJSON_IsNumber(days) && cJSON_IsBool(active);
+      if (!valid) break;
+      valid = std::isfinite(minute->valuedouble) && minute->valuedouble >= 0 && minute->valuedouble < 1440 &&
+          floor(minute->valuedouble) == minute->valuedouble && std::isfinite(days->valuedouble) &&
+          days->valuedouble >= 1 && days->valuedouble <= 127 && floor(days->valuedouble) == days->valuedouble;
+      if (valid) alarms.entries[i] = {static_cast<uint16_t>(minute->valueint), static_cast<uint8_t>(days->valueint), static_cast<uint8_t>(cJSON_IsTrue(active))};
+    }
+    cJSON_Delete(array);
+    if (!valid) { sendError(400, F("Budíky musí mít platný čas a alespoň jeden den (nejvýše 12 budíků).")); return; }
+    if (memcmp(alarms.entries, config.alarms.entries, sizeof(alarms.entries)) != 0) alarms.skippedEpoch = 0;
+    config.alarms = alarms;
+  }
   if (!readDigitalAppearanceFromRequest(config)) return;
   config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
 
@@ -2827,6 +2872,8 @@ void handleDiagnostics() {
   result += F(",\"lastPulseMs\":");
   result += buzzer.lastPulseMs;
   result += '}';
+  result += F(",\"alarmActive\":");
+  result += alarmServiceActive() ? F("true") : F("false");
   result += F(",\"uptimeMs\":");
   result += millis();
   result += F(",\"currentMemory\":");
@@ -3261,6 +3308,17 @@ void configurationWebBegin(ClockConfigLoadCallback loadCallback,
   });
   registerBoundedPost("/api/config", []() {
     if (requireConfigurationAccess()) handleSaveConfig();
+  });
+  registerBoundedPost("/api/alarms/enabled", []() {
+    if (!requireConfigurationAccess()) return;
+    const String enabled = server.arg("enabled");
+    if (enabled != "0" && enabled != "1") { sendError(400, F("Neplatný stav budíku.")); return; }
+    if (!alarmServiceSetEnabled(enabled == "1")) { sendError(500, F("Stav budíku se nepodařilo uložit.")); return; }
+    char next[64]; alarmServiceDescribeNext(next, sizeof(next));
+    String result = F("{\"ok\":true,\"alarmsEnabled\":");
+    result += alarmServiceSettings().enabled ? F("true") : F("false");
+    result += F(",\"alarmNext\":\""); result += next; result += F("\"}");
+    sendJson(200, result);
   });
   registerBoundedPost("/api/language", []() {
     if (requireConfigurationAccess()) handleSaveLanguage();

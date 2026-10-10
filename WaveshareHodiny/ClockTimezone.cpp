@@ -85,3 +85,32 @@ bool clockPreviousLocalDay(time_t timestamp, time_t &previous) {
   }
   return previous > 0 && previous < timestamp;
 }
+
+bool clockLocaltimeInverse(const struct tm &local, time_t &timestamp) {
+  if (local.tm_mon < 0 || local.tm_mon > 11 || local.tm_mday < 1 ||
+      local.tm_mday > 31 || local.tm_hour < 0 || local.tm_hour > 23 ||
+      local.tm_min < 0 || local.tm_min > 59 || local.tm_sec < 0 || local.tm_sec > 59) return false;
+  // Gregorian civil date to Unix days (March-based 400-year eras).
+  int year = local.tm_year + 1900;
+  const int month = local.tm_mon + 1;
+  year -= month <= 2;
+  const int era = (year >= 0 ? year : year - 399) / 400;
+  const unsigned yoe = static_cast<unsigned>(year - era * 400);
+  const unsigned doy = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + local.tm_mday - 1;
+  const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  const int64_t wall = (static_cast<int64_t>(era) * 146097 + doe - 719468) * 86400 +
+      local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec;
+  const auto &rules = currentRules();
+  bool found = false;
+  for (unsigned i = 0; i < rules.count; ++i) {
+    const int64_t candidate = wall - rules.transitions[i].offset;
+    if (candidate < CLOCK_TIMEZONE_START || candidate >= CLOCK_TIMEZONE_END ||
+        transitionAt(rules, static_cast<time_t>(candidate)).offset != rules.transitions[i].offset) continue;
+    tm check{}; const time_t value = static_cast<time_t>(candidate);
+    if (!clockLocaltime(&value, &check) || check.tm_year != local.tm_year ||
+        check.tm_mon != local.tm_mon || check.tm_mday != local.tm_mday ||
+        check.tm_hour != local.tm_hour || check.tm_min != local.tm_min || check.tm_sec != local.tm_sec) continue;
+    if (!found || value < timestamp) { timestamp = value; found = true; }
+  }
+  return found;
+}

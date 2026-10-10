@@ -60,6 +60,15 @@ struct ConfigRecordV26 {
 
 constexpr size_t SCHEMA_27_CONFIG_SIZE = offsetof(ClockConfig, leftValue);
 
+constexpr size_t SCHEMA_32_CONFIG_SIZE = offsetof(ClockConfig, alarms);
+struct ConfigRecordV32 {
+  uint32_t magic;
+  uint32_t schemaVersion;
+  uint8_t config[SCHEMA_32_CONFIG_SIZE];
+  uint32_t checksum;
+};
+static_assert(sizeof(ConfigRecordV32) == 2904, "Preserve schema 32 NVS layout.");
+
 constexpr size_t SCHEMA_31_CONFIG_SIZE = offsetof(ClockConfig, radarSource);
 struct ConfigRecordV31 {
   uint32_t magic;
@@ -513,10 +522,11 @@ bool clockConfigBegin() {
 
 bool clockConfigSchemaSupported(uint32_t schema) {
   return schema == CLOCK_CONFIG_SCHEMA_VERSION || schema == 20 ||
-         schema == 24 || schema == 25 || schema == 26 || schema == 27 || schema == 28 || schema == 29 || schema == 30 || schema == 31;
+         schema == 24 || schema == 25 || schema == 26 || schema == 27 || schema == 28 || schema == 29 || schema == 30 || schema == 31 || schema == 32;
 }
 
 bool clockConfigValidate(const ClockConfig &c) {
+  if (!alarmSettingsValid(c.alarms)) return false;
   // Inspect bool representations before reading them; imported bytes are untrusted.
 #define VALID_BOOL(field) if (*reinterpret_cast<const uint8_t *>(&c.field) > 1) return false
 #define VALID_TEXT(field) if (!memchr(c.field, 0, sizeof(c.field))) return false
@@ -596,6 +606,16 @@ bool clockConfigLoad(ClockConfig &config) {
   if (size > sizeof(record) || preferences.getBytes(CONFIG_KEY, &record, sizeof(record)) != size)
     return false;
   if (!clockConfigDecodeRecord(&record, size, config)) return false;
+  const char *alarmKeys[] = {"alarm-enabled", "alarm-skip", "alarm-minute"};
+  for (unsigned field = 0; field < 3; ++field) {
+    const size_t bytes = preferences.getBytesLength(alarmKeys[field]);
+    if (!bytes) continue;
+    uint32_t value;
+    if (bytes != sizeof(value) || preferences.getBytes(alarmKeys[field], &value, sizeof(value)) != sizeof(value)) return false;
+    if (field == 0) { if (value > 1) return false; config.alarms.enabled = value; }
+    else if (field == 1) config.alarms.skippedEpoch = value;
+    else config.alarms.lastMinuteKey = value;
+  }
   uint32_t schema;
   memcpy(&schema, reinterpret_cast<const uint8_t *>(&record) + 4, sizeof(schema));
   return schema == CLOCK_CONFIG_SCHEMA_VERSION || clockConfigSave(config);
@@ -609,7 +629,7 @@ bool clockConfigDecodeRecord(const void *data, size_t storedSize, ClockConfig &c
   ConfigRecord &record = *storage;
   record = ConfigRecord{};
   const bool supportedSize = storedSize == sizeof(record) ||
-      storedSize == sizeof(ConfigRecordV31) || storedSize == sizeof(ConfigRecordV30) || storedSize == sizeof(ConfigRecordV29) || storedSize == sizeof(ConfigRecordV28) || storedSize == sizeof(ConfigRecordV27) ||
+      storedSize == sizeof(ConfigRecordV32) || storedSize == sizeof(ConfigRecordV31) || storedSize == sizeof(ConfigRecordV30) || storedSize == sizeof(ConfigRecordV29) || storedSize == sizeof(ConfigRecordV28) || storedSize == sizeof(ConfigRecordV27) ||
       storedSize == sizeof(ConfigRecordV26) || storedSize == sizeof(ConfigRecordV155);
   const bool readComplete = data && supportedSize;
   if (!readComplete) return false;
@@ -622,6 +642,19 @@ bool clockConfigDecodeRecord(const void *data, size_t storedSize, ClockConfig &c
       record.checksum == configChecksum(record.config);
   if (currentRecord) {
     config = record.config;
+    if (!clockConfigValidate(config)) return false;
+    normalizeConfig(config);
+    return true;
+  }
+
+  const ConfigRecordV32 &legacyV32 = *reinterpret_cast<const ConfigRecordV32 *>(&record);
+  uint32_t embeddedSchemaV32 = 0;
+  if (storedSize == sizeof(legacyV32)) memcpy(&embeddedSchemaV32, legacyV32.config, 4);
+  if (storedSize == sizeof(legacyV32) && legacyV32.magic == CONFIG_MAGIC &&
+      legacyV32.schemaVersion == 32 && embeddedSchemaV32 == 32 &&
+      legacyV32.checksum == bytesChecksum(legacyV32.config, sizeof(legacyV32.config))) {
+    memcpy(&config, legacyV32.config, sizeof(legacyV32.config));
+    config.schemaVersion = CLOCK_CONFIG_SCHEMA_VERSION;
     if (!clockConfigValidate(config)) return false;
     normalizeConfig(config);
     return true;
@@ -828,8 +861,15 @@ bool clockConfigSave(const ClockConfig &config) {
 
   SettingsPreferences preferences;
   if (!preferences.begin(CONFIG_NAMESPACE, false, CONFIG_PARTITION)) return false;
-  bool ok =
-      preferences.putBytes(CONFIG_KEY, &record, sizeof(record)) == sizeof(record);
+  const bool own = !settingsTransactionActive();
+  if (own && !settingsTransactionBegin()) return false;
+  bool ok = preferences.putBytes(CONFIG_KEY, &record, sizeof(record)) == sizeof(record);
+  // A complete save supersedes small alarm overrides in the same transaction.
+  ok = ok && preferences.remove("alarm-enabled") && preferences.remove("alarm-skip") && preferences.remove("alarm-minute");
   preferences.end();
+  if (own) {
+    if (!ok) { settingsTransactionAbort(); return false; }
+    return settingsTransactionCommit();
+  }
   return ok;
 }

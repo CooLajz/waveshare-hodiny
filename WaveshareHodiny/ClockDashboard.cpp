@@ -1,4 +1,6 @@
+#include "AlarmStatusIcon.h"
 #include "ClockDashboard.h"
+#include "AlarmService.h"
 #include "ClockBackground.h"
 #include "OpenWeatherIcons.h"
 #include "WeatherIconMapping.h"
@@ -126,7 +128,15 @@ lv_obj_t *secondModeDropdown = nullptr;
 lv_obj_t *weatherIconModeDropdown = nullptr;
 lv_obj_t *automaticUpdateSwitch = nullptr;
 lv_obj_t *webModeDropdown = nullptr;
-constexpr uint8_t SETTINGS_PAGE_COUNT = 4;
+constexpr uint8_t SETTINGS_PAGE_COUNT = 5;
+lv_obj_t *alarmStatusLabel = nullptr;
+lv_obj_t *alarmNextLabel = nullptr;
+lv_obj_t *alarmTitleLabel = nullptr;
+lv_obj_t *alarmToggleLabel = nullptr;
+lv_obj_t *alarmSkipLabel = nullptr;
+lv_obj_t *alarmHintLabel = nullptr;
+bool alarmArmed = false;
+bool alarmSkipVisible = false;
 lv_obj_t *settingsContent[SETTINGS_PAGE_COUNT] = {};
 lv_obj_t *settingsPreviousButton = nullptr;
 lv_obj_t *settingsNextButton = nullptr;
@@ -1949,15 +1959,16 @@ void alignConnectionStatusIcons() {
       (!redNightVisual || currentValues.homeAssistantOnline);
   const bool showWeb = webActive;
 
-  lv_obj_t *icons[] = {wifiStatusLabel, statusLabel, webStatusLabel};
-  const bool visible[] = {showWifi, showHomeAssistant, showWeb};
+  lv_obj_t *icons[] = {wifiStatusLabel, statusLabel, webStatusLabel, alarmStatusLabel};
+  const bool visible[] = {showWifi, showHomeAssistant, showWeb, alarmArmed};
   int visibleCount = 0;
   for (bool iconVisible : visible) {
     if (iconVisible) ++visibleCount;
   }
 
   int visibleIndex = 0;
-  for (int index = 0; index < 3; ++index) {
+  for (int index = 0; index < 4; ++index) {
+    if (!icons[index]) continue;
     if (!visible[index]) {
       lv_obj_add_flag(icons[index], LV_OBJ_FLAG_HIDDEN);
       continue;
@@ -1987,6 +1998,8 @@ void applyConnectionStatusColors() {
                                                    : COLOR_ERROR);
     setTextColor(webStatusLabel, settingsColor);
   }
+  setTextColor(alarmStatusLabel, redNightVisualEnabled() ? COLOR_ERROR
+      : (analogLayoutEnabled() && analogMonochromeValuesEnabled ? analogTone() : COLOR_OUTSIDE));
   alignConnectionStatusIcons();
 }
 
@@ -2607,6 +2620,7 @@ void updateBrightnessLabel(lv_obj_t *label, int brightness, int x, int y) {
 }
 
 void showSettings() {
+  if (alarmServiceBlocksTouch()) return;
   if (pageSlideActive) return;
   if (settingsVisible) return;
   if (settingsOpenCallback != nullptr) settingsOpenCallback();
@@ -2985,6 +2999,52 @@ void firmwareInstallEvent(lv_event_t *event) {
       firmwareInstallCallback != nullptr) firmwareInstallCallback();
 }
 
+void drawAlarmSkip(lv_event_t *event) {
+  if (!alarmSkipVisible) return;
+  lv_obj_t *label = lv_event_get_target(event);
+  lv_area_t area; lv_obj_get_coords(label, &area);
+  drawSkippedAlarmIcon(lv_event_get_draw_ctx(event),
+      (area.x1 + area.x2 + 1) / 2 - 9, (area.y1 + area.y2 + 1) / 2 - 9,
+      lv_obj_get_style_text_color(label, LV_PART_MAIN), COLOR_BACKGROUND);
+}
+
+void updateAlarmControls() {
+  const auto &alarms = alarmServiceSettings();
+  bool armed = false;
+  for (const auto &a : alarms.entries) if (alarms.enabled && a.enabled && a.days) armed = true;
+  const bool skipped = armed && alarmSkipPending(alarms, time(nullptr));
+  if (armed != alarmArmed || skipped != alarmSkipVisible) {
+    alarmArmed = armed;
+    alarmSkipVisible = skipped;
+    if (alarmStatusLabel) {
+      lv_label_set_text(alarmStatusLabel, skipped ? "" : LV_SYMBOL_BELL);
+      lv_obj_invalidate(alarmStatusLabel);
+    }
+    applyConnectionStatusColors();
+    clockDashboardUpdate(currentValues);
+  }
+  if (!alarmNextLabel) return;
+  lv_label_set_text(alarmTitleLabel, englishLanguage() ? "ALARM" : "BUDÍK");
+  char next[80]; alarmServiceDescribeNext(next, sizeof(next));
+  lv_label_set_text(alarmNextLabel, next);
+  lv_label_set_text(alarmToggleLabel, alarms.enabled
+      ? (englishLanguage() ? "TURN ALARMS OFF" : "VYPNOUT BUDÍKY")
+      : (englishLanguage() ? "TURN ALARMS ON" : "ZAPNOUT BUDÍKY"));
+  lv_label_set_text(alarmSkipLabel, alarms.skippedEpoch > time(nullptr)
+      ? (englishLanguage() ? "UNDO SKIP" : "ZRUŠIT PŘESKOČENÍ")
+      : (englishLanguage() ? "SKIP NEXT" : "PŘESKOČIT DALŠÍ"));
+}
+void alarmToggleEvent(lv_event_t *) {
+  const bool ok = alarmServiceSetEnabled(!alarmServiceSettings().enabled);
+  lv_label_set_text(alarmHintLabel, ok ? (englishLanguage()?"SAVED":"ULOŽENO") : (englishLanguage()?"SAVE FAILED":"ULOŽENÍ SELHALO"));
+  updateAlarmControls();
+}
+void alarmSkipEvent(lv_event_t *) {
+  const bool ok = alarmServiceSkipNext();
+  lv_label_set_text(alarmHintLabel, ok ? (englishLanguage()?"SAVED":"ULOŽENO") : (englishLanguage()?"NO ALARM / SAVE FAILED":"ŽÁDNÝ BUDÍK / CHYBA ULOŽENÍ"));
+  updateAlarmControls();
+}
+
 void createSettingsPage(lv_obj_t *screen) {
   settingsPage = lv_obj_create(screen);
   lv_obj_set_size(settingsPage, 480, 480);
@@ -3053,28 +3113,45 @@ void createSettingsPage(lv_obj_t *screen) {
     lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
   }
 
+  alarmTitleLabel = makeLabel(settingsContent[0], &clock_czech_20, COLOR_OUTSIDE);
+  alignCenter(alarmTitleLabel, 0, -125);
+  lv_obj_t *alarmToggle = lv_btn_create(settingsContent[0]);
+  lv_obj_set_size(alarmToggle, 280, 48); alignCenter(alarmToggle, 0, -66);
+  lv_obj_add_event_cb(alarmToggle, alarmToggleEvent, LV_EVENT_SHORT_CLICKED, nullptr);
+  alarmToggleLabel = makeLabel(alarmToggle, &clock_czech_16, COLOR_TEXT); lv_obj_center(alarmToggleLabel);
+  alarmNextLabel = makeLabel(settingsContent[0], &clock_czech_20, COLOR_TEXT);
+  lv_obj_set_width(alarmNextLabel, 390); lv_obj_set_style_text_align(alarmNextLabel, LV_TEXT_ALIGN_CENTER, 0);
+  alignCenter(alarmNextLabel, 0, 3);
+  lv_obj_t *alarmSkip = lv_btn_create(settingsContent[0]);
+  lv_obj_set_size(alarmSkip, 280, 48); alignCenter(alarmSkip, 0, 72);
+  lv_obj_add_event_cb(alarmSkip, alarmSkipEvent, LV_EVENT_SHORT_CLICKED, nullptr);
+  alarmSkipLabel = makeLabel(alarmSkip, &clock_czech_16, COLOR_TEXT); lv_obj_center(alarmSkipLabel);
+  alarmHintLabel = makeLabel(settingsContent[0], &clock_czech_16, COLOR_MUTED);
+  lv_label_set_text(alarmHintLabel, englishLanguage() ? "SAVED IMMEDIATELY" : "ZMĚNY SE UKLÁDAJÍ IHNED"); alignCenter(alarmHintLabel, 0, 125);
+  updateAlarmControls();
+
   clockStyleTitleLabel =
-      makeLabel(settingsContent[0], &clock_czech_16, COLOR_MUTED);
+      makeLabel(settingsContent[1], &clock_czech_16, COLOR_MUTED);
   lv_label_set_text(clockStyleTitleLabel, "TYP HODIN");
   alignCenter(clockStyleTitleLabel, 0, -132);
   digitalClockStyleCard = makeClockStyleCard(
-      settingsContent[0], CLOCK_STYLE_DIGITAL, -138, &digitalClockStyleLabel);
+      settingsContent[1], CLOCK_STYLE_DIGITAL, -138, &digitalClockStyleLabel);
   analogClockStyleCard = makeClockStyleCard(
-      settingsContent[0], CLOCK_STYLE_ANALOG, 0, &analogClockStyleLabel);
+      settingsContent[1], CLOCK_STYLE_ANALOG, 0, &analogClockStyleLabel);
   retroClockStyleCard = makeClockStyleCard(
-      settingsContent[0], CLOCK_STYLE_RETRO_LCD, 138, nullptr);
+      settingsContent[1], CLOCK_STYLE_RETRO_LCD, 138, nullptr);
   updateClockStyleCardSelection();
 
   dayBrightnessTitleLabel =
-      makeLabel(settingsContent[1], &clock_czech_16, COLOR_ROOM);
+      makeLabel(settingsContent[2], &clock_czech_16, COLOR_ROOM);
   lv_label_set_text(dayBrightnessTitleLabel, "DENNÍ JAS");
   alignCenter(dayBrightnessTitleLabel, -55, -72);
 
   dayBrightnessValueLabel =
-      makeLabel(settingsContent[1], &lv_font_montserrat_28, COLOR_TEXT);
+      makeLabel(settingsContent[2], &lv_font_montserrat_28, COLOR_TEXT);
   updateBrightnessLabel(dayBrightnessValueLabel, savedDayBrightness, 105, -72);
 
-  dayBrightnessSlider = lv_slider_create(settingsContent[1]);
+  dayBrightnessSlider = lv_slider_create(settingsContent[2]);
   lv_obj_set_size(dayBrightnessSlider, 330, 20);
   alignCenter(dayBrightnessSlider, 0, -40);
   lv_slider_set_range(dayBrightnessSlider, 1, 100);
@@ -3091,15 +3168,15 @@ void createSettingsPage(lv_obj_t *screen) {
                       nullptr);
 
   nightBrightnessTitleLabel =
-      makeLabel(settingsContent[1], &clock_czech_16, COLOR_OUTSIDE);
+      makeLabel(settingsContent[2], &clock_czech_16, COLOR_OUTSIDE);
   lv_label_set_text(nightBrightnessTitleLabel, "NOČNÍ JAS");
   alignCenter(nightBrightnessTitleLabel, -55, 8);
 
   nightBrightnessValueLabel =
-      makeLabel(settingsContent[1], &lv_font_montserrat_28, COLOR_TEXT);
+      makeLabel(settingsContent[2], &lv_font_montserrat_28, COLOR_TEXT);
   updateBrightnessLabel(nightBrightnessValueLabel, savedNightBrightness, 105, 8);
 
-  nightBrightnessSlider = lv_slider_create(settingsContent[1]);
+  nightBrightnessSlider = lv_slider_create(settingsContent[2]);
   lv_obj_set_size(nightBrightnessSlider, 330, 20);
   alignCenter(nightBrightnessSlider, 0, 40);
   lv_slider_set_range(nightBrightnessSlider, 1, 100);
@@ -3116,35 +3193,35 @@ void createSettingsPage(lv_obj_t *screen) {
                       nullptr);
 
   automaticDayNightSwitch = makeSettingsSwitch(
-      settingsContent[1], "AUTOMATICKY DEN/NOC", 92, automaticDayNightEnabled,
+      settingsContent[2], "AUTOMATICKY DEN/NOC", 92, automaticDayNightEnabled,
       &automaticDayNightTitleLabel);
 
   weatherIconModeDropdown = makeSettingsDropdown(
-      settingsContent[2], "IKONY POČASÍ",
+      settingsContent[3], "IKONY POČASÍ",
       "STATICKÉ MONOCHROMATICKÉ\nANIMOVANÉ FLAT\nANIMOVANÉ LINE\nANIMOVANÉ MONOCHROMATICKÉ",
       -54, selectedWeatherIconMode(), 0, 0, 360, -40, true,
       &weatherIconModeTitleLabel);
   secondModeDropdown = makeSettingsDropdown(
-      settingsContent[2], "VTEŘINY", "VYPNUTO\nTEČKY\nLINKA\nKOMETA", 50,
+      settingsContent[3], "VTEŘINY", "VYPNUTO\nTEČKY\nLINKA\nKOMETA", 50,
       selectedSecondMode(), 0, 0, 360, -40, true, &secondModeTitleLabel);
 
-  wifiAddressLabel = makeLabel(settingsContent[3], &lv_font_montserrat_16, COLOR_MUTED);
+  wifiAddressLabel = makeLabel(settingsContent[4], &lv_font_montserrat_16, COLOR_MUTED);
   lv_label_set_text(wifiAddressLabel, "IP: —");
   alignCenter(wifiAddressLabel, 0, -112);
-  firmwareVersionLabel = makeLabel(settingsContent[3], &lv_font_montserrat_16, COLOR_MUTED);
+  firmwareVersionLabel = makeLabel(settingsContent[4], &lv_font_montserrat_16, COLOR_MUTED);
   lv_label_set_text(firmwareVersionLabel, "FIRMWARE: —");
   alignCenter(firmwareVersionLabel, 0, -88);
-  deviceInfoLabel = makeLabel(settingsContent[3], &clock_czech_16, COLOR_MUTED);
+  deviceInfoLabel = makeLabel(settingsContent[4], &clock_czech_16, COLOR_MUTED);
   lv_label_set_text(deviceInfoLabel, "");
   alignCenter(deviceInfoLabel, 0, -64);
   webModeDropdown = makeSettingsDropdown(
-      settingsContent[3], "WEB", "10 MINUT\nVŽDY\nVYPNUTÝ", -24,
+      settingsContent[4], "WEB", "10 MINUT\nVŽDY\nVYPNUTÝ", -24,
       selectedWebMode, -92, 95, 180, 0, false, &webModeTitleLabel);
   automaticUpdateSwitch = makeSettingsSwitch(
-      settingsContent[3], "AUTOMATICKÉ OTA", 30,
+      settingsContent[4], "AUTOMATICKÉ OTA", 30,
       automaticFirmwareUpdateEnabled, &automaticUpdateTitleLabel);
 
-  firmwareCheckButton = lv_btn_create(settingsContent[3]);
+  firmwareCheckButton = lv_btn_create(settingsContent[4]);
   lv_obj_set_size(firmwareCheckButton, 190, 42);
   alignCenter(firmwareCheckButton, 0, 88);
   lv_obj_set_style_radius(firmwareCheckButton, 21, 0);
@@ -3155,7 +3232,7 @@ void createSettingsPage(lv_obj_t *screen) {
   lv_label_set_text(firmwareCheckLabel, "ZKONTROLOVAT");
   lv_obj_center(firmwareCheckLabel);
 
-  firmwareInstallButton = lv_btn_create(settingsContent[3]);
+  firmwareInstallButton = lv_btn_create(settingsContent[4]);
   lv_obj_set_size(firmwareInstallButton, 190, 42);
   alignCenter(firmwareInstallButton, 0, 88);
   lv_obj_set_style_radius(firmwareInstallButton, 21, 0);
@@ -3167,7 +3244,7 @@ void createSettingsPage(lv_obj_t *screen) {
   lv_label_set_text(firmwareInstallLabel, "AKTUALIZOVAT");
   lv_obj_center(firmwareInstallLabel);
   lv_obj_add_flag(firmwareInstallButton, LV_OBJ_FLAG_HIDDEN);
-  firmwareStatusLabel = makeLabel(settingsContent[3], &clock_czech_16, COLOR_MUTED);
+  firmwareStatusLabel = makeLabel(settingsContent[4], &clock_czech_16, COLOR_MUTED);
   lv_obj_set_width(firmwareStatusLabel, 360);
   lv_obj_set_style_text_align(firmwareStatusLabel, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(firmwareStatusLabel, "");
@@ -3362,6 +3439,14 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
 
   statusLabel = makeLabel(content, &lv_font_montserrat_16, COLOR_ERROR);
   lv_label_set_text(statusLabel, LV_SYMBOL_HOME);
+
+  alarmStatusLabel = makeLabel(content, &lv_font_montserrat_16, COLOR_OUTSIDE);
+  lv_label_set_text(alarmStatusLabel, LV_SYMBOL_BELL);
+  // Both alarm symbols share one compact footprint.
+  lv_obj_set_size(alarmStatusLabel, 20, 20);
+  lv_obj_set_style_text_align(alarmStatusLabel, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_pad_top(alarmStatusLabel, 2, 0);
+  lv_obj_add_event_cb(alarmStatusLabel, drawAlarmSkip, LV_EVENT_DRAW_MAIN_END, nullptr);
 
   webStatusLabel = makeLabel(content, &lv_font_montserrat_16, COLOR_OUTSIDE);
   lv_label_set_text(webStatusLabel, LV_SYMBOL_SETTINGS);
@@ -3830,6 +3915,24 @@ void clockDashboardSwipeAppearance(const ClockAppearanceConfig &appearance,
   completePageSlidePreparation(canSlide);
 }
 
+void clockDashboardShowAlarmClock(const ClockAppearanceConfig &appearance) {
+  if (pageSlideActive) finishPageSlide(nullptr);
+  closeSettings(false);
+  const bool wasRadar = radarVisible;
+  radarVisible = false;
+  lv_obj_add_flag(radarPage, LV_OBJ_FLAG_HIDDEN);
+  ClockAppearanceConfig face = appearance;
+  if (face.style == CLOCK_STYLE_FORECAST) face.style = CLOCK_STYLE_DIGITAL;
+  clockDashboardApplyAppearance(face);
+  forecastDialSetVisible(false);
+  lv_obj_clear_flag(dashboardContent, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(dashboardContent);
+  if (wasRadar && radarVisibilityCallback) radarVisibilityCallback(false);
+  clockDashboardUpdate(currentValues);
+  displayDriverDiscardTouchUntilRelease();
+  lv_obj_invalidate(lv_scr_act());
+}
+
 void clockDashboardSwipePage(const ClockAppearanceConfig &appearance, bool radar, int8_t direction) {
   if (!clockDashboardAutomaticRotationAllowed()) return;
   const bool canSlide = beginPageSlide(direction, false);
@@ -3872,7 +3975,7 @@ static void updateRetroValues(const ClockValues &values) {
   mapped.metricAValue = numbers[left];
   mapped.metricBValue = numbers[right];
   retroLcdUpdate(mapped, *configs[left], *configs[right], englishLanguage(),
-                 redNightVisualEnabled(), wifiConnected, webActive);
+                 redNightVisualEnabled(), wifiConnected, webActive, alarmArmed, alarmSkipVisible);
 }
 
 void clockDashboardUpdate(const ClockValues &input) {
@@ -4140,6 +4243,10 @@ void updateClockOnlyPresentation() {
 }
 
 void clockDashboardLoop() {
+  static uint32_t alarmRefresh = 0;
+  if (millis() - alarmRefresh >= 1000) {
+    alarmRefresh = millis(); updateAlarmControls();
+  }
   if (firmwareUpdateActive) return;
   clockBackgroundLoop();
   updateClockOnlyPresentation();
@@ -4299,6 +4406,7 @@ void clockDashboardSetNightMode(bool enabled) {
 bool clockDashboardNightModeEnabled() { return nightModeEnabled; }
 
 void clockDashboardHandleShortClick() {
+  if (alarmServiceBlocksTouch()) return;
   if (settingsVisible || firmwareUpdateActive) return;
   if (suppressNextDashboardClick) {
     suppressNextDashboardClick = false;
@@ -4315,7 +4423,7 @@ void clockDashboardSetRadarVisible(bool visible, int8_t direction) {
 }
 
 bool clockDashboardAutomaticRotationAllowed() {
-  return !settingsVisible && !firmwareUpdateActive && !pageSlideActive;
+  return !alarmServiceActive() && !settingsVisible && !firmwareUpdateActive && !pageSlideActive;
 }
 
 bool clockDashboardTransitionActive() {

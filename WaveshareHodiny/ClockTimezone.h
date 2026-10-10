@@ -13,3 +13,6 @@ bool clockTimezoneSupported(const char *name);
 bool clockTimezoneSet(const char *name);
 struct tm *clockLocaltime(const time_t *timestamp, struct tm *result);
 bool clockPreviousLocalDay(time_t timestamp, time_t &previous);
+// Invert a wall-clock date using the same IANA rules as clockLocaltime.
+// Gaps return false; folds choose the first occurrence. Independent of libc TZ.
+bool clockLocaltimeInverse(const struct tm &local, time_t &timestamp);

@@ -130,6 +130,8 @@ void testCompleteSnapshot() {
   ClockConfig source; clockConfigApplyDefaults(source);
   source.dataSource=CLOCK_DATA_SOURCE_HOME_ASSISTANT;
   source.radarSource=CLOCK_RADAR_SOURCE_MAX_Z_MASKED;
+  source.alarms.entries[0]={435,31,1}; source.alarms.entries[11]={510,96,1};
+  source.alarms.skippedEpoch=1791781500; source.alarms.lastMinuteKey=66200000;
   strcpy(source.homeAssistantUrl,"http://synthetic.invalid:8123");
   strcpy(source.homeAssistantToken,"synthetic-complete-token");
   strcpy(source.tmepExportKey,"synthetic-tmep-key"); strcpy(source.tmepExportId,"123");
@@ -159,6 +161,7 @@ void testCompleteSnapshot() {
   uint8_t plain[SETTINGS_IMAGE_CAPACITY];size_t size;BackupMetadata header;
   assert(backupDecrypt(file,strlen(file),"synthetic-password",header,plain,sizeof(plain),size));
   assert(settingsImport(plain,size));ClockConfig restored;assert(clockConfigLoad(restored));assert(!strcmp(restored.forecastTemperatureEntityId,"sensor.forecast_temperature"));assert(restored.forecastDisplaySeconds==37);assert(restored.radarSource==CLOCK_RADAR_SOURCE_MAX_Z_MASKED);assert(restored.clockDisplaySeconds==0&&restored.radarDisplaySeconds==0);
+  assert(!memcmp(&restored.alarms,&source.alarms,sizeof(AlarmSettings)));
   assert(!strcmp(restored.homeAssistantToken,source.homeAssistantToken));
   assert(!strcmp(restored.tmepExportKey,source.tmepExportKey));
   assert(restored.metricAColorScale.points[0].value==source.metricAColorScale.points[0].value);
@@ -170,6 +173,7 @@ void testCompleteSnapshot() {
   prefs.begin("web-auth",true);uint8_t readCredential[56];assert(prefs.getBytes("credential",readCredential,56)==56);
   assert(!memcmp(credential,readCredential,56));assert(settingsTransactionCommit());
   settingsStoreTestReset();assert(settingsStoreBegin());assert(clockConfigLoad(restored));
+  assert(!memcmp(&restored.alarms,&source.alarms,sizeof(AlarmSettings)));
   assert(!strcmp(restored.homeAssistantToken,source.homeAssistantToken));
   prefs.begin("web-mode",true);assert(prefs.getUChar("mode")==2);
   assert(clockAppearanceLoad(restoredAppearance));assert(restoredAppearance.analogBackgroundColor==0x234567);assert(restoredAppearance.retroFixedWeekday);

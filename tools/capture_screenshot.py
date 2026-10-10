@@ -154,7 +154,7 @@ def main() -> None:
     parser.add_argument(
         "--settings-page",
         type=int,
-        choices=(1, 2, 3, 4),
+        choices=(1, 2, 3, 4, 5),
         help="Před screenshotem otevře vybranou stránku nastavení",
     )
     parser.add_argument(

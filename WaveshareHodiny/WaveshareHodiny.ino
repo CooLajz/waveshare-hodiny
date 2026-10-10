@@ -3,6 +3,8 @@
 #include "ClockStyleAutosave.h"
 #include "DisplayNotification.h"
 #include "BuzzerService.h"
+#include "AlarmService.h"
+#include "SettingsStore.h"
 #include "ForecastDial.h"
 #include "ClockTimeFormat.h"
 #include "HourlyForecastService.h"
@@ -158,11 +160,24 @@ void applyDevelopmentDefaults(ClockConfig &config);
 
 ClockConfig runtimeConfigSnapshot() {
   ClockConfig config;
-  if (runtimeConfigMutex == nullptr) return runtimeConfig;
-  xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
-  config = runtimeConfig;
-  xSemaphoreGive(runtimeConfigMutex);
+  // A single named return allows construction in the caller's destination.
+  // Returning runtimeConfig in a separate branch forced another ~3 KiB copy.
+  if (runtimeConfigMutex == nullptr) {
+    config = runtimeConfig;
+  } else {
+    xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
+    config = runtimeConfig;
+    xSemaphoreGive(runtimeConfigMutex);
+  }
   return config;
+}
+
+bool runtimeRadarAvailable() {
+  if (runtimeConfigMutex == nullptr) return clockConfigRadarAvailable(runtimeConfig);
+  xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
+  const bool available = clockConfigRadarAvailable(runtimeConfig);
+  xSemaphoreGive(runtimeConfigMutex);
+  return available;
 }
 
 void loadRuntimeConfigForWeb(ClockConfig &config) {
@@ -428,11 +443,16 @@ void handleRadarVisibility(bool visible) {
 
 void handleRadarRangeChange(int8_t direction) {
   static constexpr uint16_t RADAR_RADII[] = {25, 50, 100, 200, 0};
-  ClockConfig config = runtimeConfigSnapshot();
-  if (!clockConfigRadarAvailable(config)) return;
+  // Read/modify only the radar fields under the same lock. A full configuration
+  // snapshot here nested with the gesture and loop snapshots exhausted stack.
+  xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
+  if (!clockConfigRadarAvailable(runtimeConfig)) {
+    xSemaphoreGive(runtimeConfigMutex);
+    return;
+  }
   size_t index = 1;
   for (size_t candidate = 0; candidate < 5; ++candidate) {
-    if (RADAR_RADII[candidate] == config.radarRadiusKm) {
+    if (RADAR_RADII[candidate] == runtimeConfig.radarRadiusKm) {
       index = candidate;
       break;
     }
@@ -441,9 +461,10 @@ void handleRadarRangeChange(int8_t direction) {
     ++index;
   else if (direction < 0 && index > 0)
     --index;
-  else
+  else {
+    xSemaphoreGive(runtimeConfigMutex);
     return;
-  xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
+  }
   runtimeConfig.radarRadiusKm = RADAR_RADII[index];
   xSemaphoreGive(runtimeConfigMutex);
   radarRadiusApplyPending = true;
@@ -522,7 +543,7 @@ void maintainAutomaticRadarRotation() {
   const ClockConfig config = runtimeConfigSnapshot();
   const bool allowed = config.automaticRadarRotation &&
       WiFi.status() == WL_CONNECTED && timeWasSynchronized &&
-      !displayForcedOff && !displayNotificationActive() &&
+      !displayForcedOff && !alarmServiceActive() && !displayNotificationActive() &&
       clockDashboardAutomaticRotationAllowed();
   if (!allowed) {
     automaticRadarRotationPaused = true;
@@ -561,15 +582,20 @@ void maintainAutomaticRadarRotation() {
 }
 
 void maintainDisplayGestures() {
-  if (displayNotificationActive()) {
+  if (alarmServiceBlocksTouch() || displayNotificationActive()) {
     displayDriverTakeSwipe(false, false);
-    if (displayDriverTakeSingleClick()) displayNotificationDismiss();
+    if (displayDriverTakeSingleClick()) {
+      if (alarmServiceActive()) {
+        alarmServiceDismiss();
+        displayDriverDiscardTouchUntilRelease();
+      }
+      else displayNotificationDismiss();
+    }
     return;
   }
   const DisplaySwipe swipe = displayDriverTakeSwipe(
       clockDashboardAutomaticRotationAllowed(), clockDashboardTransitionActive());
-  const bool radarAvailable = swipe.direction != 0 &&
-      clockConfigRadarAvailable(runtimeConfigSnapshot());
+  const bool radarAvailable = swipe.direction != 0 && runtimeRadarAvailable();
   const int8_t horizontalSwipeDirection = swipe.vertical ? 0 : swipe.direction;
   if (horizontalSwipeDirection != 0) {
     const uint8_t pageCount = radarAvailable ? 3 : 2;
@@ -680,6 +706,23 @@ void loadDayNightStatusForWeb(bool &sunAvailable, bool &sunIsDay,
   nightMode = clockDashboardNightModeEnabled();
 }
 
+bool saveAlarmSettings(const AlarmSettings &alarms) {
+  if (settingsTransactionActive()) return false;
+  const AlarmSettings &old = persistedConfig.alarms;
+  if (memcmp(old.entries, alarms.entries, sizeof(old.entries)) != 0) return false;
+  const uint32_t before[] = {old.enabled, old.skippedEpoch, old.lastMinuteKey};
+  const uint32_t after[] = {alarms.enabled, alarms.skippedEpoch, alarms.lastMinuteKey};
+  unsigned changed = 0, field = 0;
+  for (unsigned i = 0; i < 3; ++i) if (before[i] != after[i]) { ++changed; field = i; }
+  // Each quick action changes one scalar, never the complete configuration.
+  if (changed > 1 || (changed && !settingsSaveAlarmValue(field, after[field]))) return false;
+  persistedConfig.alarms = alarms;
+  xSemaphoreTake(runtimeConfigMutex, portMAX_DELAY);
+  runtimeConfig.alarms = alarms;
+  xSemaphoreGive(runtimeConfigMutex);
+  return true;
+}
+
 void handleSettingsSave(uint8_t clockStyle, uint8_t dayBrightness,
                         uint8_t nightBrightness,
                         bool automaticDayNight, bool secondRingEnabled,
@@ -756,6 +799,9 @@ void handleUsbCommands() {
         Serial.println("SETTINGS_OPEN");
       } else if (usbCommand == "SETTINGS4" && !screenshotTransferActive) {
         clockDashboardShowSettingsPage(3);
+        Serial.println("SETTINGS_OPEN");
+      } else if (usbCommand == "SETTINGS5" && !screenshotTransferActive) {
+        clockDashboardShowSettingsPage(4);
         Serial.println("SETTINGS_OPEN");
       } else if (usbCommand == "NIGHT" && !screenshotTransferActive) {
         clockDashboardSetNightMode(true);
@@ -1822,6 +1868,7 @@ void setup() {
   Set_EXIOS(0x0C);
   TCA9554PWR_Init(0x70);
   buzzerServiceBegin();
+  alarmServiceBegin(saveAlarmSettings);
   runtimeConfigMutex = xSemaphoreCreateMutex();
   // Případná migrace konfigurace zapisuje do flash. Proveďte ji dříve, než
   // spustíme RGB panel nad framebufferem v PSRAM, jinak může první start po
@@ -1910,6 +1957,18 @@ void setup() {
 void loop() {
   // Large image transfers keep HTTP/Wi-Fi alive but leave LVGL, gestures and
   // clock/radar transitions untouched until the last flash operation settles.
+  alarmServiceApply(persistedConfig.alarms, persistedConfig.language == CLOCK_LANGUAGE_ENGLISH);
+  const bool wasRinging = alarmServiceActive();
+  alarmServiceLoop();
+  if (!wasRinging && alarmServiceActive()) {
+    handleDisplayPower(false);
+    if (activeAppearance.style != CLOCK_STYLE_FORECAST && !clockDashboardRadarVisible())
+      clockPageAppearance = activeAppearance;
+    activeAppearance = clockPageAppearance;
+    if (activeAppearance.style == CLOCK_STYLE_FORECAST) activeAppearance.style = CLOCK_STYLE_DIGITAL;
+    clockDashboardShowAlarmClock(activeAppearance);
+    lastDisplayedSecond = -1;
+  }
   clockBackgroundLoop();
   if (displayDriverStorageTransferActive()) {
     configurationWebLoop();
@@ -1961,6 +2020,12 @@ void loop() {
   applyPendingRuntimeConfiguration();
   applyPendingClockAppearance();
   applyPendingDigitalAppearance();
+  if (alarmServiceActive() && (clockDashboardRadarVisible() || activeAppearance.style == CLOCK_STYLE_FORECAST)) {
+    activeAppearance = clockPageAppearance;
+    if (activeAppearance.style == CLOCK_STYLE_FORECAST) activeAppearance.style = CLOCK_STYLE_DIGITAL;
+    clockDashboardShowAlarmClock(activeAppearance);
+    lastDisplayedSecond = -1;
+  }
   maintainDisplayGestures();
   maintainClockStyleAutosave();
   maintainRadarNightVisual();

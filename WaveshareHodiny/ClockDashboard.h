@@ -50,6 +50,8 @@ void clockDashboardInit(const ClockValues &values, uint8_t dayBrightness,
                         RadarVisibilityCallback radarVisibility,
                         RadarRangeCallback radarRange);
 void clockDashboardLoop();
+// Interrupt any page transition/settings overlay and show a clock face immediately.
+void clockDashboardShowAlarmClock(const ClockAppearanceConfig &appearance);
 void clockDashboardShowSettings();
 void clockDashboardShowSettingsPage(uint8_t page);
 void clockDashboardSetNightMode(bool enabled);

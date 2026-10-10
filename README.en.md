@@ -485,6 +485,35 @@ left before the transition. Later changes do not migrate backwards automatically
 keep a suitable backup before downgrading.
 See [the backup format and storage contract](docs/configuration-backup.md).
 
+## Alarms
+
+The **Alarm** web tab stores up to 12 recurring alarms, each with a time,
+Monday–Sunday selection and individual enable switch. A master switch pauses
+all alarms without deleting them and saves immediately with a small single-value
+write. Confirm edits to times, weekdays and individual alarms with **Save**.
+
+The first touchscreen settings page shows the next occurrence and provides
+immediate, persistent master on/off and **Skip next / Undo skip** actions.
+Skipping applies to one occurrence, including alarms sharing that time. Editing
+the web schedule clears the skip. A bell appears among the digital, analog and
+Retro LCD status icons while alarms are enabled. A pending skipped occurrence
+uses a crossed-out bell, returning to the normal icon when that time is reached.
+
+The buzzer starts with two short pulses, changes to four after about 17 seconds
+and repeats those groups faster after about 47 seconds. Tempo changes finish
+the current cycle and add 0.6 seconds of silence before the new rhythm. Tap the display to stop ringing;
+future occurrences remain enabled. Ringing stops automatically after 10 minutes.
+A sleeping display wakes when an alarm starts. Ringing shows the clock face
+instead of an alarm overlay, switching from forecast, radar or settings if needed; web notifications cannot replace
+an active alarm. Dismissal works over every screen and does not toggle day/night
+mode. Automatic page rotation pauses while the alarm is ringing.
+
+Alarms follow the device time zone and require valid time. Missed past minutes
+are not replayed after a power outage. Nonexistent spring DST times are skipped;
+a repeated autumn minute rings once. Schedules, skip state and the last fired
+occurrence survive restart and encrypted backup/restore. Configuration schema
+33 preserves previous settings and initializes an empty alarm list.
+
 ## Touchscreen settings
 
 Long-press on the clock, forecast or radar to open the settings pages.
@@ -499,8 +528,8 @@ remains temporary until restart. Vertical swipes on the forecast do not change
 the clock face or radar range. With automatic day/night mode disabled, a
 short tap on a main page switches the appearance. A tap on an active notification
 dismisses it instead. Arrow buttons move between
-the three settings pages; swipes are not used inside the settings menu.
-Available controls include day/night brightness, automatic mode, weather icons,
+the five settings pages; swipes are not used inside the settings menu.
+Available controls include alarms, clock face, day/night brightness, automatic mode, weather icons,
 seconds effects, web-server mode and OTA checks.
 
 ## Animated Meteocons

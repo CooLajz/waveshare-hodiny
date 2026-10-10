@@ -31,7 +31,7 @@ class Preferences {
     if(fakeNvs::fault==fakeNvs::WifiCredentialWrite&&prefix=="nvs/clock-wifi/"&&std::string(key)=="ssid")return 0;
     const bool slot=std::string(key).find("slot")==0;
     const bool selector=std::string(key)=="active"||std::string(key)=="commit";
-    const bool style=std::string(key)=="style";
+    const bool style=std::string(key)=="style"||std::string(key).find("alarm-")==0;
     if(style&&fakeNvs::fault==fakeNvs::StyleWrite)return 0;
     fakeNvs::writes.emplace_back(prefix+key,size);
     if((slot&&fakeNvs::fault==fakeNvs::SlotWrite)||(selector&&fakeNvs::fault==fakeNvs::SelectorWrite))return 0;

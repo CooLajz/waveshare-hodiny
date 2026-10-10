@@ -1,6 +1,9 @@
 // Included inside ConfigurationWeb.cpp's anonymous namespace.
 
 void handleNotification() {
+  if (alarmServiceActive()) {
+    sendError(409, F("Právě zvoní budík.")); return;
+  }
   String title, message, secondsText = "0", textColorText = "#FFFFFF",
          backgroundColorText = "#000000", beepText = "0";
   String contentType = server.header("Content-Type");

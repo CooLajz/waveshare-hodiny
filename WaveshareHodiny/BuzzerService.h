@@ -12,3 +12,6 @@ struct BuzzerSnapshot {
 void buzzerServiceBegin();
 bool buzzerServicePlay(uint32_t milliseconds);
 BuzzerSnapshot buzzerServiceSnapshot();
+
+// Alarm owns the buzzer until stopped; ordinary notification pulses cannot interrupt it.
+void buzzerServiceAlarm(bool enabled);

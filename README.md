@@ -515,6 +515,39 @@ automaticky nepřenesou; před downgrade si ponechte odpovídající zálohu.
 Podrobnosti formátu, transakcí a migračních testů jsou v
 [docs/configuration-backup.md](docs/configuration-backup.md).
 
+## Budíky
+
+Záložka **Budík** umožňuje uložit až 12 opakovaných budíků. Každý má čas,
+výběr dnů pondělí–neděle a vlastní vypínač; společný vypínač pozastaví všechny
+budíky bez smazání a ukládá se ihned malým samostatným zápisem. Změny časů,
+dnů a jednotlivých budíků potvrďte tlačítkem **Uložit**.
+Časy se řídí časovým pásmem nastaveným v hodinách.
+
+První stránka nastavení na displeji zobrazuje nejbližší termín, společné
+zapnutí/vypnutí a **Přeskočit další**. Přeskočení platí pouze pro nejbližší
+termín (včetně více budíků ve stejný čas); tlačítkem **Zrušit přeskočení** ho
+lze vrátit. Tyto dvě akce se ukládají ihned a přežijí restart. Upravení seznamu
+budíků na webu ruší případné přeskočení. Aktivní budíky označuje ikonka zvonku
+u stavových ikon digitálních, analogových a Retro LCD hodin. Přeskočený termín
+označuje přeškrtnutý zvonek, který se po dosažení termínu automaticky vrátí
+na běžnou ikonu.
+
+Zvonění začíná dvěma krátkými pulzy, přibližně po 17 sekundách přejde na čtyři
+a po 47 sekundách se skupiny zrychlí. Před změnou rytmu doběhne celý cyklus
+a přidá se 0,6 sekundy ticha. Ťuknutím na displej zvonění zastavíte; další
+opakování zůstane nastavené. Bez zásahu se zvonění vypne po 10 minutách.
+Vypnutý displej se při začátku zvonění probudí. Při zvonění je zobrazený
+ciferník místo samostatné obrazovky budíku; hodiny na něj přejdou i z předpovědi,
+radaru či nastavení. Během zvonění nelze budík
+překrýt webovou notifikací. Zastavení funguje nad všemi obrazovkami a dotyk
+nepřepne denní/noční režim. Během zvonění se automatické střídání pozastaví.
+
+Budík vyžaduje platný čas zařízení. Po výpadku napájení se nezvoní zpětně za
+uplynulé minuty. Při jarní změně času se neexistující čas vynechá; při podzimní
+změně zazvoní opakovaná minuta nejvýše jednou. Nastavení i informace o již
+spuštěném termínu jsou součástí šifrované zálohy. Stávající konfigurace se
+migruje na schéma 33 bez ztráty nastavení a s prázdným seznamem budíků.
+
 ## Nastavení na displeji
 
 Nastavení otevře dlouhý stisk na hodinách, předpovědi i meteoradaru.
@@ -540,18 +573,18 @@ na displeji je dočasná a nezapisuje se do flash.
 | Meteoradar: swipe nahoru | Přiblíží rozsah |
 | Meteoradar: swipe dolů | Oddálí rozsah |
 
-Nastavení má tři stránky. Velká tlačítka se šipkami je přepínají; gesto swipe
+Nastavení má pět stránek: Budík, typ hodin, jas, ikony a vteřiny, web a OTA. Velká tlačítka se šipkami je přepínají; gesto swipe
 se nepoužívá.
 
 <p align="center">
-  <img src="screenshots/device-settings.png" alt="První stránka nastavení denního a nočního jasu" width="31%">
-  <img src="screenshots/device-settings-2.png" alt="Druhá stránka nastavení vteřin a animovaných ikon" width="31%">
-  <img src="screenshots/device-settings-3.png" alt="Třetí stránka nastavení webu a OTA" width="31%">
+  <img src="screenshots/device-settings.png" alt="Nastavení denního a nočního jasu" width="31%">
+  <img src="screenshots/device-settings-2.png" alt="Nastavení vteřin a animovaných ikon" width="31%">
+  <img src="screenshots/device-settings-3.png" alt="Nastavení webu a OTA" width="31%">
 </p>
 
-První stránka ovládá denní a noční jas a automatický režim. Druhá přepíná
-vteřiny, jejich efekt a animované ikony. Třetí řídí režim webového serveru a
-ruční kontrolu OTA. IP adresa je na veřejném snímku záměrně skrytá. Krátký
+První stránka ovládá budíky, druhá typ hodin a třetí denní a noční jas
+a automatický režim. Čtvrtá přepíná vteřiny a animované ikony. Pátá řídí
+režim webového serveru a ruční kontrolu OTA. IP adresa je na veřejném snímku záměrně skrytá. Krátký
 dotyk hodin i meteoradaru při vypnuté automatice přepíná denní a noční režim.
 
 ## Animované Meteocons

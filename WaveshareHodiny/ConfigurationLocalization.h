@@ -5,6 +5,26 @@
 const char CONFIGURATION_LOCALIZATION_JS[] PROGMEM = R"JS(
 (() => {
   const en = {
+    "Budík":"Alarm",
+    "Budíky zapnuté":"Alarms enabled",
+    "Zapnutí a vypnutí se ukládá ihned.":"Enabling and disabling is saved immediately.",
+    "Neplatný stav budíku.":"Invalid alarm state.",
+    "Stav budíku se nepodařilo uložit.":"The alarm state could not be saved.",
+    "Přidat budík":"Add alarm",
+    "Čas budíku":"Alarm time",
+    "Vyberte alespoň jeden den.":"Select at least one day.",
+    "Nastavte čas a dny opakování. Budík zastavíte ťuknutím na displej. Bez zásahu se vypne po 10 minutách.":"Set the time and repeat days. Tap the display to stop the alarm. It stops automatically after 10 minutes.",
+    "Časy platí v časovém pásmu hodin. Změny potvrďte tlačítkem Uložit.":"Times use the clock time zone. Confirm changes with Save.",
+    "Po":"Mon",
+    "Út":"Tue",
+    "St":"Wed",
+    "Čt":"Thu",
+    "Pá":"Fri",
+    "So":"Sat",
+    "Ne":"Sun",
+    "Zapnuto":"On",
+    "Odstranit":"Remove",
+
     "Načítám obrázek…":"Loading image…",
     "Nahrávání pozadí do hodin":"Uploading background to clock",
     "Během přenosu a ukládání se displej hodin dočasně deaktivuje a zůstane černý. Po dokončení se automaticky znovu aktivuje.":"During transfer and saving, the clock display temporarily turns off and stays black. It automatically turns on again when finished.",

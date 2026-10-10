@@ -21,4 +21,4 @@ void retroLcdSet12HourFormat(bool enabled);
 void retroLcdSetTime(const tm &localTime);
 void retroLcdUpdate(const ClockValues &values, const ClockMetricConfig &a,
                     const ClockMetricConfig &b, bool english, bool night,
-                    bool wifi, bool web);
+                    bool wifi, bool web, bool alarm, bool alarmSkipped);

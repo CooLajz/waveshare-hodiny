@@ -23,6 +23,12 @@ void check(const char *zone, time_t timestamp, int hour, int minute, bool dst) {
   assert(clockLocaltime(&timestamp, &local));
   assert(local.tm_hour == hour && local.tm_min == minute);
   assert(local.tm_isdst == static_cast<int>(dst));
+  time_t inverse = 0;
+  assert(clockLocaltimeInverse(local, inverse));
+  tm roundtrip{}; assert(clockLocaltime(&inverse, &roundtrip));
+  assert(roundtrip.tm_year == local.tm_year && roundtrip.tm_yday == local.tm_yday &&
+      roundtrip.tm_hour == local.tm_hour && roundtrip.tm_min == local.tm_min && roundtrip.tm_sec == local.tm_sec);
+  assert(inverse <= timestamp); // A repeated local time resolves to its first occurrence.
 }
 
 int main(int argc, char **argv) {

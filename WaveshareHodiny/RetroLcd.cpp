@@ -1,3 +1,4 @@
+#include "AlarmStatusIcon.h"
 #include "RetroLcd.h"
 #include "ClockFonts.h"
 #include "ClockTimeFormat.h"
@@ -17,7 +18,7 @@ bool use12HourFormat = false;
 bool fixedWeekday = false;
 uint8_t dateFormat = 0;
 bool showLeadingHourZero = true;
-bool english = false, night = false, wifi = false, web = false, ha = false;
+bool english = false, night = false, wifi = false, web = false, ha = false, alarmEnabled = false, alarmSkipVisible = false;
 char names[2][CLOCK_METRIC_NAME_LENGTH] = {};
 char units[2][CLOCK_METRIC_SUFFIX_LENGTH] = {};
 char numbers[2][32] = {"--", "--"};
@@ -267,9 +268,19 @@ void draw(lv_event_t *event) {
     }
     p.label(progressText,97,416,286,&clock_czech_16,ink());
   }
-  p.label(LV_SYMBOL_WIFI,192,445,24,&lv_font_montserrat_16,wifi?ink():ghost());
-  p.label(LV_SYMBOL_HOME,264,445,24,&lv_font_montserrat_16,ha?ink():ghost());
-  if(web) p.label(LV_SYMBOL_SETTINGS,228,445,24,&lv_font_montserrat_16,ink());
+  const int statusCount = 2 + (web ? 1 : 0) + (alarmEnabled ? 1 : 0);
+  int statusX = 240 - ((statusCount - 1) * 36 + 24) / 2;
+  p.label(LV_SYMBOL_WIFI,statusX,445,24,&lv_font_montserrat_16,wifi?ink():ghost());
+  statusX += 36;
+  if(web) { p.label(LV_SYMBOL_SETTINGS,statusX,445,24,&lv_font_montserrat_16,ink()); statusX += 36; }
+  p.label(LV_SYMBOL_HOME,statusX,445,24,&lv_font_montserrat_16,ha?ink():ghost());
+  statusX += 36;
+  if(alarmEnabled) {
+    if(alarmSkipVisible)
+      drawSkippedAlarmIcon(p.ctx, p.ox+statusX+3, p.oy+444, ink(), background());
+    else
+      p.label(LV_SYMBOL_BELL,statusX,445,24,&lv_font_montserrat_16,ink());
+  }
 }
 }
 
@@ -401,14 +412,14 @@ void retroLcdSetTime(const tm &value) {
 
 void retroLcdUpdate(const ClockValues &values,const ClockMetricConfig &a,
                     const ClockMetricConfig &b,bool useEnglish,bool useNight,
-                    bool connected,bool webActive) {
+                    bool connected,bool webActive,bool alarmActive,bool skipActive) {
   if(english!=useEnglish || night!=useNight) {
     english=useEnglish; night=useNight;
     if(face) { lv_obj_set_style_bg_color(face,background(),0); lv_obj_invalidate(face); }
   }
-  if(wifi!=connected || web!=webActive || ha!=values.homeAssistantOnline) {
-    wifi=connected; web=webActive; ha=values.homeAssistantOnline;
-    invalidate(185,440,110,24);
+  if(wifi!=connected || web!=webActive || alarmEnabled!=alarmActive || alarmSkipVisible!=skipActive || ha!=values.homeAssistantOnline) {
+    wifi=connected; web=webActive; alarmEnabled=alarmActive; alarmSkipVisible=skipActive; ha=values.homeAssistantOnline;
+    invalidate(160,440,170,24);
   }
   const ClockMetricConfig *configs[]={&a,&b};
   const float numbersIn[]={values.metricAValue,values.metricBValue};

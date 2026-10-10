@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include "ClockTimezone.h"
+#include "AlarmRules.h"
 
 constexpr size_t CLOCK_ROOM_NAME_LENGTH = 32;
 constexpr size_t CLOCK_HA_URL_LENGTH = 192;
@@ -32,7 +33,8 @@ constexpr size_t CLOCK_METRIC_COLOR_POINT_COUNT = 10;
 // Schema 29 appends the IANA time zone associated with the saved location.
 // Schema 31 appends the configurable daily firmware update time.
 // Schema 32 appends the CHMI radar product selection.
-constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 32;
+// Schema 33 appends recurring alarms, master switch and occurrence bookkeeping.
+constexpr uint32_t CLOCK_CONFIG_SCHEMA_VERSION = 33;
 
 enum ClockLanguage : uint8_t {
   CLOCK_LANGUAGE_UNSET = 0,
@@ -253,6 +255,7 @@ struct ClockConfig {
   uint16_t firmwareUpdateReserved = 0;
   uint8_t radarSource = CLOCK_RADAR_SOURCE_MAX_Z;
   uint8_t radarSourceReserved[3] = {};
+  AlarmSettings alarms;
 };
 
 static_assert(offsetof(ClockConfig, language) == 2106 &&
@@ -266,8 +269,9 @@ static_assert(offsetof(ClockConfig, language) == 2106 &&
                   offsetof(ClockConfig, forecastTemperatureEntityId) == 2756 &&
                   offsetof(ClockConfig, firmwareUpdateMinuteOfDay) == 2884 &&
                   offsetof(ClockConfig, radarSource) == 2888 &&
-                  sizeof(ClockConfig) == 2892,
-              "Schema 32 must preserve the complete schema 31 prefix.");
+                  offsetof(ClockConfig, alarms) == 2892 &&
+                  sizeof(ClockConfig) == 2952,
+              "Schema 33 must preserve the complete schema 32 prefix.");
 
 bool clockConfigBegin();
 bool clockConfigLoad(ClockConfig &config);
