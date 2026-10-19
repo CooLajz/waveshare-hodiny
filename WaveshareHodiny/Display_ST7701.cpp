@@ -1,4 +1,6 @@
 #include "Display_ST7701.h"
+#include "Display_ST7701Profiles.h"
+#include "FirmwareBuild.h"
 
 spi_device_handle_t SPI_handle = NULL;
 esp_lcd_panel_handle_t panel_handle = NULL;
@@ -28,7 +30,7 @@ bool IRAM_ATTR onBounceFrameFinished(
 }
 }  // namespace
 
-void ST7701_WriteCommand(uint8_t cmd)
+esp_err_t ST7701_WriteCommand(uint8_t cmd)
 {
   spi_transaction_t spi_tran = {
     .cmd = 0,
@@ -36,9 +38,9 @@ void ST7701_WriteCommand(uint8_t cmd)
     .length = 0,
     .rxlength = 0,
   };
-  spi_device_transmit(SPI_handle, &spi_tran);
+  return spi_device_transmit(SPI_handle, &spi_tran);
 }
-void ST7701_WriteData(uint8_t data)
+esp_err_t ST7701_WriteData(uint8_t data)
 {
   spi_transaction_t spi_tran = {
     .cmd = 1,
@@ -46,7 +48,7 @@ void ST7701_WriteData(uint8_t data)
     .length = 0,
     .rxlength = 0,
   };
-  spi_device_transmit(SPI_handle, &spi_tran);
+  return spi_device_transmit(SPI_handle, &spi_tran);
 }
 
 void ST7701_CS_EN(){
@@ -63,28 +65,17 @@ void ST7701_Reset(){
   Set_EXIO(EXIO_PIN1,High);
   vTaskDelay(pdMS_TO_TICKS(50));
 }
-void ST7701_Init()
-{
-  spi_bus_config_t buscfg = {
-    .mosi_io_num = LCD_MOSI_PIN,
-    .miso_io_num = -1,
-    .sclk_io_num = LCD_CLK_PIN,
-    .quadwp_io_num = -1,
-    .quadhd_io_num = -1,
-    .max_transfer_sz = 64, // ESP32 S3 max size is 64Kbytes
-  };
-  spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO);
-  spi_device_interface_config_t devcfg = {
-    .command_bits = 1,
-    .address_bits = 8,
-    .mode = SPI_MODE0,
-    .clock_speed_hz = 40000000,
-    .spics_io_num = -1,
-    .queue_size = 1,            // Not using queues
-  };
-  spi_bus_add_device(SPI2_HOST, &devcfg, &SPI_handle);
+static bool ST7701_WriteGamma(const uint8_t *positive, const uint8_t *negative) {
+  if (ST7701_WriteCommand(0xB0) != ESP_OK) return false;
+  for (uint8_t i = 0; i < 16; ++i)
+    if (ST7701_WriteData(positive[i]) != ESP_OK) return false;
+  if (ST7701_WriteCommand(0xB1) != ESP_OK) return false;
+  for (uint8_t i = 0; i < 16; ++i)
+    if (ST7701_WriteData(negative[i]) != ESP_OK) return false;
+  return true;
+}
 
-  ST7701_CS_EN();
+static void ST7701_InitPanel21() {
   ST7701_WriteCommand(0xFF);
   ST7701_WriteData(0x77);
   ST7701_WriteData(0x01);
@@ -110,41 +101,8 @@ void ST7701_Init()
   ST7701_WriteCommand(0xCD);//RGB format
   ST7701_WriteData(0x08);
 
-  ST7701_WriteCommand(0xB0); // IPS
-  ST7701_WriteData(0x00); // 255
-  ST7701_WriteData(0x11); // 251
-  ST7701_WriteData(0x16); // 247  down
-  ST7701_WriteData(0x0e); // 239
-  ST7701_WriteData(0x11); // 231
-  ST7701_WriteData(0x06); // 203
-  ST7701_WriteData(0x05); // 175
-  ST7701_WriteData(0x09); // 147
-  ST7701_WriteData(0x08); // 108
-  ST7701_WriteData(0x21); // 80
-  ST7701_WriteData(0x06); // 52
-  ST7701_WriteData(0x13); // 24
-  ST7701_WriteData(0x10); // 16
-  ST7701_WriteData(0x29); // 8    down
-  ST7701_WriteData(0x31); // 4
-  ST7701_WriteData(0x18); // 0
-
-  ST7701_WriteCommand(0xB1);//  IPS
-  ST7701_WriteData(0x00);//  255
-  ST7701_WriteData(0x11);//  251
-  ST7701_WriteData(0x16);//  247   down
-  ST7701_WriteData(0x0e);//  239
-  ST7701_WriteData(0x11);//  231
-  ST7701_WriteData(0x07);//  203
-  ST7701_WriteData(0x05);//  175
-  ST7701_WriteData(0x09);//  147
-  ST7701_WriteData(0x09);//  108
-  ST7701_WriteData(0x21);//  80
-  ST7701_WriteData(0x05);//  52
-  ST7701_WriteData(0x13);//  24
-  ST7701_WriteData(0x11);//  16
-  ST7701_WriteData(0x2a);//  8  down
-  ST7701_WriteData(0x31);//  4
-  ST7701_WriteData(0x18);//  0
+  ESP_ERROR_CHECK(ST7701_WriteGamma(ST7701_PANEL_21_POSITIVE_GAMMA,
+                                    ST7701_PANEL_21_NEGATIVE_GAMMA) ? ESP_OK : ESP_FAIL);
 
   ST7701_WriteCommand(0xFF);
   ST7701_WriteData(0x77);
@@ -338,6 +296,40 @@ void ST7701_Init()
   ST7701_WriteCommand(0x20); //
   vTaskDelay(pdMS_TO_TICKS(120));
   ST7701_WriteCommand(0x29);
+}
+
+void ST7701_Init()
+{
+  spi_bus_config_t buscfg = {
+    .mosi_io_num = LCD_MOSI_PIN,
+    .miso_io_num = -1,
+    .sclk_io_num = LCD_CLK_PIN,
+    .quadwp_io_num = -1,
+    .quadhd_io_num = -1,
+    .max_transfer_sz = 64, // ESP32 S3 max size is 64Kbytes
+  };
+  spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO);
+  spi_device_interface_config_t devcfg = {
+    .command_bits = 1,
+    .address_bits = 8,
+    .mode = SPI_MODE0,
+    .clock_speed_hz = 40000000,
+    .spics_io_num = -1,
+    .queue_size = 1,            // Not using queues
+  };
+  spi_bus_add_device(SPI2_HOST, &devcfg, &SPI_handle);
+
+  const bool is28c = Touch_GetController() == TouchController::GT911;
+  ST7701_CS_EN();
+  if (is28c) {
+    for (const auto &entry : ST7701_PANEL_28C) {
+      ST7701_WriteCommand(entry.command);
+      for (uint8_t i = 0; i < entry.size; ++i) ST7701_WriteData(entry.data[i]);
+      if (entry.delayMs) vTaskDelay(pdMS_TO_TICKS(entry.delayMs));
+    }
+  } else {
+    ST7701_InitPanel21();
+  }
   ST7701_CS_Dis();
 
   //  RGB
@@ -350,8 +342,8 @@ void ST7701_Init()
       .hsync_pulse_width = ESP_PANEL_LCD_RGB_TIMING_HPW,
       .hsync_back_porch = ESP_PANEL_LCD_RGB_TIMING_HBP,
       .hsync_front_porch = ESP_PANEL_LCD_RGB_TIMING_HFP,
-      .vsync_pulse_width = ESP_PANEL_LCD_RGB_TIMING_VPW,
-      .vsync_back_porch = ESP_PANEL_LCD_RGB_TIMING_VBP,
+      .vsync_pulse_width = is28c ? 2U : ESP_PANEL_LCD_RGB_TIMING_VPW,
+      .vsync_back_porch = is28c ? 18U : ESP_PANEL_LCD_RGB_TIMING_VBP,
       .vsync_front_porch = ESP_PANEL_LCD_RGB_TIMING_VFP,
       .flags = {
         .hsync_idle_low = 0,  /*!< The hsync signal is low in IDLE state */
@@ -411,11 +403,53 @@ void ST7701_Init()
 }
 
 void LCD_Init() {
+  // Detect before sending any model-specific panel voltage/gamma commands.
+  if (!Touch_DetectHardware()) {
+    ESP_LOGE("display", "Model displeje nebyl jednoznacne rozpoznan");
+    ESP_ERROR_CHECK(ESP_ERR_NOT_SUPPORTED);
+  }
+#if !FIRMWARE_RELEASE
+  printf("Hardware: %s, dotyk: %s\n", Touch_GetBoardName(), Touch_GetControllerName());
+#endif
   ST7701_Reset();
   ST7701_Init();
   Touch_Init();
   Backlight_Init();
 }
+
+#if !FIRMWARE_RELEASE
+static bool ST7701_SelectPage(uint8_t page) {
+  if (ST7701_WriteCommand(0xFF) != ESP_OK) return false;
+  const uint8_t data[] = {0x77, 0x01, 0x00, 0x00, page};
+  for (uint8_t value : data)
+    if (ST7701_WriteData(value) != ESP_OK) return false;
+  return true;
+}
+
+bool LCD_SetDiagnosticGamma(bool reference21) {
+  if (Touch_GetController() != TouchController::GT911 || !panel_handle ||
+      panelSleeping || storageBlanked) return false;
+  const uint8_t *positive = reference21 ? ST7701_PANEL_21_POSITIVE_GAMMA : nullptr;
+  const uint8_t *negative = reference21 ? ST7701_PANEL_21_NEGATIVE_GAMMA : nullptr;
+  if (!reference21) {
+    // Only the two 16-byte BK0 gamma records; never apply BK1 supply voltages.
+    uint8_t page = 0;
+    for (const auto &entry : ST7701_PANEL_28C) {
+      if (entry.command == 0xFF && entry.size == 5) page = entry.data[4];
+      if (page != 0x10 || entry.size != 16) continue;
+      if (entry.command == 0xB0) positive = entry.data;
+      if (entry.command == 0xB1) negative = entry.data;
+    }
+  }
+  if (!positive || !negative) return false;
+  ST7701_CS_EN();
+  const bool changed = ST7701_SelectPage(0x10) && ST7701_WriteGamma(positive, negative);
+  // Restore the standard page even after a failed diagnostic transfer.
+  const bool restored = ST7701_SelectPage(0x00);
+  ST7701_CS_Dis();
+  return changed && restored;
+}
+#endif
 
 void LCD_Resync() {
   if (panel_handle != nullptr) {

@@ -7,7 +7,7 @@ const translations = {
   "Chytré hodiny": "Smart clock", "podle vás": "your way",
   "Čas, počasí, vlastní senzory a srážkový radar ČHMÚ na jednom krásném kulatém displeji. Fungují samostatně s Open-Meteo a TMEP.cz nebo jako součást Home Assistantu.": "Time, weather, personal sensors and Czech precipitation radar on one beautiful round display. It works independently with Open-Meteo and TMEP.cz or as part of Home Assistant.",
   "Nainstalovat firmware": "Install firmware", "Prohlédnout si zdrojový kód": "View source code",
-  "Určeno výhradně pro Waveshare ESP32-S3-Touch-LCD-2.1": "Designed exclusively for Waveshare ESP32-S3-Touch-LCD-2.1",
+  "Pro Waveshare ESP32-S3-Touch-LCD-2.1 a ESP32-S3-Touch-LCD-2.8C. Jeden firmware, automatické rozpoznání desky.": "For Waveshare ESP32-S3-Touch-LCD-2.1 and ESP32-S3-Touch-LCD-2.8C. One firmware with automatic board detection.",
   "Analogový, digitální a Retro LCD vzhled hodin s meteoradarem": "Analog, digital and Retro LCD clock layouts with precipitation radar",
   "Analogový ciferník Waveshare Hodiny": "Waveshare Hodiny analog dial",
   "Analogový ciferník": "Analog dial",
@@ -49,10 +49,11 @@ const translations = {
   "Meteoradar ČHMÚ na displeji Waveshare Hodiny v červeném nočním režimu": "Czech precipitation radar on Waveshare Hodiny in red night mode",
   "Meteoradar ČHMÚ · noční režim": "Czech precipitation radar · night mode",
   "Potřebný hardware": "Required hardware", "Kde koupit podporovanou desku": "Where to buy the supported board",
-  "Firmware je určený výhradně pro Waveshare ESP32-S3-Touch-LCD-2.1. Kliknutím na logo přejdete přímo k podporované desce.": "The firmware is designed exclusively for Waveshare ESP32-S3-Touch-LCD-2.1. Select a logo to open the supported board.",
+  "Od verze 2.1.0 firmware podporuje Waveshare ESP32-S3-Touch-LCD-2.1 i ESP32-S3-Touch-LCD-2.8C a desku automaticky rozpozná. Odkazy níže vedou k modelu 2.1.": "Starting with version 2.1.0, the firmware supports Waveshare ESP32-S3-Touch-LCD-2.1 and ESP32-S3-Touch-LCD-2.8C with automatic board detection. The links below lead to the 2.1 model.",
   "Koupit podporovanou desku na Pájeníčko.cz": "Buy the supported board at Pájeníčko.cz",
   "Instalace přes USB": "Install over USB", "Firmware nahrajete přímo z prohlížeče": "Flash the firmware directly from your browser",
   "Potřebujete datový USB kabel a Chrome nebo Edge na počítači. Vyberte sériový port zařízení a instalátor nahraje všechny části na správné adresy.": "You need a data-capable USB cable and desktop Chrome or Edge. Select the device serial port and the installer will flash every part at the correct address.",
+  "Model hodin nemusíte vybírat. Pro desku 2.8C použijte firmware 2.1.0 nebo novější; starší verze jsou určené pouze pro 2.1.": "No clock model selection is needed. For the 2.8C board, use firmware 2.1.0 or later; older versions support only the 2.1.",
   "Připojte hodiny": "Connect the clock", "Použijte jeden z USB-C konektorů a datový kabel.": "Use either USB-C connector and a data cable.",
   "Spusťte instalaci": "Start installation", "Prohlížeč Vás požádá o výběr sériového portu.": "Your browser will ask you to select a serial port.",
   "Nastavte Wi-Fi": "Configure Wi-Fi", "Po instalaci zadejte síť přes Improv Serial.": "After installation, enter the network using Improv Serial.",
@@ -78,8 +79,8 @@ const translations = {
 };
 
 const messages = {
-  cs: { version: (version) => `Verze ${version}`, ready: "Firmware je připravený k instalaci.", unavailable: "Firmware zatím nebyl veřejně vydán", waiting: "Stránka je připravená. Instalaci zpřístupní první stabilní GitHub release.", log: "Instalátor není aktivní:", description: "Waveshare Hodiny – chytré hodiny s Open-Meteo, TMEP.cz, Home Assistantem a meteoradarem ČHMÚ pro kulatý dotykový displej." },
-  en: { version: (version) => `Version ${version}`, ready: "The firmware is ready to install.", unavailable: "The firmware has not been released publicly yet", waiting: "The page is ready. Installation will become available with the first stable GitHub release.", log: "Installer is not active:", description: "Waveshare Hodiny – a smart clock with Open-Meteo, TMEP.cz, Home Assistant and Czech precipitation radar for a round touchscreen display." },
+  cs: { version: (version) => `Verze ${version}`, ready: "Firmware je připravený k instalaci.", unavailable: "Firmware zatím nebyl veřejně vydán", waiting: "Stránka je připravená. Instalaci zpřístupní první stabilní GitHub release.", log: "Instalátor není aktivní:", description: "Waveshare Hodiny – chytré hodiny pro Waveshare ESP32-S3-Touch-LCD-2.1 a 2.8C. Jeden firmware s automatickým rozpoznáním desky, počasím, senzory a meteoradarem." },
+  en: { version: (version) => `Version ${version}`, ready: "The firmware is ready to install.", unavailable: "The firmware has not been released publicly yet", waiting: "The page is ready. Installation will become available with the first stable GitHub release.", log: "Installer is not active:", description: "Waveshare Hodiny – a smart clock for Waveshare ESP32-S3-Touch-LCD-2.1 and 2.8C. One firmware with automatic board detection, weather, sensors and precipitation radar." },
 };
 
 const originalText = new WeakMap();

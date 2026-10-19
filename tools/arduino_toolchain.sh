@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 # Shared by development, release and upload; ROOT_DIR is set by the caller.
+ARDUINO_CONFIG_FILE="${ARDUINO_CONFIG_FILE:-$ROOT_DIR/WaveshareHodiny/local/arduino-cli.yaml}"
+if [[ ! -f "$ARDUINO_CONFIG_FILE" ]]; then
+  ARDUINO_CONFIG_FILE="$ROOT_DIR/arduino-cli.yaml"
+fi
+ARDUINO_BOARD_FQBN='esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=custom,PSRAM=opi,USBMode=hwcdc'
+ARDUINO_DEVELOPMENT_FQBN="$ARDUINO_BOARD_FQBN,CDCOnBoot=default"
+ARDUINO_RELEASE_FQBN="$ARDUINO_BOARD_FQBN,CDCOnBoot=cdc"
 ARDUINO_TOOL_PROPERTIES=()
 ARDUINO_UPLOAD_PROPERTIES=()
 if [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]]; then
@@ -7,9 +14,8 @@ if [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]]; then
   NATIVE_TOOLS_DIR="${NATIVE_TOOLS_DIR:-$ROOT_DIR/.arduino/native-tools}"
   PYTHON_TAG="$("$PYTHON_BIN" -c 'import sys; print("py%d%d" % sys.version_info[:2])')"
   ESPTOOL_DIR="$NATIVE_TOOLS_DIR/esptool-$PYTHON_TAG"
-  if [[ ! -x "$NATIVE_TOOLS_DIR/ctags/ctags" || ! -x "$ESPTOOL_DIR/bin/esptool.py" ]]; then
-    NATIVE_TOOLS_DIR="$NATIVE_TOOLS_DIR" PYTHON_BIN="$PYTHON_BIN" bash "$ROOT_DIR/tools/setup_native_arduino_tools.sh"
-  fi
+  NATIVE_TOOLS_DIR="$NATIVE_TOOLS_DIR" PYTHON_BIN="$PYTHON_BIN" bash "$ROOT_DIR/tools/setup_native_arduino_tools.sh" --quiet
+  ARDUINO_CLI_BIN="${ARDUINO_CLI_BIN:-$NATIVE_TOOLS_DIR/arduino-cli/arduino-cli}"
   export PYTHONPATH="$ESPTOOL_DIR${PYTHONPATH:+:$PYTHONPATH}"
   "$PYTHON_BIN" -c 'import esptool; assert esptool.__version__ == "4.6"'
   "$NATIVE_TOOLS_DIR/ctags/ctags" --version >/dev/null
@@ -25,4 +31,5 @@ if [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]]; then
   )
 else
   PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || true)}"
+  ARDUINO_CLI_BIN="${ARDUINO_CLI_BIN:-$(command -v arduino-cli || true)}"
 fi

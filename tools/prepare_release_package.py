@@ -65,7 +65,7 @@ def main() -> None:
         package_dir / "project.json",
         {
             "name": "Waveshare Hodiny",
-            "description": "Konfigurovatelné hodiny a Home Assistant dashboard pro Waveshare ESP32-S3-Touch-LCD-2.1.",
+            "description": "Konfigurovatelné hodiny a Home Assistant dashboard pro Waveshare ESP32-S3-Touch-LCD-2.1 a ESP32-S3-Touch-LCD-2.8C s automatickým rozpoznáním desky.",
             "icon": "clock",
         },
     )

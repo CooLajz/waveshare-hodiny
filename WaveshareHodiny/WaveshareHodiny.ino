@@ -774,6 +774,23 @@ void handleUsbCommands() {
         }
       } else if (usbCommand == "DISPLAYSTATS" && !screenshotTransferActive) {
         displayDriverPrintRenderStats(Serial);
+      } else if ((usbCommand == "PANELCLOCK30" || usbCommand == "PANELCLOCK12") &&
+                 !screenshotTransferActive) {
+        const uint32_t frequency = usbCommand == "PANELCLOCK30" ? 30000000U : 12000000U;
+        if (Touch_GetController() != TouchController::GT911 || LCD_IsSleeping() ||
+            !LCD_SetPixelClock(frequency)) {
+          Serial.println("PANEL_CLOCK_ERROR");
+        } else {
+          Serial.printf("PANEL_CLOCK_HZ=%lu\n", static_cast<unsigned long>(LCD_GetPixelClock()));
+        }
+      } else if ((usbCommand == "PANELGAMMA21" || usbCommand == "PANELGAMMA28") &&
+                 !screenshotTransferActive) {
+        const bool reference21 = usbCommand == "PANELGAMMA21";
+        if (!LCD_SetDiagnosticGamma(reference21)) {
+          Serial.println("PANEL_GAMMA_ERROR");
+        } else {
+          Serial.println(reference21 ? "PANEL_GAMMA_21_REFERENCE" : "PANEL_GAMMA_28_FACTORY");
+        }
       } else if (usbCommand == "SUNTEST" || usbCommand == "SUNTESTOFF") {
         clockDashboardSetSunnyTest(usbCommand == "SUNTEST");
         Serial.println(clockDashboardSunnyTest() ? "SUN_TEST_ON" : "SUN_TEST_OFF");

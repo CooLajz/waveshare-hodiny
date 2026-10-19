@@ -2797,6 +2797,10 @@ void handleDiagnostics() {
   result += config.language == CLOCK_LANGUAGE_ENGLISH ? F("en") : F("cs");
   result += F("\",\"firmwareVersion\":\"");
   result += jsonEscape(FIRMWARE_VERSION);
+  result += F("\",\"boardModel\":\"");
+  result += Touch_GetBoardName();
+  result += F("\",\"touchController\":\"");
+  result += Touch_GetControllerName();
   result += F("\",\"chipModel\":\"");
   result += jsonEscape(ESP.getChipModel());
   result += F("\",\"chipRevision\":");

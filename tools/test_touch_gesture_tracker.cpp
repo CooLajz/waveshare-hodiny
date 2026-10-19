@@ -1,6 +1,8 @@
 #include "../WaveshareHodiny/TouchGestureTracker.h"
 #include <cassert>
 #include <cstdio>
+#include <array>
+#include <initializer_list>
 int main() {
   TouchGestureTracker tap;
   assert(tap.sample(true, 240, 240, 0, 100) == 0);
@@ -30,5 +32,25 @@ int main() {
   TouchGestureTracker hardware;
   assert(hardware.sample(false, 0, 0, 5, 2000) == 5);
   assert(hardware.sample(false, 0, 0, 5, 2010) == 0);
+  for (const auto &end : {std::array<int, 3>{100, 240, 3}, {380, 240, 4},
+                         {240, 100, 2}, {240, 380, 1}}) {
+    TouchGestureTracker gt911;
+    gt911.sample(true, 240, 240, 0, 100, true);
+    assert(gt911.sample(true, end[0], end[1], 0, 200, true) == 0);
+    assert(gt911.sample(false, end[0], end[1], 0, 250, true) == end[2]);
+    assert(gt911.sample(false, end[0], end[1], 0, 260, true) == 0);
+  }
+  TouchGestureTracker diagonal;
+  diagonal.sample(true, 100, 100, 0, 100, true);
+  assert(diagonal.sample(false, 250, 250, 0, 200, true) == 0);
+  TouchGestureTracker slow;
+  slow.sample(true, 100, 100, 0, 100, true);
+  assert(slow.sample(false, 300, 100, 0, 1200, true) == 0);
+  TouchGestureTracker gtTap;
+  gtTap.sample(true, 240, 240, 0, 100, true);
+  assert(gtTap.sample(false, 245, 245, 0, 180, true) == 5);
+  TouchGestureTracker gtRollover;
+  gtRollover.sample(true, 240, 240, 0, UINT32_MAX - 40, true);
+  assert(gtRollover.sample(false, 100, 240, 0, 40, true) == 3);
   puts("Touch taps, hardware deduplication, swipes, jitter, long holds and rollover: OK");
 }

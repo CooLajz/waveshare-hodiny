@@ -2,9 +2,12 @@
 
 🇬🇧 **[English documentation](README.en.md)**
 
-Český informační dashboard pro kulatý dotykový displej
+Český informační dashboard pro kulaté dotykové displeje
 [Waveshare ESP32-S3-Touch-LCD-2.1](https://www.waveshare.com/esp32-s3-touch-lcd-2.1.htm)
-s rozlišením 480 × 480 px. Zobrazuje čas, datum, počasí, teploty, další
+a [Waveshare ESP32-S3-Touch-LCD-2.8C](https://docs.waveshare.com/ESP32-S3-Touch-LCD-2.8C/Resources-And-Documents)
+s rozlišením 480 × 480 px. Od verze 2.1.0 používají obě desky společný firmware,
+který model automaticky rozpozná; při instalaci jej nemusíte vybírat.
+Zobrazuje čas, datum, počasí, teploty, další
 měřené hodnoty a srážkový radar ČHMÚ/SHMÚ. Jako zdroj hodnot lze použít Open-Meteo
 bez účtu, volitelně doplněné vlastními čidly TMEP.cz, nebo Home Assistant.
 Vzhled, zdroje dat, poloha, radar, jas, animace i aktualizace se nastavují
@@ -85,9 +88,15 @@ pozicích 12, 3, 6 a 9 hodin.
 
 ## Potřebný hardware
 
-Firmware je určený výhradně pro **Waveshare ESP32-S3-Touch-LCD-2.1** s
-480 × 480 px displejem a 16MiB flash. Konfigurace pinů, displeje ST7701,
-dotyku CST820, PSRAM a partition table odpovídá této konkrétní desce.
+Firmware od verze **2.1.0** podporuje **Waveshare ESP32-S3-Touch-LCD-2.1** a
+**Waveshare ESP32-S3-Touch-LCD-2.8C** jedním společným binárním obrazem. Obě
+desky mají kulatý displej 480 × 480 px, 16MiB flash a 8MiB PSRAM. Při startu
+se automaticky rozpozná dotykový řadič (CST820 nebo GT911) a zvolí odpovídající
+inicializace panelu ST7701. Model nemusíte vybírat při sestavení ani instalaci.
+Rozpoznaný model a řadič dotyku jsou uvedené ve webové diagnostice.
+
+Podpora 2.8C ve zdrojovém kódu neznamená podporu ve starších vydaných obrazech;
+pro tento model používejte pouze obraz s výslovně uvedenou podporou obou desek.
 
 Desku můžete zakoupit u českých prodejců:
 
@@ -881,6 +890,17 @@ Vývojový build se ukládá do `build/waveshare-hodiny-develop/`, podporuje USB
 diagnostiku a screenshoty a úmyslně neinstaluje OTA release. Bez `.env` se
 stále sestaví, pouze nemá vývojové výchozí Wi-Fi a HA hodnoty.
 
+Na modelu 2.8C lze přes stejný vývojový USB terminál porovnat pouze gamma
+křivky příkazy `PANELGAMMA21` (referenční křivka 2.1) a `PANELGAMMA28`
+(výchozí křivka výrobce pro 2.8C). Napájecí nastavení panelu se nemění,
+volba se neukládá a restart obnoví výchozí profil 2.8C. Tyto diagnostické
+příkazy nejsou součástí release buildu.
+
+Pro srovnání pixelového taktu na modelu 2.8C použijte `PANELCLOCK30`
+(30 MHz podle dema Waveshare) a `PANELCLOCK12` (běžných 12 MHz tohoto
+firmware). Mění se pouze takt RGB rozhraní; volba se neukládá a restart
+obnoví 12 MHz. Také tyto příkazy jsou dostupné pouze ve vývojovém buildu.
+
 ### Volitelná lokální `.env`
 
 `.env` je celý ignorovaný Gitem a není pro sestavení povinný. Generátor
@@ -909,11 +929,14 @@ ignorovaného adresáře `WaveshareHodiny/local/`.
 ### Release build
 
 Na ARM Macu používají `build.sh`, `build-release.sh` a `upload.sh` společnou
-nativní sadu nástrojů bez Rosetty. Pythonový esptool 4.6 a Arduino ctags
-5.8-arduino11 se ukládají do ignorované `.arduino/native-tools`; při chybějící
+nativní sadu nástrojů bez Rosetty. Ověřené Arduino CLI 1.3.1, Pythonový esptool
+4.6 a Arduino ctags 5.8-arduino11 se ukládají do ignorované `.arduino/native-tools`; při chybějící
 cache se automaticky připraví přes `tools/setup_native_arduino_tools.sh`.
 První příprava vyžaduje internet, Python s pip a Command Line Tools. Python
 závislosti jsou oddělené podle verze interpretu. Linuxový CI postup se nemění.
+Volbu CLI, konfigurace a FQBN sdílí všechny tři skripty přes
+`tools/arduino_toolchain.sh`. Stažený archiv CLI se ověřuje pomocí SHA-256.
+Výslovné nastavení `ARDUINO_CLI_BIN` má přednost před lokální výchozí verzí.
 
 Verzi zvolte jako platný SemVer 2.0.0:
 

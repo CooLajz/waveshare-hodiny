@@ -18,6 +18,7 @@
 
 #include "TCA9554PWR.h"
 #include "Touch_CST820.h"
+#include "FirmwareBuild.h"
 
 #define LCD_CLK_PIN   2
 #define LCD_MOSI_PIN  1
@@ -91,6 +92,10 @@ void LCD_SetStorageBlanked(bool blanked);
 bool LCD_IsSleeping();
 void LCD_SuppressBacklight(bool suppressed);
 uint8_t LCD_GetBacklight();
+#if !FIRMWARE_RELEASE
+// Runtime A/B test on 2.8C only. Resets to factory gamma at the next boot.
+bool LCD_SetDiagnosticGamma(bool reference21);
+#endif
 bool LCD_addWindow(uint16_t Xstart, uint16_t Ystart, uint16_t Xend,
                    uint16_t Yend, uint8_t* color);
 

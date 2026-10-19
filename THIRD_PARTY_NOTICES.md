@@ -37,6 +37,19 @@ Na převzaté a odvozené části se vztahují podmínky MIT licence. Její úpl
 znění je součástí souboru `LICENSE` v kořeni tohoto repozitáře. Děkuji
 autorovi za zveřejnění zdrojového kódu a inspiraci pro integraci radaru ČHMÚ.
 
+Implementace automatického rozpoznávání desek 2.1/2.8C byla porovnána také
+s ovladači tohoto projektu, zejména z hlediska pořadí detekce CST820/GT911,
+resetu dotyku a odlišného vertikálního časování panelů.
+
+## Hardwarové podklady Waveshare
+
+Inicializační sekvence panelu ST7701 pro model 2.8C v
+`WaveshareHodiny/Display_ST7701Profiles.h` vychází z oficiálního Arduino příkladu
+výrobce. Zapojení a registry GT911 byly ověřeny proti stejným podkladům:
+
+- [Dokumentace ESP32-S3-Touch-LCD-2.8C](https://docs.waveshare.com/ESP32-S3-Touch-LCD-2.8C),
+- [Ukázkový projekt výrobce](https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-2.8C/ESP32-S3-Touch-LCD-2.8C-Demo.zip).
+
 ## Meteorologická data ČHMÚ
 
 Meteoradar používá radarový kompozit MAX_Z poskytovaný Českým

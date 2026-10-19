@@ -4,6 +4,9 @@
 
 An open-source information dashboard for the round 480 × 480 px
 [Waveshare ESP32-S3-Touch-LCD-2.1](https://www.waveshare.com/esp32-s3-touch-lcd-2.1.htm).
+The [Waveshare ESP32-S3-Touch-LCD-2.8C](https://docs.waveshare.com/ESP32-S3-Touch-LCD-2.8C/Resources-And-Documents)
+is also supported starting with version 2.1.0. Both boards use one shared
+firmware image with automatic model detection; no board selection is needed.
 It displays time, date, weather, temperatures, additional sensor values and
 precipitation radar data from CHMI (Czechia) or SHMU (Slovakia).
 Values can come from Open-Meteo without an account, optionally extended with
@@ -91,9 +94,15 @@ a page; all-zero durations leave the current page unchanged even when enabled.
 
 ## Required hardware
 
-The firmware is designed exclusively for **Waveshare ESP32-S3-Touch-LCD-2.1**
-with a 480 × 480 px display and 16 MiB flash. Its ST7701 display, CST820 touch
-controller, PSRAM, pin configuration and partition table match this exact board.
+Firmware version **2.1.0** and later supports **Waveshare ESP32-S3-Touch-LCD-2.1** and
+**Waveshare ESP32-S3-Touch-LCD-2.8C** with one shared binary. Both boards have a
+round 480 × 480 px display, 16 MiB flash and 8 MiB PSRAM. At startup, the
+firmware detects the touch controller (CST820 or GT911) and selects the matching
+ST7701 panel initialization. No model selection is needed when building or
+installing. The detected board and touch controller appear in web diagnostics.
+
+Support in the source code does not extend to older released binaries. For
+the 2.8C, use an image that explicitly supports both boards.
 
 Do not flash the binary to another product merely because it also contains an
 ESP32-S3. A different pinout or flash layout may prevent the device from booting.
@@ -762,6 +771,17 @@ Pass a serial port explicitly when needed:
 The development build retains USB diagnostics, screenshot commands and local
 development defaults. It does not install a public OTA release automatically.
 
+On the 2.8C, the same development USB terminal accepts `PANELGAMMA21`
+(2.1 reference gamma) and `PANELGAMMA28` (2.8C factory gamma) for a gamma-only
+comparison. Panel supply settings remain unchanged. The selection is not
+saved, and restarting restores the 2.8C factory profile. These diagnostic
+commands are excluded from release builds.
+
+On the 2.8C, use `PANELCLOCK30` (30 MHz from the Waveshare demo) and
+`PANELCLOCK12` (this firmware's normal 12 MHz) to compare RGB pixel clock
+rates. The selection is not saved; restarting restores 12 MHz. These
+commands are also available only in development builds.
+
 ### Optional local `.env`
 
 The entire `.env` file is ignored by Git. It can supply local Wi-Fi, Home
@@ -779,11 +799,14 @@ WIFI_WORK_PASSWORD=
 ### Release build
 
 On ARM Macs, `build.sh`, `build-release.sh`, and `upload.sh` share native tools
-without Rosetta. Python esptool 4.6 and Arduino ctags 5.8-arduino11 are cached
+without Rosetta. Verified Arduino CLI 1.3.1, Python esptool 4.6 and Arduino ctags 5.8-arduino11 are cached
 in the ignored `.arduino/native-tools` directory. Missing tools are prepared
 automatically by `tools/setup_native_arduino_tools.sh`. Initial preparation
 requires internet access, Python with pip, and Command Line Tools. Python
 dependencies are separated by interpreter version. Linux CI is unchanged.
+All three scripts share CLI selection, configuration and FQBN through
+`tools/arduino_toolchain.sh`. The downloaded CLI archive is verified using
+SHA-256. An explicit `ARDUINO_CLI_BIN` overrides the local default.
 
 Choose a valid SemVer version and build in the separate release workflow:
 

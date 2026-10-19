@@ -55,6 +55,12 @@ struct CST820_Touch{
 
 
 uint8_t Touch_Init();
+// One binary supports both boards; detection runs before panel initialization.
+enum class TouchController : uint8_t { Unknown, CST820, GT911 };
+bool Touch_DetectHardware();
+TouchController Touch_GetController();
+const char *Touch_GetBoardName();
+const char *Touch_GetControllerName();
 uint8_t CST820_Touch_Reset(void);
 void CST820_AutoSleep(bool Sleep_State);
 uint16_t CST820_Read_cfg(void);

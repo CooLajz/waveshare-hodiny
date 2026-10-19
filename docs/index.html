@@ -4,11 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#05090d">
-    <meta name="description" content="Waveshare Hodiny – chytré hodiny s Open-Meteo, TMEP.cz, Home Assistantem a meteoradarem ČHMÚ pro kulatý dotykový displej.">
+    <meta name="description" content="Waveshare Hodiny – chytré hodiny pro Waveshare ESP32-S3-Touch-LCD-2.1 a 2.8C. Jeden firmware s automatickým rozpoznáním desky, počasím, senzory a meteoradarem.">
     <title>Waveshare Hodiny – Chytré hodiny podle vás</title>
     <link rel="stylesheet" href="styles.css?v=b205ed302343">
     <script type="module" src="vendor/esp-web-tools/install-button.js"></script>
-    <script type="module" src="app.js?v=9b54b5354450"></script>
+    <script type="module" src="app.js?v=d6fb10d2b45f"></script>
   </head>
   <body>
     <header class="site-header">
@@ -39,7 +39,7 @@
             <a class="button button-primary" href="#instalace">Nainstalovat firmware</a>
             <a class="button button-secondary" href="https://github.com/CooLajz/waveshare-hodiny">Prohlédnout si zdrojový kód</a>
           </div>
-          <p class="hardware-note">Určeno výhradně pro Waveshare ESP32-S3-Touch-LCD-2.1</p>
+          <p class="hardware-note">Pro Waveshare ESP32-S3-Touch-LCD-2.1 a ESP32-S3-Touch-LCD-2.8C. Jeden firmware, automatické rozpoznání desky.</p>
         </div>
         <div class="device-stage" aria-label="Analogový, digitální a Retro LCD vzhled hodin s meteoradarem">
           <figure class="device device-analog">
@@ -131,7 +131,7 @@
           <div>
             <p class="eyebrow">Potřebný hardware</p>
             <h2>Kde koupit podporovanou desku</h2>
-            <p>Firmware je určený výhradně pro Waveshare ESP32-S3-Touch-LCD-2.1. Kliknutím na logo přejdete přímo k podporované desce.</p>
+            <p>Od verze 2.1.0 firmware podporuje Waveshare ESP32-S3-Touch-LCD-2.1 i ESP32-S3-Touch-LCD-2.8C a desku automaticky rozpozná. Odkazy níže vedou k modelu 2.1.</p>
           </div>
           <div class="hardware-links">
             <a class="retailer-logo" href="https://pajenicko.cz/waveshare-esp32-s3-touch-lcd-2.1-s-kulatym-ips-lcd-dotykovym-displejem" target="_blank" rel="noopener noreferrer" aria-label="Koupit podporovanou desku na Pájeníčko.cz">
@@ -150,6 +150,7 @@
             <p class="eyebrow">Instalace přes USB</p>
             <h2>Firmware nahrajete přímo z prohlížeče</h2>
             <p>Potřebujete datový USB kabel a Chrome nebo Edge na počítači. Vyberte sériový port zařízení a instalátor nahraje všechny části na správné adresy.</p>
+            <p>Model hodin nemusíte vybírat. Pro desku 2.8C použijte firmware 2.1.0 nebo novější; starší verze jsou určené pouze pro 2.1.</p>
             <ol class="steps">
               <li><span>1</span><div><strong>Připojte hodiny</strong><small>Použijte jeden z USB-C konektorů a datový kabel.</small></div></li>
               <li><span>2</span><div><strong>Spusťte instalaci</strong><small>Prohlížeč Vás požádá o výběr sériového portu.</small></div></li>

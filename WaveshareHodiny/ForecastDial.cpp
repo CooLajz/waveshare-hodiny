@@ -74,6 +74,13 @@ lv_color_t temperatureColor(float temperature) {
   }
   return lv_color_hex(colors[5]);
 }
+lv_color_t temperatureBackground(float temperature, uint8_t opacity) {
+  // Red night mode keeps all large surfaces black, including missing data.
+  if (red) return lv_color_black();
+  return std::isfinite(temperature)
+      ? lv_color_mix(temperatureColor(temperature), lv_color_black(), opacity)
+      : lv_color_hex(0x30343A);
+}
 bool rebuildFan(int rowBudget) {
   if (!fanPixels) return true;
   uint32_t colors[12];
@@ -199,11 +206,11 @@ void draw(lv_event_t *event) {
     lv_draw_rect_dsc_t fill;
     lv_draw_rect_dsc_init(&fill);
     fill.bg_opa = LV_OPA_COVER;
-    fill.bg_color = std::isfinite(currentTemperature) ? lv_color_mix(temperatureColor(currentTemperature), lv_color_black(), 166) : lv_color_hex(0x30343A);
+    fill.bg_color = temperatureBackground(currentTemperature, 166);
     lv_draw_rect(ctx, &fill, clip);
     return;
   }
-  if (fanPixels) {
+  if (fanPixels && !red) {
     lv_draw_img_dsc_t background;
     lv_draw_img_dsc_init(&background);
     lv_draw_img(ctx, &background, &area, &fanImage);
@@ -212,9 +219,9 @@ void draw(lv_event_t *event) {
   lv_draw_rect_dsc_init(&centerDisc);
   centerDisc.radius = LV_RADIUS_CIRCLE;
   centerDisc.bg_opa = LV_OPA_COVER;
-  centerDisc.bg_color = std::isfinite(currentTemperature) ? lv_color_mix(temperatureColor(currentTemperature), lv_color_black(), 166) : lv_color_hex(0x30343A);
-  centerDisc.border_color = lv_color_black();
-  centerDisc.border_opa = LV_OPA_50;
+  centerDisc.bg_color = temperatureBackground(currentTemperature, 166);
+  centerDisc.border_color = red ? fg : lv_color_black();
+  centerDisc.border_opa = red ? LV_OPA_COVER : LV_OPA_50;
   centerDisc.border_width = 2;
   lv_area_t disc = {static_cast<lv_coord_t>(center.x - CENTER_RADIUS), static_cast<lv_coord_t>(center.y - CENTER_RADIUS),
                    static_cast<lv_coord_t>(center.x + CENTER_RADIUS), static_cast<lv_coord_t>(center.y + CENTER_RADIUS)};
@@ -281,7 +288,7 @@ void draw(lv_event_t *event) {
     circleShadow.y1 += 2; circleShadow.y2 += 2;
     lv_draw_rect(ctx, &hourCircle, &circleShadow);
     hourCircle.border_color = value ? fg : muted;
-    hourCircle.bg_color = value ? lv_color_mix(temperatureColor(value->temperature), lv_color_black(), 128) : lv_color_hex(0x30343A);
+    hourCircle.bg_color = temperatureBackground(value ? value->temperature : NAN, 128);
     lv_draw_rect(ctx, &hourCircle, &hourBounds);
     const lv_point_t temperatureShadowPoint = {static_cast<lv_coord_t>(hourPoint.x + 2), static_cast<lv_coord_t>(hourPoint.y + 2)};
     text(ctx, temperatureShadowPoint, label, &clock_czech_20, lv_color_black(), 44);
