@@ -257,7 +257,7 @@ void draw(lv_event_t *event) {
     if(unitWidth) p.label(units[i],numberLeft+numberWidth+6,338,unitWidth,&clock_unit_24,ink());
   }
   if (progressEnabled) {
-    const int filled = std::isfinite(progress) ? static_cast<int>(std::floor(progress * progressSegments / 100.0f)) : 0;
+    const int filled = std::isfinite(progress) ? static_cast<int>(std::round(progress * progressSegments / 100.0f)) : 0;
     const int gap = std::max(1, std::min(5, 50 / static_cast<int>(progressSegments)));
     // Whole-pixel widths keep every segment and gap identical. Center the remainder.
     const int segmentWidth = (265 - gap * (progressSegments - 1)) / progressSegments;
