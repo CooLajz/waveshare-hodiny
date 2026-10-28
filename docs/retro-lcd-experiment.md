@@ -12,7 +12,7 @@ Restart vždy obnoví uložený typ hodin.
 - Číslice a den jsou kreslené sedmi a čtrnácti segmenty, včetně zhasnutého podkresu.
 - Levá a pravá hodnota LCD si nezávisle vybírají levou, pravou, spodní A nebo spodní B hodnotu, včetně názvu, jednotky a přesnosti.
 - Přímo v nastavení Retro LCD mají levá a pravá strana volbu 1–4 míst před desetinnou tečkou
-  (znaménko má vlastní úzký segment navíc), výchozí 3 pro A a 4 pro B. Desetinná místa
+  (mínus využije volnou pozici, při zaplnění číslic má segment navíc), výchozí 3 pro A a 4 pro B. Desetinná místa
   se přidávají podle stávající přesnosti. Neobsazené pozice zůstávají zhasnuté,
   při nedostupnosti nebo přesahu po zaokrouhlení se zobrazí pomlčky. Pozice
   i velikost číslic jsou pevné pro zvolenou konfiguraci, jednotka neposkakuje.
@@ -40,7 +40,7 @@ exceed minimum. Values outside the range clamp to empty/full. The face shows onl
 the name and unit below the blocks, without numeric limits or the current value.
 Missing data adds dashes to the caption and leaves all blocks inactive.
 Each LCD side has 1–4 positions in the Retro LCD settings before the decimal point,
-with a separate narrow minus segment (defaults 3/4). Existing decimal precision adds fractional
+with a minus in the last free position, or an extra full-width middle segment when all digit positions are occupied (defaults 3/4). Existing decimal precision adds fractional
 positions. Overflow and missing values display dashes instead of truncated
 numbers. Digit and unit positions stay fixed for a given configuration.
 Background/foreground colors and digit counts are stored in separate
@@ -54,7 +54,7 @@ Po uvolnění posuvníku počtu dílků se ihned použije dočasný náhled; tla
 Releasing the segment-count slider previews the change immediately; Save persists it across restart.
 
 Znaménko mínus nemá podkres; rezervované místo udržuje číslice a jednotku na místě.
-The minus sign has no inactive trace; its reserved space keeps digits and units stationary.
+The extra minus sign has no inactive trace and matches the digit’s middle segment. Its reserved space keeps digits and units stationary. A minus inside a free digit position retains that digit’s inactive segments.
 
 Levá i pravá pozice může místo hodnoty zobrazit statickou ikonu aktuálního počasí. Používá existující Monochrome asset v barvě LCD popředí (i v nočním režimu). Pole počtu číslic se pro ikonu skryje.
 Either value slot can show the static current-weather icon instead, recolored to the LCD foreground including night mode. Its digit-count control is hidden.

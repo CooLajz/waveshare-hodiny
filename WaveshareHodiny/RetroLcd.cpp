@@ -23,7 +23,7 @@ char names[2][CLOCK_METRIC_NAME_LENGTH] = {};
 char units[2][CLOCK_METRIC_SUFFIX_LENGTH] = {};
 char numbers[2][32] = {"--", "--"};
 uint8_t digitPlaces[2] = {3, 4};
-bool negativeValues[2] = {false, false};
+bool extraMinusValues[2] = {false, false};
 bool weatherSlots[2] = {false, false};
 const lv_img_dsc_t *weatherImage = nullptr;
 const lv_img_dsc_t *rasterizedWeatherImage = nullptr;
@@ -242,14 +242,14 @@ void draw(lv_event_t *event) {
     lv_point_t unitSize;
     lv_txt_get_size(&unitSize,units[i],&clock_unit_24,0,0,200,LV_TEXT_FLAG_EXPAND);
     const int unitWidth=std::min(112,static_cast<int>(unitSize.x));
-    while(w>10 && p.width(numbers[i],w,gap)+std::max(7,w/2)+4+unitWidth+6>182) { --w; h-=2; }
-    while(gap>1 && p.width(numbers[i],w,gap)+std::max(7,w/2)+4+unitWidth+6>182) --gap;
+    while(w>10 && p.width(numbers[i],w,gap)+w+4+unitWidth+6>182) { --w; h-=2; }
+    while(gap>1 && p.width(numbers[i],w,gap)+w+4+unitWidth+6>182) --gap;
     const int numberWidth=p.width(numbers[i],w,gap);
-    const int signWidth = std::max(7,w/2);
+    const int signWidth = w;
     const int left=center-(signWidth+4+numberWidth+unitWidth+(unitWidth?6:0))/2;
     const int numberLeft=left+signWidth+4;
-    if (negativeValues[i]) {
-      retro_lcd_geometry::segment(signWidth,h,false,14,[&](int sx,int sy,int length,uint8_t coverage) {
+    if (extraMinusValues[i]) {
+      retro_lcd_geometry::segment(signWidth,h,false,6,[&](int sx,int sy,int length,uint8_t coverage) {
         p.rect(left+sx,315+46-h+sy,length,1,lv_color_mix(ink(),background(),coverage));
       });
     }
@@ -426,10 +426,10 @@ void retroLcdUpdate(const ClockValues &values,const ClockMetricConfig &a,
   bool changed=false;
   for(int i=0;i<2;++i) {
     char formatted[32];
-    bool negative = false;
-    retroLcdFormatValue(formatted,sizeof(formatted),numbersIn[i],digitPlaces[i],configs[i]->decimals,&negative);
-    if(negativeValues[i]!=negative || strcmp(numbers[i],formatted) || strcmp(names[i],configs[i]->name) || strcmp(units[i],configs[i]->suffix)) {
-      negativeValues[i]=negative;
+    bool extraMinus = false;
+    retroLcdFormatValue(formatted,sizeof(formatted),numbersIn[i],digitPlaces[i],configs[i]->decimals,&extraMinus);
+    if(extraMinusValues[i]!=extraMinus || strcmp(numbers[i],formatted) || strcmp(names[i],configs[i]->name) || strcmp(units[i],configs[i]->suffix)) {
+      extraMinusValues[i]=extraMinus;
       strlcpy(numbers[i],formatted,sizeof(numbers[i]));
       strlcpy(names[i],configs[i]->name,sizeof(names[i]));
       strlcpy(units[i],configs[i]->suffix,sizeof(units[i]));

@@ -15,11 +15,11 @@ inline float retroLcdProgressPercent(float value, float minimum, float maximum) 
 #include <cstdio>
 #include <cstring>
 
-// Počet pozic před tečkou zahrnuje pouze číslice; znaménko má vlastní segment.
+// Mínus obsadí poslední volnou pozici před číslem; mimo číslice je jen při zaplnění všech pozic.
 // Přesah po zaokrouhlení a nedostupná data zobrazíme pomlčkami, nikdy ořezem.
 inline void retroLcdFormatValue(char *out, size_t capacity, float value,
-                                unsigned places, unsigned decimals, bool *negative = nullptr) {
-  if (negative) *negative = false;
+                                unsigned places, unsigned decimals, bool *extraMinus = nullptr) {
+  if (extraMinus) *extraMinus = false;
   places = std::max(1U, std::min(4U, places));
   decimals = std::min(2U, decimals);
   const size_t length = places + (decimals ? decimals + 1 : 0);
@@ -33,10 +33,12 @@ inline void retroLcdFormatValue(char *out, size_t capacity, float value,
   const char *dot = std::strchr(formatted, '.');
   const size_t integerLength = dot ? static_cast<size_t>(dot - formatted) : std::strlen(formatted);
   if (integerLength > places) return;
-  if (negative) *negative = value < 0 && std::strspn(formatted, "0.") != std::strlen(formatted);
+  const bool negative = value < 0 && std::strspn(formatted, "0.") != std::strlen(formatted);
   const size_t padding = places - integerLength;
   std::memset(out, ' ', padding);
   std::memcpy(out + padding, formatted, std::strlen(formatted) + 1);
+  if (negative && padding) out[padding - 1] = '-';
+  if (extraMinus) *extraMinus = negative && padding == 0;
 }
 
 // Fixed LCD character positions; an unmatched spare position stays on the right.
